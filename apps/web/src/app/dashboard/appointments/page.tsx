@@ -485,7 +485,7 @@ export default function AppointmentsPage() {
       setCancelReason('');
       setSelectedAppt(null);
     } catch (e: any) {
-      alert(e.message || 'Error al cambiar estado');
+      alert('No se pudo cambiar el estado. Intenta de nuevo.');
     }
   };
 

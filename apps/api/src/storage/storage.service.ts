@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -53,13 +53,11 @@ export class StorageService {
   }
 
   /**
-   * Delete a file by its relative URL path (e.g. /uploads/products/abc.jpg)
+   * Delete a file by its relative URL path (e.g. /uploads/products/abc.jpg).
+   * Validates the resolved path stays inside uploadDir to prevent path traversal.
    */
   async deleteFile(url: string): Promise<void> {
-    // Remove leading slash and "uploads/" prefix
-    const relativePath = url.replace(/^\/uploads\//, '');
-    const fullPath = path.join(this.uploadDir, relativePath);
-
+    const fullPath = this.resolveSafePath(url);
     if (fs.existsSync(fullPath)) {
       fs.unlinkSync(fullPath);
       this.logger.log(`File deleted: ${url}`);
@@ -67,11 +65,21 @@ export class StorageService {
   }
 
   /**
-   * Get the absolute path for a relative URL
+   * Get the absolute path for a relative URL.
+   * Validates the resolved path stays inside uploadDir.
    */
   getAbsolutePath(url: string): string {
+    return this.resolveSafePath(url);
+  }
+
+  private resolveSafePath(url: string): string {
     const relativePath = url.replace(/^\/uploads\//, '');
-    return path.join(this.uploadDir, relativePath);
+    const resolved = path.resolve(path.join(this.uploadDir, relativePath));
+    const uploadRoot = path.resolve(this.uploadDir);
+    if (!resolved.startsWith(uploadRoot + path.sep) && resolved !== uploadRoot) {
+      throw new BadRequestException('Invalid file path');
+    }
+    return resolved;
   }
 
   getPublicUrl(key: string): string {

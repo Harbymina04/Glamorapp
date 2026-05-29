@@ -1,4 +1,5 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
 
 interface FetchOptions extends RequestInit {
   token?: string;
@@ -13,6 +14,12 @@ export class ApiError extends Error {
 
 async function handleResponse(res: Response) {
   if (!res.ok) {
+    // Auto-logout on 401 — token expired or revoked
+    if (res.status === 401 && typeof window !== 'undefined') {
+      const { clearAuth } = await import('@/lib/auth');
+      clearAuth();
+      window.location.href = '/auth/login';
+    }
     const body = await res.json().catch(() => ({ message: 'Request failed' }));
     throw new ApiError(res.status, body.message || 'Request failed');
   }

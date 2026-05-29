@@ -85,13 +85,8 @@ export default function POSPage() {
   const [reconciliation, setReconciliation] = useState<any>(null);
   const [pastSessions, setPastSessions] = useState<any[]>([]);
 
-  // Load held sales from localStorage
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('glamorapp_held_sales');
-      if (saved) setHeldSales(JSON.parse(saved));
-    } catch {}
-  }, []);
+  // Held sales are kept in memory only (no localStorage) to avoid
+  // persisting sensitive financial data in the browser.
 
   // Load products
   useEffect(() => {
@@ -220,7 +215,7 @@ export default function POSPage() {
     if (!confirm('¿Anular esta venta?')) return;
     setCancellingId(saleId);
     try { await api.post(`/sales/${saleId}/cancel`, { reason: 'Anulación desde POS' }, { token: token! }); fetchSales(); }
-    catch (e: any) { alert(e.message || 'Error'); }
+    catch { alert('No se pudo completar la operación. Intenta de nuevo.'); }
     finally { setCancellingId(null); }
   };
 
@@ -233,7 +228,7 @@ export default function POSPage() {
     };
     const updated = [...heldSales, sale];
     setHeldSales(updated);
-    localStorage.setItem('glamorapp_held_sales', JSON.stringify(updated));
+    // held sales stay in memory only
     cart.clearCart(); setDiscountInput('');
   };
 
@@ -245,13 +240,13 @@ export default function POSPage() {
     setDiscountInput(sale.cart.discountPercent ? String(sale.cart.discountPercent) : '');
     const updated = heldSales.filter(h => h.id !== sale.id);
     setHeldSales(updated);
-    localStorage.setItem('glamorapp_held_sales', JSON.stringify(updated));
+    // held sales stay in memory only
   };
 
   const removeHeldSale = (id: string) => {
     const updated = heldSales.filter(h => h.id !== id);
     setHeldSales(updated);
-    localStorage.setItem('glamorapp_held_sales', JSON.stringify(updated));
+    // held sales stay in memory only
   };
 
   // Cash Register
@@ -299,7 +294,7 @@ export default function POSPage() {
     if (itemsToRefund.length === 0 || !refundReason) return;
     setRefunding(true);
     try { await api.post(`/sales/${selectedSale.id}/refund`, { items: itemsToRefund, reason: refundReason, refundMethod }, { token: token! }); setShowRefundModal(false); fetchSales(); }
-    catch (e: any) { alert(e.message || 'Error'); }
+    catch { alert('No se pudo completar la operación. Intenta de nuevo.'); }
     finally { setRefunding(false); }
   };
 
@@ -403,7 +398,7 @@ export default function POSPage() {
                 return (
                 <button key={item.id} onClick={() => addToCart(item)} className="bg-white rounded-xl border border-border-primary p-3 text-left hover:border-glamor-primary/40 hover:shadow-card-hover transition">
                   <div className="w-full h-20 rounded-lg bg-surface-hover flex items-center justify-center mb-2 overflow-hidden relative">
-                    {imgUrl ? <img src={imgUrl.startsWith('http') ? imgUrl : `http://localhost:3001${imgUrl}`} alt={item.name} className="w-full h-full object-cover" /> : <Package className="w-8 h-8 text-muted-foreground" />}
+                    {imgUrl ? <img src={imgUrl.startsWith('http') ? imgUrl : `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001'}${imgUrl}`} alt={item.name} className="w-full h-full object-cover" /> : <Package className="w-8 h-8 text-muted-foreground" />}
                     {selectedTab === 'products' && stock <= (item.minStock || 5) && (
                       <span className={cn('absolute top-1 right-1 text-[10px] px-1.5 py-0.5 rounded-full font-bold', stock === 0 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700')}>
                         {stock === 0 ? 'Sin stock' : `Quedan ${stock}`}

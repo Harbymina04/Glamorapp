@@ -31,9 +31,11 @@ export function ImageUploader({ images, onUpload, onRemove, onImagesChange, disa
     setInternalImages(images);
   }, [images]);
 
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+
   const getImageUrl = (url: string) => {
     if (url.startsWith('http')) return url;
-    return `http://localhost:3001${url}`;
+    return `${API_BASE}${url}`;
   };
 
   const handleFiles = useCallback(async (fileList: FileList | File[]) => {

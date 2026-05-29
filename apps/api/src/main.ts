@@ -3,18 +3,44 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { join } from 'path';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.setGlobalPrefix('api/v1');
-  app.enableCors();
 
-  // Serve uploaded files
-  app.useStaticAssets(join(process.cwd(), 'uploads'), {
-    prefix: '/uploads/',
+  // Security headers
+  app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'same-site' },
+  }));
+
+  const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000')
+    .split(',')
+    .map(o => o.trim());
+
+  app.enableCors({
+    origin: (origin, cb) => {
+      // Allow server-to-server (no origin) and whitelisted origins
+      if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+      cb(new Error(`CORS: origin ${origin} not allowed`));
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
+
+  // Reject POST/PUT/PATCH requests without application/json Content-Type
+  app.use((req: any, res: any, next: any) => {
+    if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
+      const ct = req.headers['content-type'] || '';
+      // Allow multipart (file uploads) and JSON — reject everything else
+      if (!ct.includes('application/json') && !ct.includes('multipart/form-data')) {
+        return res.status(415).json({ statusCode: 415, message: 'Unsupported Media Type' });
+      }
+    }
+    next();
   });
 
   app.useGlobalPipes(

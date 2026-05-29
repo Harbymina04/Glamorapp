@@ -60,13 +60,13 @@ export default function TenantAiUsagePage() {
         <div className="bg-white rounded-xl p-5 border shadow-sm">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center"><Zap className="w-5 h-5 text-purple-600" /></div>
-            <div><p className="text-2xl font-bold">{fmt(data?.tokensInThisMonth || 0)}</p><p className="text-xs text-muted-foreground">Tokens In (este mes)</p></div>
+            <div><p className="text-2xl font-bold">{fmt(data?.tokensInThisMonth || 0)}</p><p className="text-xs text-muted-foreground">Consultas enviadas (este mes)</p></div>
           </div>
         </div>
         <div className="bg-white rounded-xl p-5 border shadow-sm">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center"><TrendingUp className="w-5 h-5 text-blue-600" /></div>
-            <div><p className="text-2xl font-bold">{fmt(data?.tokensOutThisMonth || 0)}</p><p className="text-xs text-muted-foreground">Tokens Out (este mes)</p></div>
+            <div><p className="text-2xl font-bold">{fmt(data?.tokensOutThisMonth || 0)}</p><p className="text-xs text-muted-foreground">Respuestas recibidas (este mes)</p></div>
           </div>
         </div>
       </div>
@@ -82,8 +82,8 @@ export default function TenantAiUsagePage() {
             <thead>
               <tr className="border-b bg-surface-secondary">
                 <th className="text-left text-xs font-medium text-muted-foreground uppercase px-4 py-3">Sucursal</th>
-                <th className="text-right text-xs font-medium text-muted-foreground uppercase px-4 py-3">Tokens In</th>
-                <th className="text-right text-xs font-medium text-muted-foreground uppercase px-4 py-3">Tokens Out</th>
+                <th className="text-right text-xs font-medium text-muted-foreground uppercase px-4 py-3">Consultas</th>
+                <th className="text-right text-xs font-medium text-muted-foreground uppercase px-4 py-3">Respuestas</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -116,7 +116,7 @@ export default function TenantAiUsagePage() {
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs text-muted-foreground">in:{a.tokensIn} out:{a.tokensOut}</p>
+                  <p className="text-xs text-muted-foreground">↑{a.tokensIn} ↓{a.tokensOut} tokens</p>
                   <p className="text-[10px] text-muted-foreground">{new Date(a.createdAt).toLocaleString()}</p>
                 </div>
               </div>

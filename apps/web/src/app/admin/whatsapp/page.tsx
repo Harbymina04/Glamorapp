@@ -70,9 +70,13 @@ export default function AdminWhatsAppPage() {
   }, [fetchBridgeStatus]);
 
   const checkTenantSession = async (sessionId: string) => {
-    // We need tenantId, not sessionId. For now just refresh.
-    // In the future, this would call /admin/tenants/:id/session
-    fetchBridgeStatus();
+    setCheckingTenant(sessionId);
+    try {
+      // NestJS route: GET /whatsapp/bridge/admin/sessions/:sessionId/status
+      await api.get(`/whatsapp/bridge/admin/sessions/${sessionId}/status`, { token: token! });
+    } catch { /* ignore errors — session may not exist yet */ }
+    await fetchBridgeStatus();
+    setCheckingTenant(null);
   };
 
   const formatUptime = (seconds: number) => {
@@ -262,7 +266,7 @@ export default function AdminWhatsAppPage() {
             ) : (
               <>
                 <div className="w-2 h-2 rounded-full bg-green-500" />
-                <span className="text-green-600">Bridge online — puerto 8082</span>
+                <span className="text-green-600">Bridge online — {process.env.NEXT_PUBLIC_WHATSAPP_PORT || '8081'}</span>
               </>
             )}
           </div>

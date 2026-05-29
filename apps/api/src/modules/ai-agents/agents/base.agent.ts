@@ -85,13 +85,15 @@ export abstract class BaseAgent {
 
   // ─── Public: Run the agent ───────────────────────────────────
 
-  async run(tenantId: string, storeId: string, agentId: string): Promise<AgentResult> {
+  async run(tenantId: string, storeId: string, agentId: string, existingExecutionId?: string): Promise<AgentResult> {
     const startTime = Date.now();
 
-    // Create execution record
-    const execution = await this.prisma.aiAgentExecution.create({
-      data: { agentId, tenantId, storeId, status: 'running' },
-    });
+    // Reuse an existing execution record (fire-and-forget mode) or create one
+    const execution = existingExecutionId
+      ? { id: existingExecutionId }
+      : await this.prisma.aiAgentExecution.create({
+          data: { agentId, tenantId, storeId, status: 'running' },
+        });
 
     const agent = await this.prisma.aiAgent.findUnique({ where: { id: agentId } });
     if (!agent) {
@@ -125,7 +127,20 @@ export abstract class BaseAgent {
     }
 
     // ─── 2. THINK → ACT loop ──────────────────────────────────
-    const systemPrompt = this.getSystemPrompt(ctx);
+    // Append structured-output instructions to every agent's system prompt
+    const structuredInstructions = `
+
+---
+REGLAS DE FORMATO PARA RECOMENDACIONES:
+Cuando uses la herramienta create_recommendation, SIEMPRE completa TODOS los campos:
+- titulo: título corto y específico (máx 80 caracteres)
+- problema: describe el hallazgo con datos concretos y números del análisis (ej: "Las ventas cayeron 23% en los últimos 7 días vs semana anterior: $1.200.000 vs $1.560.000")
+- accion_concreta: pasos numerados exactos que el dueño debe ejecutar (ej: "1. Contactar a los 12 clientes inactivos\\n2. Ofrecer 15% de descuento\\n3. Revisar respuestas en 48h")
+- impacto_esperado: qué mejorará y magnitud aproximada en COP o porcentaje (ej: "Recuperar 4-6 clientes, ingreso adicional estimado $280.000 COP")
+- como_medir: métrica específica y plazo para verificar el resultado (ej: "Comparar ventas semana siguiente vs esta semana")
+Crea UNA recomendación por hallazgo. No agrupes múltiples problemas.
+Llama a finish_analysis SIEMPRE como última herramienta.`;
+    const systemPrompt = this.getSystemPrompt(ctx) + structuredInstructions;
     const tools = this.getTools(ctx) as any[];
     const messages: LLMMessage[] = [];
     let currentData = observation;
@@ -154,11 +169,17 @@ export abstract class BaseAgent {
         this.log(ctx, `✅ Análisis completado`);
         messages.push({ role: 'assistant', content: response.text });
 
-        // Save the final analysis as a recommendation if it's meaningful
+        // Save the final analysis as a recommendation if meaningful
         if (response.text && response.text.length > 20) {
+          const structured = JSON.stringify({
+            problema: 'Análisis general del agente.',
+            accion_concreta: response.text,
+            impacto_esperado: '',
+            como_medir: '',
+          });
           const saved = await this.saveRecommendation(
             ctx.tenantId, ctx.storeId, ctx.agentId,
-            'analysis', 'Análisis del agente', response.text,
+            'other', `Análisis — ${this.name}`, structured,
             `Ejecutado por ${this.name} (${provider})`, 'medium',
           );
           allRecommendations.push(saved);
@@ -207,6 +228,9 @@ export abstract class BaseAgent {
       }
 
       messages.push({ role: 'user', content: `Resultados:\n${toolResults.join('\n\n')}` });
+
+      // Persist logs after each iteration so the frontend can poll them
+      await this.flushLogs(execution.id, ctx.executionLog);
     }
 
     // Max iterations
@@ -336,6 +360,16 @@ export abstract class BaseAgent {
 
   // ─── Execution logging ──────────────────────────────────────
 
+  /** Persist current logs mid-run so the frontend can poll them in real time */
+  private async flushLogs(executionId: string, logs: string[]) {
+    try {
+      await this.prisma.aiAgentExecution.update({
+        where: { id: executionId },
+        data: { logs: logs as any },
+      });
+    } catch { /* non-fatal */ }
+  }
+
   private async finishExecution(
     id: string, status: string, result: any, logs: string[], durationMs?: number, iterations?: number,
   ) {
@@ -409,17 +443,20 @@ export abstract class BaseAgent {
     const tools: AgentTool[] = [
       {
         name: 'create_recommendation',
-        description: 'Crea una recomendación accionable. Usa esto para CADA hallazgo o sugerencia específica, no agrupes varias en una.',
+        description: 'Crea una recomendación accionable estructurada. Úsala para CADA hallazgo específico, no agrupes varios.',
         input_schema: {
           type: 'object',
           properties: {
-            title: { type: 'string', description: 'Título corto (máx 80 chars)' },
-            description: { type: 'string', description: 'Descripción detallada con pasos accionables concretos' },
+            titulo: { type: 'string', description: 'Título corto y específico (máx 80 caracteres)' },
+            problema: { type: 'string', description: 'Describe el hallazgo con datos concretos y números del análisis. Ej: "Las ventas cayeron 23% esta semana: $1.200.000 vs $1.560.000 la semana anterior"' },
+            accion_concreta: { type: 'string', description: 'Pasos numerados exactos que el dueño debe ejecutar. Ej: "1. Contactar a los 12 clientes inactivos\\n2. Ofrecer 15% descuento\\n3. Revisar respuestas en 48h"' },
+            impacto_esperado: { type: 'string', description: 'Qué mejorará y magnitud aproximada. Ej: "Recuperar 4-6 clientes, ingreso adicional estimado $280.000 COP"' },
+            como_medir: { type: 'string', description: 'Métrica específica y plazo para verificar el resultado. Ej: "Comparar ventas de la semana siguiente vs esta semana"' },
             type: { type: 'string', enum: ['revenue', 'cost_saving', 'customer_experience', 'efficiency', 'marketing', 'inventory', 'pricing', 'other'] },
             priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
-            estimated_impact: { type: 'number', description: 'Impacto estimado en COP (opcional)' },
+            estimated_impact: { type: 'number', description: 'Impacto estimado en COP (número, opcional)' },
           },
-          required: ['title', 'description', 'type', 'priority'],
+          required: ['titulo', 'problema', 'accion_concreta', 'impacto_esperado', 'priority', 'type'],
         },
       },
       {
@@ -485,13 +522,22 @@ export abstract class BaseAgent {
 
   protected async executeSharedTool(ctx: AgentContext, toolName: string, args: Record<string, any>): Promise<any> {
     switch (toolName) {
-      case 'create_recommendation':
+      case 'create_recommendation': {
+        // Store structured data as JSON so the frontend can render each section clearly
+        const structured = JSON.stringify({
+          problema: args.problema || args.description || '',
+          accion_concreta: args.accion_concreta || '',
+          impacto_esperado: args.impacto_esperado || '',
+          como_medir: args.como_medir || '',
+        });
         return this.saveRecommendation(
           ctx.tenantId, ctx.storeId, ctx.agentId,
-          args.type || 'other', args.title, args.description,
+          args.type || 'other', args.titulo || args.title || 'Recomendación',
+          structured,
           `Generado por ${this.name}`,
           args.priority || 'medium', args.estimated_impact,
         );
+      }
 
       case 'create_notification': {
         // Map level to valid NotificationType: alert→error, success→info

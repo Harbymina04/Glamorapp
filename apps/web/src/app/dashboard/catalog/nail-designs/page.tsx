@@ -149,7 +149,7 @@ export default function NailDesignsPage() {
         setUploading(true);
         const formData = new FormData();
         formData.append('image', imageFile);
-        await fetch(`http://localhost:3001/api/v1/nail-designs/${design.id}/upload-image`, {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/nail-designs/${design.id}/upload-image`, {
           method: 'POST',
           body: formData,
           headers: { Authorization: `Bearer ${token}` },

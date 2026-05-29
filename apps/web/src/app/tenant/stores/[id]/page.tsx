@@ -66,7 +66,7 @@ export default function StoreDetailPage() {
       setForm({ email: '', password: '', firstName: '', lastName: '', role: 'store_admin' });
       fetchData();
     } catch (e: any) {
-      alert(e.message || 'Error al crear usuario');
+      alert('No se pudo crear el usuario. Intenta de nuevo.');
     } finally {
       setSaving(false);
     }
@@ -79,7 +79,7 @@ export default function StoreDetailPage() {
       setResetUserId(null);
       setNewPassword('');
     } catch (e: any) {
-      alert(e.message || 'Error');
+      alert('No se pudo completar la operación. Intenta de nuevo.');
     }
   };
 

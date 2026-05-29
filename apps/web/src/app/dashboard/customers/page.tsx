@@ -164,8 +164,8 @@ export default function CustomersPage() {
       setShowDelete(false);
       setDeleteId(null);
       fetchCustomers(search || undefined);
-    } catch (e: any) {
-      alert(e.message || 'Error al eliminar');
+    } catch {
+      alert('No se pudo eliminar el cliente. Intenta de nuevo.');
     } finally {
       setDeleting(false);
     }

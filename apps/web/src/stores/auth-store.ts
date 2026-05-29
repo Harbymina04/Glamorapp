@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { getToken, setToken, setRefreshToken, clearAuth, setUser, getUser } from '@/lib/auth';
+import { getToken, setToken, setRefreshToken, clearAuth, setUser, getUser, isTokenExpired } from '@/lib/auth';
 import { api } from '@/lib/api-client';
 
 interface User {
@@ -100,6 +100,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   checkAuth: async () => {
     const token = getToken();
     if (!token) return;
+
+    // Clear immediately if token is already expired — no need to hit the server
+    if (isTokenExpired()) {
+      clearAuth();
+      set({ user: null, token: null, plan: null, scopes: {}, stores: [], redirectPath: null, isAuthenticated: false });
+      return;
+    }
+
     try {
       const profile = await api.get('/auth/me', { token });
       setUser({ ...profile, scopes: profile.scopes });

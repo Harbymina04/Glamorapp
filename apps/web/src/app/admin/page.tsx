@@ -10,7 +10,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (user?.role === 'superadmin') {
-      router.replace('/admin/plans');
+      router.replace('/admin/overview');
     }
   }, [user, router]);
 

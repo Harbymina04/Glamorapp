@@ -21,7 +21,7 @@ export default function CompareSuppliersPage() {
   const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
 
-  const getToken = () => useAuthStore.getState().token || localStorage.getItem('glamorapp_access_token');
+  const getToken = () => useAuthStore.getState().token;
 
   const searchProducts = useCallback(async (q: string) => {
     if (q.length < 2) { setProductResults([]); return; }

@@ -96,11 +96,10 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
   }, [onClose]);
 
   return (
-    <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg border animate-slide-up ${
-      type === 'success'
+    <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg border animate-slide-up ${type === 'success'
         ? 'bg-green-50 border-green-200 text-green-800'
         : 'bg-red-50 border-red-200 text-red-800'
-    }`}>
+      }`}>
       {type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
       <span className="text-sm font-medium">{message}</span>
       <button onClick={onClose} className="ml-2 p-0.5 rounded hover:bg-black/5"><X className="w-4 h-4" /></button>
@@ -167,13 +166,11 @@ function Toggle({ checked, onChange, label, description }: {
       <button
         type="button"
         onClick={() => onChange(!checked)}
-        className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
-          checked ? 'bg-glamor-primary' : 'bg-gray-300'
-        }`}
+        className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${checked ? 'bg-glamor-primary' : 'bg-gray-300'
+          }`}
       >
-        <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
-          checked ? 'translate-x-[22px]' : 'translate-x-0.5'
-        }`} />
+        <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${checked ? 'translate-x-[22px]' : 'translate-x-0.5'
+          }`} />
       </button>
     </div>
   );
@@ -331,7 +328,7 @@ export default function SettingsPage() {
     try {
       const res = await api.get('/cash-register/registers', { token: currentToken });
       setPosRegisters(res || []);
-    } catch {}
+    } catch { }
   };
 
   useEffect(() => { fetchRegisters(); }, []);
@@ -377,7 +374,8 @@ export default function SettingsPage() {
     setWaQrError('');
     try {
       const currentToken = useAuthStore.getState().token;
-      const data = await api.get('/whatsapp/bridge/status', { token: currentToken! });
+      // /whatsapp/bridge/session/status → estado de la sesión de ESTA sucursal (store_admin)
+      const data = await api.get('/whatsapp/bridge/session/status', { token: currentToken! });
       setWaStatus(data);
     } catch (e: any) {
       setWaStatus({ status: 'unreachable', connected: false });
@@ -391,23 +389,21 @@ export default function SettingsPage() {
     setWaQrUrl(null);
     try {
       const currentToken = useAuthStore.getState().token;
-      const res = await fetch('/api/v1/whatsapp/bridge/qr', {
-        headers: { Authorization: `Bearer ${currentToken}` },
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        // Show friendly messages for known states
-        if (err.status === 'connected' || err.status === 'already_connected') {
-          setWaQrError('WhatsApp ya está vinculado. No se necesita QR.');
-        } else {
-          setWaQrError(err.error || 'QR no disponible');
-        }
+      const res = await api.get('/whatsapp/bridge/session/qr', { token: currentToken! });
+
+      if (res.status === 'already_connected') {
+        setWaQrError('WhatsApp ya está vinculado. No se necesita QR.');
         return;
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      if (waQrUrl) URL.revokeObjectURL(waQrUrl);
-      setWaQrUrl(url);
+      if (!res.qrBase64) {
+        setWaQrError('QR no disponible aún. Intenta iniciar la sesión primero.');
+        return;
+      }
+      // El bridge devuelve el raw QR string de Baileys, hay que convertirlo a imagen
+      // Importa QRCode en el frontend o usa una URL de datos
+      const QRCode = (await import('qrcode')).default;
+      const dataUrl = await QRCode.toDataURL(res.qrBase64);
+      setWaQrUrl(dataUrl);
     } catch (e: any) {
       setWaQrError(e.message || 'Error al obtener QR');
     }
@@ -422,7 +418,7 @@ export default function SettingsPage() {
     setPairSuccess('');
     try {
       const currentToken = useAuthStore.getState().token;
-      const data = await api.post('/whatsapp/bridge/pair', { phone: pairPhone }, { token: currentToken! });
+      const data = await api.post('/whatsapp/bridge/session/pair', { phone: pairPhone }, { token: currentToken! });
       if (data.success && data.code) {
         setPairCode(data.code);
         setPairSuccess(data.message || 'Código generado. Revisa tu WhatsApp.');
@@ -487,11 +483,10 @@ export default function SettingsPage() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition border-l-2 ${
-                    activeTab === tab.id
+                  className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition border-l-2 ${activeTab === tab.id
                       ? 'border-glamor-primary text-glamor-primary bg-glamor-50'
                       : 'border-transparent text-muted-foreground hover:bg-surface-hover'
-                  }`}
+                    }`}
                 >
                   <Icon className="w-4 h-4" />
                   {tab.label}
@@ -793,11 +788,11 @@ export default function SettingsPage() {
                 <h4 className="font-medium text-sm text-foreground mb-3">Plantilla de factura</h4>
                 <p className="text-xs text-muted-foreground mb-3">Define qué campos se incluyen en las facturas enviadas a clientes</p>
                 <div className="bg-surface-hover rounded-xl p-1">
-                  <Toggle checked={invoiceTemplate.showLogo !== false} onChange={v => setInvoiceTemplate({...invoiceTemplate, showLogo: v})} label="Mostrar logo" />
-                  <Toggle checked={invoiceTemplate.showStoreInfo !== false} onChange={v => setInvoiceTemplate({...invoiceTemplate, showStoreInfo: v})} label="Datos de la tienda" />
-                  <Toggle checked={invoiceTemplate.showCustomerInfo !== false} onChange={v => setInvoiceTemplate({...invoiceTemplate, showCustomerInfo: v})} label="Datos del cliente" />
-                  <Toggle checked={invoiceTemplate.showPaymentInfo !== false} onChange={v => setInvoiceTemplate({...invoiceTemplate, showPaymentInfo: v})} label="Método de pago" />
-                  <Toggle checked={invoiceTemplate.showTaxBreakdown !== false} onChange={v => setInvoiceTemplate({...invoiceTemplate, showTaxBreakdown: v})} label="Desglose de impuestos" />
+                  <Toggle checked={invoiceTemplate.showLogo !== false} onChange={v => setInvoiceTemplate({ ...invoiceTemplate, showLogo: v })} label="Mostrar logo" />
+                  <Toggle checked={invoiceTemplate.showStoreInfo !== false} onChange={v => setInvoiceTemplate({ ...invoiceTemplate, showStoreInfo: v })} label="Datos de la tienda" />
+                  <Toggle checked={invoiceTemplate.showCustomerInfo !== false} onChange={v => setInvoiceTemplate({ ...invoiceTemplate, showCustomerInfo: v })} label="Datos del cliente" />
+                  <Toggle checked={invoiceTemplate.showPaymentInfo !== false} onChange={v => setInvoiceTemplate({ ...invoiceTemplate, showPaymentInfo: v })} label="Método de pago" />
+                  <Toggle checked={invoiceTemplate.showTaxBreakdown !== false} onChange={v => setInvoiceTemplate({ ...invoiceTemplate, showTaxBreakdown: v })} label="Desglose de impuestos" />
                   <div className="flex items-center justify-between py-3 px-2">
                     <div>
                       <p className="text-sm font-medium text-foreground">Mensaje de pie</p>
@@ -806,7 +801,7 @@ export default function SettingsPage() {
                     <input
                       type="text"
                       value={invoiceTemplate.footerMessage || ''}
-                      onChange={e => setInvoiceTemplate({...invoiceTemplate, footerMessage: e.target.value})}
+                      onChange={e => setInvoiceTemplate({ ...invoiceTemplate, footerMessage: e.target.value })}
                       placeholder="¡Gracias por tu compra!"
                       className="w-48 h-9 px-3 rounded-lg border border-border-primary text-sm"
                     />
@@ -819,11 +814,11 @@ export default function SettingsPage() {
                 <h4 className="font-medium text-sm text-foreground mb-3">Plantilla de ticket</h4>
                 <p className="text-xs text-muted-foreground mb-3">Define qué se incluye en el ticket que se imprime en caja</p>
                 <div className="bg-surface-hover rounded-xl p-1">
-                  <Toggle checked={ticketTemplate.showLogo !== false} onChange={v => setTicketTemplate({...ticketTemplate, showLogo: v})} label="Mostrar logo" />
-                  <Toggle checked={ticketTemplate.showStoreInfo !== false} onChange={v => setTicketTemplate({...ticketTemplate, showStoreInfo: v})} label="Datos de la tienda" />
-                  <Toggle checked={ticketTemplate.showSeller !== false} onChange={v => setTicketTemplate({...ticketTemplate, showSeller: v})} label="Nombre del vendedor" />
-                  <Toggle checked={ticketTemplate.showBarcode !== false} onChange={v => setTicketTemplate({...ticketTemplate, showBarcode: v})} label="Código de barras" />
-                  <Toggle checked={ticketTemplate.showQR !== false} onChange={v => setTicketTemplate({...ticketTemplate, showQR: v})} label="Código QR" />
+                  <Toggle checked={ticketTemplate.showLogo !== false} onChange={v => setTicketTemplate({ ...ticketTemplate, showLogo: v })} label="Mostrar logo" />
+                  <Toggle checked={ticketTemplate.showStoreInfo !== false} onChange={v => setTicketTemplate({ ...ticketTemplate, showStoreInfo: v })} label="Datos de la tienda" />
+                  <Toggle checked={ticketTemplate.showSeller !== false} onChange={v => setTicketTemplate({ ...ticketTemplate, showSeller: v })} label="Nombre del vendedor" />
+                  <Toggle checked={ticketTemplate.showBarcode !== false} onChange={v => setTicketTemplate({ ...ticketTemplate, showBarcode: v })} label="Código de barras" />
+                  <Toggle checked={ticketTemplate.showQR !== false} onChange={v => setTicketTemplate({ ...ticketTemplate, showQR: v })} label="Código QR" />
                   <div className="flex items-center justify-between py-3 px-2">
                     <div>
                       <p className="text-sm font-medium text-foreground">Mensaje de pie</p>
@@ -832,7 +827,7 @@ export default function SettingsPage() {
                     <input
                       type="text"
                       value={ticketTemplate.footerMessage || ''}
-                      onChange={e => setTicketTemplate({...ticketTemplate, footerMessage: e.target.value})}
+                      onChange={e => setTicketTemplate({ ...ticketTemplate, footerMessage: e.target.value })}
                       placeholder="¡Gracias por tu visita!"
                       className="w-48 h-9 px-3 rounded-lg border border-border-primary text-sm"
                     />
@@ -844,9 +839,9 @@ export default function SettingsPage() {
               <div>
                 <h4 className="font-medium text-sm text-foreground mb-3">Ajustes POS</h4>
                 <div className="bg-surface-hover rounded-xl p-1">
-                  <Toggle checked={posSettings.autoOpenDrawer !== false} onChange={v => setPosSettings({...posSettings, autoOpenDrawer: v})} label="Abrir cajón al cobrar" description="Abre automáticamente el cajón de dinero al completar venta" />
-                  <Toggle checked={posSettings.playSound !== false} onChange={v => setPosSettings({...posSettings, playSound: v})} label="Sonido de venta" description="Reproduce un sonido al completar una venta" />
-                  <Toggle checked={posSettings.requireCustomerForTicket !== false} onChange={v => setPosSettings({...posSettings, requireCustomerForTicket: v})} label="Cliente obligatorio para factura" description="Solo permite imprimir factura si la venta tiene cliente asignado" />
+                  <Toggle checked={posSettings.autoOpenDrawer !== false} onChange={v => setPosSettings({ ...posSettings, autoOpenDrawer: v })} label="Abrir cajón al cobrar" description="Abre automáticamente el cajón de dinero al completar venta" />
+                  <Toggle checked={posSettings.playSound !== false} onChange={v => setPosSettings({ ...posSettings, playSound: v })} label="Sonido de venta" description="Reproduce un sonido al completar una venta" />
+                  <Toggle checked={posSettings.requireCustomerForTicket !== false} onChange={v => setPosSettings({ ...posSettings, requireCustomerForTicket: v })} label="Cliente obligatorio para factura" description="Solo permite imprimir factura si la venta tiene cliente asignado" />
                 </div>
               </div>
 
@@ -886,13 +881,12 @@ export default function SettingsPage() {
                   <Smartphone className="w-5 h-5 text-green-600" />
                   <h4 className="font-semibold text-foreground">WhatsApp</h4>
                   {!waLoading && waStatus && (
-                    <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium ${
-                      waStatus.connected
+                    <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium ${waStatus.connected
                         ? 'bg-green-100 text-green-700'
                         : waStatus.status === 'unreachable'
-                        ? 'bg-red-100 text-red-700'
-                        : 'bg-yellow-100 text-yellow-700'
-                    }`}>
+                          ? 'bg-red-100 text-red-700'
+                          : 'bg-yellow-100 text-yellow-700'
+                      }`}>
                       {waStatus.connected ? 'Conectado' : waStatus.status === 'unreachable' ? 'Sin conexión' : waStatus.status}
                     </span>
                   )}

@@ -24,13 +24,17 @@ export class WhatsAppService {
   private bridgeKey: string;
   private enabled: boolean;
 
+  private multiSession: boolean;
+
   constructor(
     private config: ConfigService,
     private prisma: PrismaService,
   ) {
-    this.bridgeUrl = this.config.get('WHATSAPP_BRIDGE_URL') || 'http://localhost:8082';
+    this.bridgeUrl = this.config.get('WHATSAPP_BRIDGE_URL') || 'http://localhost:8081';
     this.bridgeKey = this.config.get('WHATSAPP_BRIDGE_API_KEY') || 'glamorapp_wa_2026';
     this.enabled = this.config.get('WHATSAPP_ENABLED') === 'true';
+    // WAHA Core (free) = single session "default". Set WHATSAPP_MULTI_SESSION=true only with WAHA Plus.
+    this.multiSession = this.config.get('WHATSAPP_MULTI_SESSION') === 'true';
 
     if (this.enabled) {
       this.logger.log(`WhatsApp multi-store service enabled — bridge: ${this.bridgeUrl}`);
@@ -41,8 +45,11 @@ export class WhatsAppService {
 
   /**
    * Resolve store → whatsappSessionId.
+   * With WAHA Core (free), always returns "default" (single-session limit).
+   * With WAHA Plus (WHATSAPP_MULTI_SESSION=true), uses the store's custom ID.
    */
   async resolveSessionId(storeId: string): Promise<string> {
+    if (!this.multiSession) return 'default';
     const store = await this.prisma.store.findUnique({
       where: { id: storeId },
       select: { whatsappSessionId: true },
@@ -52,18 +59,17 @@ export class WhatsAppService {
 
   /**
    * Ensure a session is started on the bridge for the given store.
+   * WAHA Core (free) only supports a single session named "default".
+   * WAHA Plus supports multi-session with custom IDs.
    */
   async ensureSession(storeId: string): Promise<string> {
     const sessionId = await this.resolveSessionId(storeId);
-    const store = await this.prisma.store.findUnique({
-      where: { id: storeId },
-      select: { whatsappNumber: true },
-    });
 
     try {
+      // server-baileys.js: POST /api/sessions/:sessionId/start  { phone? }  — idempotent
       await this.bridgeFetch(`/api/sessions/${sessionId}/start`, {
         method: 'POST',
-        body: JSON.stringify({ phone: store?.whatsappNumber || undefined }),
+        body: JSON.stringify({}),
       });
     } catch (e: any) {
       this.logger.warn(`Could not ensure session ${sessionId}: ${e.message}`);
@@ -322,8 +328,23 @@ export class WhatsAppService {
    */
   async getBridgeStatus() {
     try {
+      // server-baileys.js: GET /api/status → { uptime, totalSessions, connectedSessions, sessions }
       const res = await this.bridgeFetch('/api/status');
-      return await res.json();
+      if (!res.ok) throw new Error(`Bridge responded ${res.status}`);
+      const data = await res.json();
+      // Normalise: bridge already returns our format, just ensure shape
+      return {
+        uptime: data.uptime ?? 0,
+        totalSessions: data.totalSessions ?? 0,
+        connectedSessions: data.connectedSessions ?? 0,
+        sessions: (data.sessions ?? []).map((s: any) => ({
+          sessionId: s.sessionId,
+          phone: s.phone || null,
+          status: s.status,                     // already 'connected'/'reconnecting'/etc.
+          connected: s.connected ?? (s.status === 'connected'),
+          startedAt: s.startedAt ?? new Date().toISOString(),
+        })),
+      };
     } catch (e: any) {
       this.logger.error(`Bridge status error: ${e.message}`);
       return { uptime: 0, totalSessions: 0, connectedSessions: 0, sessions: [], error: e.message };
@@ -336,8 +357,29 @@ export class WhatsAppService {
   async getStoreSessionStatus(storeId: string) {
     const sessionId = await this.resolveSessionId(storeId);
     try {
+      // server-baileys.js: GET /api/sessions/:sessionId/status
       const res = await this.bridgeFetch(`/api/sessions/${sessionId}/status`);
       if (!res.ok) return { sessionId, status: 'not_started', connected: false };
+      const data = await res.json();
+      return {
+        sessionId: data.sessionId ?? sessionId,
+        phone: data.phone || null,
+        status: data.status,
+        connected: data.connected ?? false,
+        startedAt: data.startedAt ?? new Date().toISOString(),
+      };
+    } catch (e: any) {
+      return { sessionId, status: 'error', connected: false, error: e.message };
+    }
+  }
+
+  /**
+   * Get session status by raw sessionId (for superadmin bridge monitoring)
+   */
+  async getSessionStatusById(sessionId: string) {
+    try {
+      const res = await this.bridgeFetch(`/api/sessions/${sessionId}/status`);
+      if (!res.ok) return { sessionId, status: 'not_found', connected: false };
       return await res.json();
     } catch (e: any) {
       return { sessionId, status: 'error', connected: false, error: e.message };
@@ -358,7 +400,12 @@ export class WhatsAppService {
   async stopStoreSession(storeId: string) {
     const sessionId = await this.resolveSessionId(storeId);
     try {
+      // server-baileys.js: POST /api/sessions/:sessionId/stop
       const res = await this.bridgeFetch(`/api/sessions/${sessionId}/stop`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        return { error: err.error || `Bridge responded ${res.status}` };
+      }
       return await res.json();
     } catch (e: any) {
       return { error: e.message };
@@ -366,18 +413,18 @@ export class WhatsAppService {
   }
 
   /**
-   * Get QR as base64 string for a specific store
+   * Get QR as base64 string for a specific store.
+   * WAHA Core: GET /api/{session}/auth/qr
    */
   async getStoreQrBase64(storeId: string): Promise<{ qrBase64: string; status: string } | null> {
     const sessionId = await this.ensureSession(storeId);
     try {
+      // server-baileys.js: GET /api/sessions/:sessionId/qr → { qr, status } | { status: 'already_connected' }
       const res = await this.bridgeFetch(`/api/sessions/${sessionId}/qr`);
       if (res.status === 404) return null;
       const data = await res.json();
       if (data.status === 'already_connected') return { qrBase64: '', status: 'already_connected' };
-      if (data.qr) {
-        return { qrBase64: data.qr, status: 'qr_ready' };
-      }
+      if (data.qr) return { qrBase64: data.qr, status: 'qr_ready' };
       return null;
     } catch (e: any) {
       this.logger.error(`QR error for store ${storeId}: ${e.message}`);
@@ -386,7 +433,8 @@ export class WhatsAppService {
   }
 
   /**
-   * Request pairing code for a store
+   * Request pairing code for a store.
+   * WAHA Core: POST /api/{session}/auth/request-code  { phoneNumber: "..." }
    */
   async requestPairingCode(storeId: string) {
     const sessionId = await this.ensureSession(storeId);
@@ -397,12 +445,18 @@ export class WhatsAppService {
     const phone = store?.whatsappNumber;
     if (!phone) return { success: false, error: 'La sucursal no tiene whatsappNumber configurado' };
 
+    // Strip non-digits for WAHA (expects e.g. "573167634973")
+    // server-baileys.js expects raw digits (e.g. "573001234567")
+    const phoneNumber = phone.replace(/[+\s\-()]/g, '');
     try {
+      // server-baileys.js: POST /api/sessions/:sessionId/pair  { phone }
       const res = await this.bridgeFetch(`/api/sessions/${sessionId}/pair`, {
         method: 'POST',
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ phone: phoneNumber }),
       });
-      return await res.json();
+      const data = await res.json();
+      if (!res.ok) return { success: false, error: data.error || data.message || JSON.stringify(data) };
+      return { success: true, code: data.code, ...data };
     } catch (e: any) {
       return { success: false, error: e.message };
     }

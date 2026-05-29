@@ -36,6 +36,31 @@ export function getUser(): any {
   return raw ? JSON.parse(raw) : null;
 }
 
+/** Decode JWT payload without verifying signature (client-side only). */
+function decodeJwtPayload(token: string): Record<string, any> | null {
+  try {
+    const base64 = token.split('.')[1];
+    return JSON.parse(atob(base64.replace(/-/g, '+').replace(/_/g, '/')));
+  } catch {
+    return null;
+  }
+}
+
+/** Returns true only if token exists AND is not expired. */
 export function isAuthenticated(): boolean {
-  return !!getToken();
+  const token = getToken();
+  if (!token) return false;
+  const payload = decodeJwtPayload(token);
+  if (!payload?.exp) return false;
+  // exp is in seconds; subtract 30s buffer for clock skew
+  return payload.exp * 1000 > Date.now() + 30_000;
+}
+
+/** Returns true if the stored token is expired (but still present). */
+export function isTokenExpired(): boolean {
+  const token = getToken();
+  if (!token) return false;
+  const payload = decodeJwtPayload(token);
+  if (!payload?.exp) return true;
+  return payload.exp * 1000 <= Date.now();
 }

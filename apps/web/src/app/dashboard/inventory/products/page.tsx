@@ -52,7 +52,7 @@ export default function InventoryPage() {
       await api.del(`/products/${id}`, { token: token! });
       setProducts(prev => prev.filter(p => p.id !== id));
     } catch (e: any) {
-      alert(e.message || 'Error al eliminar');
+      alert('No se pudo eliminar el producto. Intenta de nuevo.');
     } finally {
       setDeletingId(null);
     }
@@ -202,7 +202,7 @@ export default function InventoryPage() {
                     <div className="flex items-center gap-3">
                       {p.images?.[0] ? (
                         <img
-                          src={`http://localhost:3001${p.images[0].url}`}
+                          src={`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001'}${p.images[0].url}`}
                           alt={p.name}
                           className="w-10 h-10 rounded-lg object-cover border border-border-primary"
                           onError={(e) => {

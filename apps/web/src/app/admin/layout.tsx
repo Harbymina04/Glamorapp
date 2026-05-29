@@ -3,16 +3,16 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Crown, CreditCard, Users, AlertTriangle, ChevronLeft, MessageCircle, Brain } from 'lucide-react';
+import { Crown, CreditCard, Users, ChevronLeft, MessageCircle, Brain, LayoutDashboard, LogOut } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 
 const ADMIN_LINKS = [
+  { name: 'Overview', href: '/admin/overview', icon: LayoutDashboard },
   { name: 'Planes', href: '/admin/plans', icon: Crown },
   { name: 'Suscripciones', href: '/admin/subscriptions', icon: CreditCard },
   { name: 'Clientes', href: '/admin/clients', icon: Users },
   { name: 'WhatsApp', href: '/admin/whatsapp', icon: MessageCircle },
   { name: 'IA - Consumo', href: '/admin/ai-usage', icon: Brain },
-  { name: 'Excepciones', href: '/admin/exceptions', icon: AlertTriangle },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -41,27 +41,40 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return null;
   }
 
-  // Not superadmin → access denied
+  // Not superadmin → redirect silently (don't reveal the admin section exists)
   if (user?.role !== 'superadmin') {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-muted-foreground">Acceso restringido — solo superadmins</p>
-      </div>
-    );
+    router.replace('/dashboard');
+    return null;
   }
+
+  const handleLogout = () => {
+    useAuthStore.getState().logout();
+    router.replace('/auth/login');
+  };
 
   return (
     <div className="flex min-h-screen bg-surface-primary">
       {/* Admin Sidebar */}
-      <aside className="w-56 bg-white border-r border-border-primary flex flex-col">
+      <aside className="w-56 bg-white border-r border-border-primary flex flex-col shrink-0">
+        {/* Header */}
         <div className="p-4 border-b border-border-primary">
-          <Link href="/dashboard" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition">
-            <ChevronLeft className="w-4 h-4" />
+          <Link href="/dashboard" className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition mb-3">
+            <ChevronLeft className="w-3.5 h-3.5" />
             Volver a Glamorapp
           </Link>
-          <h2 className="text-lg font-bold text-foreground mt-3">Admin Panel</h2>
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-glamor-primary flex items-center justify-center shrink-0">
+              <Crown className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-foreground leading-none">Admin Panel</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Superadministrador</p>
+            </div>
+          </div>
         </div>
-        <nav className="flex-1 p-3 space-y-1">
+
+        {/* Nav */}
+        <nav className="flex-1 p-3 space-y-0.5">
           {ADMIN_LINKS.map(link => {
             const isActive = pathname === link.href || pathname.startsWith(link.href + '/');
             return (
@@ -71,19 +84,34 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
                   isActive
                     ? 'bg-glamor-primary/10 text-glamor-primary'
-                    : 'text-muted-foreground hover:bg-surface-hover'
+                    : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground'
                 }`}
               >
-                <link.icon className="w-4 h-4" />
+                <link.icon className="w-4 h-4 shrink-0" />
                 {link.name}
               </Link>
             );
           })}
         </nav>
+
+        {/* Footer: user + logout */}
+        <div className="p-3 border-t border-border-primary">
+          <div className="px-3 py-2 mb-1">
+            <p className="text-xs font-medium text-foreground truncate">{user?.email}</p>
+            <p className="text-[10px] text-muted-foreground">Superadmin</p>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:bg-red-50 hover:text-red-600 transition"
+          >
+            <LogOut className="w-4 h-4 shrink-0" />
+            Cerrar sesión
+          </button>
+        </div>
       </aside>
 
       {/* Content */}
-      <main className="flex-1 p-6 overflow-auto">
+      <main className="flex-1 p-6 overflow-auto min-w-0">
         {children}
       </main>
     </div>

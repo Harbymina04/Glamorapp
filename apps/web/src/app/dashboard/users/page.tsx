@@ -167,7 +167,7 @@ export default function UsersPage() {
       setDeleteId(null);
       fetchUsers();
     } catch (e: any) {
-      alert(e.message || 'Error al eliminar');
+      alert('No se pudo eliminar el usuario. Intenta de nuevo.');
     } finally {
       setDeleting(false);
     }

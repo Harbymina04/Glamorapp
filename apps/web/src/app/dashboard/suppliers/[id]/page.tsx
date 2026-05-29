@@ -48,7 +48,7 @@ export default function SupplierDetailPage() {
   const [productResults, setProductResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
 
-  const getToken = () => useAuthStore.getState().token || localStorage.getItem('glamorapp_access_token');
+  const getToken = () => useAuthStore.getState().token;
 
   const fetchDetail = useCallback(async () => {
     const token = getToken();
@@ -111,7 +111,7 @@ export default function SupplierDetailPage() {
     const token = getToken();
     if (!token) return;
     try { await api.del(`/suppliers/${id}/contacts/${contactId}`, { token }); fetchDetail(); }
-    catch (e: any) { alert(e.message); }
+    catch { alert('No se pudo completar la operación. Intenta de nuevo.'); }
   };
 
   // ── Document handlers ──
@@ -145,7 +145,7 @@ export default function SupplierDetailPage() {
     const token = getToken();
     if (!token) return;
     try { await api.del(`/suppliers/${id}/documents/${docId}`, { token }); fetchDetail(); }
-    catch (e: any) { alert(e.message); }
+    catch { alert('No se pudo completar la operación. Intenta de nuevo.'); }
   };
 
   // ── Product search ──
@@ -201,7 +201,7 @@ export default function SupplierDetailPage() {
     const token = getToken();
     if (!token) return;
     try { await api.del(`/suppliers/${id}/products/${spId}`, { token }); fetchDetail(); }
-    catch (e: any) { alert(e.message); }
+    catch { alert('No se pudo completar la operación. Intenta de nuevo.'); }
   };
 
   // ── Loaders ──
@@ -610,7 +610,7 @@ function TransactionsList({ supplierId }: { supplierId: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = useAuthStore.getState().token || localStorage.getItem('glamorapp_access_token');
+    const token = useAuthStore.getState().token;
     if (!token) return;
     api.get(`/suppliers/${supplierId}/transactions?limit=50`, { token })
       .then(res => setTransactions(res))

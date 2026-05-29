@@ -3,13 +3,13 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
-import { api } from '@/lib/api-client';
+import { api, API_BASE_URL } from '@/lib/api-client';
 import { formatCurrency, cn } from '@/lib/utils';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { ImageUploader, ProductImage } from '@/components/shared/image-uploader';
 import { ArrowLeft, Save, Loader2, Trash2, Package, Truck, Clock, Star, TrendingUp } from 'lucide-react';
 
-const API_BASE = 'http://localhost:3001';
+const API_BASE = API_BASE_URL;
 
 type Tab = 'info' | 'proveedores' | 'movimientos';
 

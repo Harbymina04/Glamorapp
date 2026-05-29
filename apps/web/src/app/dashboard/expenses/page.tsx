@@ -201,7 +201,7 @@ export default function ExpensesPage() {
       setVoidId(null);
       fetchExpenses();
     } catch (e: any) {
-      alert(e.message || 'Error al anular');
+      alert('No se pudo anular el gasto. Intenta de nuevo.');
     } finally {
       setVoiding(false);
     }

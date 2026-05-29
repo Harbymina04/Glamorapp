@@ -39,11 +39,8 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
   }
 
   if (user?.role !== 'tenant_admin') {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-muted-foreground">Acceso restringido — solo administradores de tenant</p>
-      </div>
-    );
+    router.replace('/dashboard');
+    return null;
   }
 
   return (

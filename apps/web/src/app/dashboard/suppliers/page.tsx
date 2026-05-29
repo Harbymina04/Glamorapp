@@ -73,8 +73,7 @@ export default function SuppliersPage() {
   };
 
   const handleSave = async () => {
-    let currentToken = useAuthStore.getState().token;
-    if (!currentToken) currentToken = localStorage.getItem('glamorapp_access_token');
+    const currentToken = useAuthStore.getState().token;
     if (!currentToken) { setError('No hay sesión activa'); return; }
     if (!form.businessName.trim()) { setError('El nombre es obligatorio'); return; }
     setSaving(true); setError('');
@@ -106,14 +105,13 @@ export default function SuppliersPage() {
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`¿Eliminar "${name}"? Se marcará como inactivo.`)) return;
-    let currentToken = useAuthStore.getState().token;
-    if (!currentToken) currentToken = localStorage.getItem('glamorapp_access_token');
+    const currentToken = useAuthStore.getState().token;
     if (!currentToken) return;
     setDeletingId(id);
     try {
       await api.del(`/suppliers/${id}`, { token: currentToken });
       setSuppliers(prev => prev.filter(i => i.id !== id));
-    } catch (e: any) { alert(e.message || 'Error al eliminar'); }
+    } catch { alert('No se pudo eliminar el proveedor. Intenta de nuevo.'); }
     finally { setDeletingId(null); }
   };
 

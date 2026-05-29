@@ -45,10 +45,23 @@ export class AiAgentsService {
       ...(query.status ? { status: query.status } : {}),
     };
     const [data, total] = await Promise.all([
-      this.prisma.aiAgent.findMany({ where, skip, take, orderBy: { createdAt: 'desc' } }),
+      this.prisma.aiAgent.findMany({
+        where, skip, take, orderBy: { createdAt: 'desc' },
+        include: {
+          _count: { select: { recommendations: { where: { status: 'pending' } } } },
+        },
+      }),
       this.prisma.aiAgent.count({ where }),
     ]);
-    return new PaginatedResponse(data, total, query.page || 1, query.limit || 20);
+
+    // Flatten _count into a friendlier field
+    const enriched = data.map(a => ({
+      ...a,
+      pendingRecommendations: (a as any)._count?.recommendations ?? 0,
+      _count: undefined,
+    }));
+
+    return new PaginatedResponse(enriched, total, query.page || 1, query.limit || 20);
   }
 
   async findOne(tenantId: string, storeId: string, id: string) {
@@ -93,7 +106,7 @@ export class AiAgentsService {
     return this.prisma.aiAgent.update({ where: { id }, data: { status: 'paused' } });
   }
 
-  // ─── Execute Agent (synchronous run) ────────────────────────
+  // ─── Execute Agent (fire-and-forget with polling) ───────────
 
   async triggerRun(tenantId: string, storeId: string, id: string) {
     const agent = await this.findOne(tenantId, storeId, id);
@@ -103,22 +116,37 @@ export class AiAgentsService {
       throw new NotFoundException(`No implementation for agent type: ${agent.slug}`);
     }
 
-    // Mark as running
-    await this.prisma.aiAgent.update({ where: { id }, data: { status: 'active' } });
-
-    // Run the agent (async, don't wait)
-    const result = await agentImpl.run(tenantId, storeId, id);
-
-    // Update stats
-    await this.prisma.aiAgent.update({
-      where: { id },
-      data: {
-        estimatedImpact: result.recommendations.length * 50000, // rough estimate
-        alertsGenerated: result.recommendations.filter((r: any) => r.priority === 'high' || r.priority === 'critical').length,
-      },
+    // Create the execution record NOW so the frontend can poll its ID immediately
+    const execution = await this.prisma.aiAgentExecution.create({
+      data: { agentId: id, tenantId, storeId, status: 'running' },
     });
 
-    return result;
+    // Fire the agent in the background — don't block the HTTP response
+    setImmediate(async () => {
+      try {
+        const result = await agentImpl.run(tenantId, storeId, id, execution.id);
+
+        // Update agent-level stats after run
+        await this.prisma.aiAgent.update({
+          where: { id },
+          data: {
+            estimatedImpact: result.recommendations.length * 50_000,
+            alertsGenerated: result.recommendations.filter(
+              (r: any) => r.priority === 'high' || r.priority === 'critical',
+            ).length,
+          },
+        });
+      } catch (err: any) {
+        // Mark execution as failed if an unhandled error occurs
+        await this.prisma.aiAgentExecution.update({
+          where: { id: execution.id },
+          data: { status: 'failed', finishedAt: new Date(), summary: err.message },
+        }).catch(() => {});
+      }
+    });
+
+    // Return immediately so the client can start polling
+    return { executionId: execution.id, status: 'running', agentId: id };
   }
 
   // ─── Executions ─────────────────────────────────────────────

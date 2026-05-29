@@ -21,43 +21,72 @@ export class AuthService {
     private configService: ConfigService,
   ) {}
 
+  private static readonly MAX_ATTEMPTS = 5;
+  private static readonly LOCKOUT_MINUTES = 15;
+
   async login(dto: LoginDto) {
     const user = await this.prisma.user.findFirst({
-      where: {
-        email: dto.email,
-        isActive: true,
-        deletedAt: null,
-      },
+      where: { email: dto.email, isActive: true, deletedAt: null },
     });
 
+    // Use consistent error to prevent email enumeration
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
-    const valid = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!valid) throw new UnauthorizedException('Invalid credentials');
+    // Check lockout
+    const lockedUntil = (user as any).lockedUntil as Date | null;
+    if (lockedUntil && lockedUntil > new Date()) {
+      const wait = Math.ceil((lockedUntil.getTime() - Date.now()) / 60000);
+      throw new UnauthorizedException(`Account locked. Try again in ${wait} minute(s).`);
+    }
 
+    const valid = await bcrypt.compare(dto.password, user.passwordHash);
+
+    if (!valid) {
+      const failedCount = ((user as any).failedLoginCount as number ?? 0) + 1;
+      const shouldLock = failedCount >= AuthService.MAX_ATTEMPTS;
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          failedLoginCount: failedCount,
+          lockedUntil: shouldLock
+            ? new Date(Date.now() + AuthService.LOCKOUT_MINUTES * 60_000)
+            : null,
+        } as any,
+      });
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Successful login — reset counter
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { lastLoginAt: new Date() },
+      data: { lastLoginAt: new Date(), failedLoginCount: 0, lockedUntil: null } as any,
     });
 
     return this.generateTokens(user);
   }
 
+  async checkSlugAvailable(slug: string): Promise<{ available: boolean }> {
+    const existing = await this.prisma.tenant.findUnique({ where: { slug } });
+    return { available: !existing };
+  }
+
   async register(dto: RegisterDto) {
-    const existingUser = await this.prisma.user.findFirst({
-      where: { email: dto.email },
-    });
+    // Parallel pre-flight checks
+    const [existingUser, existingTenant, freePlan] = await Promise.all([
+      this.prisma.user.findFirst({ where: { email: dto.email } }),
+      this.prisma.tenant.findUnique({ where: { slug: dto.tenantSlug } }),
+      this.prisma.plan.findUnique({ where: { slug: 'free' } }),
+    ]);
+
     if (existingUser) throw new ConflictException('Email already registered');
-
-    const existingTenant = await this.prisma.tenant.findUnique({
-      where: { slug: dto.tenantSlug },
-    });
     if (existingTenant) throw new ConflictException('Tenant slug already taken');
+    if (!freePlan) throw new BadRequestException('El plan gratuito no está configurado. Contacta al administrador.');
 
-    // Get the Free plan
-    const freePlan = await this.prisma.plan.findUnique({ where: { slug: 'free' } });
+    // Store slug is the tenant slug + "-principal" to be independent
+    const storeSlug = `${dto.tenantSlug}-principal`;
+    const storeName = dto.storeName?.trim() || dto.tenantName;
 
-    // Create tenant + store + admin user + trial subscription in a transaction
+    // Create tenant + store + admin user + trial subscription atomically
     const result = await this.prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
         data: {
@@ -70,14 +99,14 @@ export class AuthService {
       const store = await tx.store.create({
         data: {
           tenantId: tenant.id,
-          name: dto.storeName,
-          slug: dto.tenantSlug,
+          name: storeName,
+          slug: storeSlug,
           email: dto.email,
           phone: dto.phone,
         },
       });
 
-      const passwordHash = await bcrypt.hash(dto.password, 10);
+      const passwordHash = await bcrypt.hash(dto.password, 12);
 
       const user = await tx.user.create({
         data: {
@@ -92,20 +121,18 @@ export class AuthService {
         },
       });
 
-      // Create trial subscription (14 days)
-      if (freePlan) {
-        await tx.subscription.create({
-          data: {
-            tenantId: tenant.id,
-            planId: freePlan.id,
-            status: 'trial',
-            billingCycle: 'monthly',
-            trialEndsAt: new Date(Date.now() + 14 * 86400000),
-            currentPeriodStart: new Date(),
-            currentPeriodEnd: new Date(Date.now() + 14 * 86400000),
-          },
-        });
-      }
+      // Trial subscription — 14 days
+      await tx.subscription.create({
+        data: {
+          tenantId: tenant.id,
+          planId: freePlan.id,
+          status: 'trial',
+          billingCycle: 'monthly',
+          trialEndsAt: new Date(Date.now() + 14 * 86_400_000),
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: new Date(Date.now() + 14 * 86_400_000),
+        },
+      });
 
       return user;
     });
@@ -298,16 +325,12 @@ export class AuthService {
       },
     });
 
-    console.log(`[Auth] Password reset token for ${email}: ${token}`);
-
     // TODO: Send email with reset link
-    // In production: await this.mailer.sendPasswordReset(email, token);
+    // await this.mailer.sendPasswordReset(email, token);
 
     return {
       success: true,
-      message: 'Se ha enviado un enlace de recuperación a tu correo.',
-      // token is returned here for development only — remove in production
-      devToken: token,
+      message: 'Si el email existe, recibirás instrucciones para resetear tu contraseña.',
     };
   }
 

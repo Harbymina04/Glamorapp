@@ -6,10 +6,9 @@ import { api } from '@/lib/api-client';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { StatusBadge } from '@/components/shared/status-badge';
 import {
-  Loader2, Search, Building2, Users, Store, Crown, CreditCard,
-  Clock, AlertCircle, CheckCircle2, ArrowUpRight,
+  Loader2, Search, Building2, Users, Store, Crown,
+  Clock, AlertCircle, CheckCircle2, Calendar,
 } from 'lucide-react';
-import Link from 'next/link';
 
 interface TenantData {
   id: string; name: string; slug: string; plan: string;
@@ -150,8 +149,8 @@ export default function AdminClientsPage() {
               <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Facturación</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Precio</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Trial</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Registro</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Usuarios</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Acción</th>
             </tr>
           </thead>
           <tbody>
@@ -204,19 +203,17 @@ export default function AdminClientsPage() {
                     <span className="text-sm text-muted-foreground">-</span>
                   )}
                 </td>
+                <td className="px-4 py-3 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3 h-3" />
+                    {new Date(t.createdAt).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </span>
+                </td>
                 <td className="px-4 py-3 text-sm">
                   <div className="flex items-center gap-3">
                     <span className="flex items-center gap-1"><Users className="w-3 h-3 text-muted-foreground" /> {t.stats.users}</span>
                     <span className="flex items-center gap-1"><Store className="w-3 h-3 text-muted-foreground" /> {t.stats.stores}</span>
                   </div>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <Link
-                    href={`/admin/clients/${t.id}`}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-glamor-primary hover:underline"
-                  >
-                    Ver detalle <ArrowUpRight className="w-3 h-3" />
-                  </Link>
                 </td>
               </tr>
             ))}

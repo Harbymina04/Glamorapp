@@ -9,8 +9,8 @@ import { Eye, EyeOff, ArrowRight } from 'lucide-react';
 export default function LoginPage() {
   const router = useRouter();
   const { login, isLoading } = useAuthStore();
-  const [email, setEmail] = useState('admin@glamorapp.com');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
@@ -19,7 +19,9 @@ export default function LoginPage() {
     setError('');
     try {
       const redirectPath = await login(email, password);
-      router.push(redirectPath);
+      const ALLOWED = ['/dashboard', '/tenant', '/admin'];
+      const safePath = ALLOWED.includes(redirectPath) ? redirectPath : '/dashboard';
+      router.push(safePath);
     } catch (err: any) {
       setError(err.message || 'Credenciales inválidas');
     }

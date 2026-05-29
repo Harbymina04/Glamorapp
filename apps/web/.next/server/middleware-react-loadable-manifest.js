@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST="{}"
+self.__REACT_LOADABLE_MANIFEST="{\"app\\\\dashboard\\\\settings\\\\page.tsx -> qrcode\":{\"id\":\"app\\\\dashboard\\\\settings\\\\page.tsx -> qrcode\",\"files\":[\"static/chunks/_app-pages-browser_node_modules_qrcode_lib_browser_js.js\"]},\"lib\\\\api-client.ts -> @/lib/auth\":{\"id\":\"lib\\\\api-client.ts -> @/lib/auth\",\"files\":[]}}"

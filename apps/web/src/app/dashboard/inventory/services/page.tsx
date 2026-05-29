@@ -44,7 +44,7 @@ export default function ServicesPage() {
       await api.del(`/services/${id}`, { token: token! });
       setServices(prev => prev.filter(s => s.id !== id));
     } catch (e: any) {
-      alert(e.message || 'Error al eliminar');
+      alert('No se pudo eliminar el servicio. Intenta de nuevo.');
     } finally {
       setDeletingId(null);
     }

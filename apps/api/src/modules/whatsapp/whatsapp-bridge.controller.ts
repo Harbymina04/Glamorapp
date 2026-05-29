@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Put, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Get, Put, Body, Param, UseGuards, Request, Delete } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { WhatsAppService } from './whatsapp.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -88,6 +88,17 @@ export class WhatsAppBridgeController {
   @Roles('superadmin')
   async getStoreSession(@Param('storeId') storeId: string) {
     return this.whatsapp.getStoreSessionStatus(storeId);
+  }
+
+  /**
+   * [superadmin] Get bridge status for a specific session by sessionId
+   * Frontend admin panel calls GET /whatsapp/sessions/:sessionId/status
+   */
+  @Get('admin/sessions/:sessionId/status')
+  @Roles('superadmin')
+  async getSessionByIdStatus(@Param('sessionId') sessionId: string) {
+    // Proxy directly to the bridge — session ID is already resolved
+    return this.whatsapp.getSessionStatusById(sessionId);
   }
 
   /**

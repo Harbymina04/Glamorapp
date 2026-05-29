@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 // import { BullModule } from '@nestjs/bullmq';
 import { PrismaModule } from './prisma/prisma.module';
 // import { RedisModule } from './redis/redis.module';
@@ -34,6 +36,7 @@ import { PlansModule } from './modules/plans/plans.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
+    ThrottlerModule.forRoot([{ name: 'global', ttl: 60_000, limit: 120 }]),
     // BullMQ disabled - requires Redis
     // BullModule.forRootAsync({ ... }),
     PrismaModule,
@@ -63,6 +66,10 @@ import { PlansModule } from './modules/plans/plans.module';
     TenantModule,
     AccountingModule,
     PlansModule,
+  ],
+  providers: [
+    // Apply rate limiting globally — auth endpoints override with stricter limits
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}
