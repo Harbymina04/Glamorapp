@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head><title>Glamorapp - WhatsApp QR</title>
+<style>
+  body { 
+    display: flex; flex-direction: column; align-items: center; justify-content: center; 
+    min-height: 100vh; background: #111; color: #fff; font-family: Arial; margin: 0;
+  }
+  img { max-width: 400px; border: 4px solid #EF2D8F; border-radius: 16px; padding: 20px; background: #fff; }
+  h1 { color: #EF2D8F; margin-bottom: 10px; }
+  p { color: #aaa; margin-bottom: 20px; }
+  .refresh { margin-top: 20px; color: #EF2D8F; cursor: pointer; text-decoration: underline; }
+</style>
+</head>
+<body>
+  <h1>Glamorapp</h1>
+  <p>Escanea este QR con WhatsApp → Dispositivos vinculados</p>
+  <img id="qr" src="/qr.png" alt="QR Code">
+  <p class="refresh" onclick="location.reload()">🔄 Actualizar QR</p>
+</body>
+</html>

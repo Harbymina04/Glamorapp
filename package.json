@@ -1,0 +1,19 @@
+{
+  "name": "glamorapp",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm -w apps/api run start:dev",
+    "dev:web": "npm -w apps/web run dev",
+    "build:api": "npm -w apps/api run build",
+    "build:web": "npm -w apps/web run build",
+    "db:migrate": "npm -w apps/api run prisma:migrate",
+    "db:seed": "npm -w apps/api run prisma:seed",
+    "db:studio": "npm -w apps/api run prisma:studio",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  }
+}
