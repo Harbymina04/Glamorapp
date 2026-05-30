@@ -11,6 +11,7 @@ import {
   Percent, Printer, Clock, RefreshCw, Eye, Undo2, Pause, Play,
   UserPlus, Barcode, AlertTriangle, ArrowRightLeft, Square, CircleDollarSign,
   ArrowDownToLine, ArrowUpFromLine, ClipboardList, DollarSign,
+  FileText, FilePlus, Send, FileCheck, Mail,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -67,6 +68,14 @@ export default function POSPage() {
 
   // Held sales
   const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
+
+  // Electronic invoice modal
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [invoiceSaleData, setInvoiceSaleData] = useState<any>(null);
+  const [invoiceResult, setInvoiceResult] = useState<any>(null);
+
+  // Quotation modal
+  const [showQuoteModal, setShowQuoteModal] = useState(false);
 
   // Cash Register
   const [registerSession, setRegisterSession] = useState<any>(null);
@@ -310,6 +319,59 @@ export default function POSPage() {
     }
   };
 
+  const handlePrintInvoice = (inv: any) => {
+    const now = new Date().toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' });
+    const win = window.open('', '_blank', 'width=680,height=900');
+    if (!win) return;
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Factura ${inv.invoiceNumber}</title>
+    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:12px;padding:24px;max-width:680px;margin:auto}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;padding-bottom:16px;border-bottom:2px solid #333}
+    .title{font-size:20px;font-weight:bold;color:#333}.subtitle{font-size:11px;color:#666;margin-top:2px}
+    .badge{background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:8px 14px;text-align:right}
+    .badge-num{font-size:18px;font-weight:bold;color:#111}.badge-date{font-size:10px;color:#666;margin-top:2px}
+    .section{margin:14px 0}.section-title{font-size:11px;font-weight:bold;color:#666;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;border-bottom:1px solid #e5e7eb;padding-bottom:4px}
+    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}.field{margin-bottom:5px}
+    .field-label{font-size:10px;color:#888}.field-value{font-size:12px;font-weight:500}
+    table{width:100%;border-collapse:collapse;margin:10px 0}
+    th{background:#f9fafb;text-align:left;padding:7px 8px;font-size:11px;color:#555;border-bottom:2px solid #e5e7eb}
+    td{padding:7px 8px;font-size:11px;border-bottom:1px solid #f3f4f6}.text-right{text-align:right}
+    .totals{margin-left:auto;width:240px;margin-top:10px}
+    .total-row{display:flex;justify-content:space-between;padding:4px 0;font-size:12px}
+    .total-final{font-size:16px;font-weight:bold;border-top:2px solid #333;padding-top:8px;margin-top:4px}
+    .footer{margin-top:20px;padding-top:12px;border-top:1px dashed #ccc;text-align:center;font-size:10px;color:#888}
+    .status{display:inline-block;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:bold;background:#dcfce7;color:#15803d}
+    @media print{body{padding:10px}}</style></head><body>
+    <div class="header">
+      <div><div class="title">💅 Glamorapp</div><div class="subtitle">Factura Electrónica de Venta</div></div>
+      <div class="badge"><div class="badge-num">${inv.invoiceNumber || 'BORRADOR'}</div><div class="badge-date">${now}</div><div style="margin-top:4px"><span class="status">${inv.status === 'approved' ? 'Aprobada DIAN' : inv.status === 'draft' ? 'Borrador' : inv.status}</span></div></div>
+    </div>
+    <div class="two-col">
+      <div class="section"><div class="section-title">Emisor</div>
+        <div class="field"><div class="field-label">Razón social</div><div class="field-value">${inv.fiscalConfig?.businessName || 'Glamorapp'}</div></div>
+        <div class="field"><div class="field-label">NIT</div><div class="field-value">${inv.fiscalConfig?.idNumber || ''}-${inv.fiscalConfig?.dv || ''}</div></div>
+      </div>
+      <div class="section"><div class="section-title">Receptor</div>
+        <div class="field"><div class="field-label">Nombre</div><div class="field-value">${inv.receiverName}</div></div>
+        ${inv.receiverIdNumber ? `<div class="field"><div class="field-label">${inv.receiverIdType?.toUpperCase() || 'ID'}</div><div class="field-value">${inv.receiverIdNumber}</div></div>` : ''}
+        ${inv.receiverEmail ? `<div class="field"><div class="field-label">Email</div><div class="field-value">${inv.receiverEmail}</div></div>` : ''}
+        ${inv.receiverPhone ? `<div class="field"><div class="field-label">Teléfono</div><div class="field-value">${inv.receiverPhone}</div></div>` : ''}
+      </div>
+    </div>
+    <div class="section"><div class="section-title">Ítems</div>
+    <table><thead><tr><th>Descripción</th><th class="text-right">Cant.</th><th class="text-right">Precio unit.</th><th class="text-right">IVA</th><th class="text-right">Total</th></tr></thead>
+    <tbody>${(inv.items || []).map((it: any) => `<tr><td>${it.description}</td><td class="text-right">${it.quantity}</td><td class="text-right">$${Number(it.unitPrice).toLocaleString('es-CO')}</td><td class="text-right">${it.ivaRate || 0}%</td><td class="text-right">$${Number(it.total).toLocaleString('es-CO')}</td></tr>`).join('')}</tbody></table></div>
+    <div class="totals">
+      <div class="total-row"><span>Subtotal</span><span>$${Number(inv.subtotal).toLocaleString('es-CO')}</span></div>
+      ${Number(inv.discountAmount) > 0 ? `<div class="total-row" style="color:#dc2626"><span>Descuentos</span><span>-$${Number(inv.discountAmount).toLocaleString('es-CO')}</span></div>` : ''}
+      <div class="total-row"><span>IVA</span><span>$${Number(inv.ivaAmount).toLocaleString('es-CO')}</span></div>
+      <div class="total-row total-final"><span>TOTAL</span><span>$${Number(inv.total).toLocaleString('es-CO')}</span></div>
+    </div>
+    ${inv.notes ? `<div class="section" style="margin-top:14px"><div class="section-title">Observaciones</div><p style="font-size:11px;color:#555">${inv.notes}</p></div>` : ''}
+    <div class="footer"><p>Resolución DIAN N° ${inv.fiscalConfig?.resolutionNumber || '—'} · Generada el ${now}</p><p>¡Gracias por preferirnos!</p></div>
+    </body></html>`);
+    win.document.close(); win.focus(); setTimeout(() => { win.print(); win.close(); }, 500);
+  };
+
   if (lastSale) {
     return (
       <div className="max-w-lg mx-auto mt-12">
@@ -331,9 +393,27 @@ export default function POSPage() {
               <div className="flex justify-between text-base font-bold pt-1 border-t border-border-primary"><span>Total</span><span className="text-glamor-primary">{formatCurrency(lastSale.total)}</span></div>
             </div>
           </div>
-          <div className="flex gap-3">
-            <button onClick={handlePrint} className="flex-1 h-12 border-2 border-glamor-primary text-glamor-primary hover:bg-glamor-primary/5 rounded-lg font-semibold text-sm flex items-center justify-center gap-2"><Printer className="w-5 h-5" /> Imprimir</button>
-            <button onClick={() => setLastSale(null)} className="flex-1 h-12 bg-glamor-primary hover:bg-glamor-primary-hover text-white rounded-lg font-semibold text-sm">Nueva venta</button>
+          {invoiceResult && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-xl flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-green-700 text-sm">
+                <FileCheck className="w-4 h-4 shrink-0" />
+                <span>Factura <strong>{invoiceResult.invoiceNumber}</strong> generada</span>
+              </div>
+              <button onClick={() => handlePrintInvoice(invoiceResult)} className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700">
+                <Printer className="w-3.5 h-3.5" /> Imprimir factura
+              </button>
+            </div>
+          )}
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-3">
+              <button onClick={handlePrint} className="flex-1 h-11 border-2 border-glamor-primary text-glamor-primary hover:bg-glamor-primary/5 rounded-lg font-semibold text-sm flex items-center justify-center gap-2"><Printer className="w-4 h-4" /> Ticket</button>
+              {!invoiceResult && (
+                <button onClick={() => { setInvoiceSaleData(lastSale); setShowInvoiceModal(true); }} className="flex-1 h-11 border-2 border-blue-500 text-blue-600 hover:bg-blue-50 rounded-lg font-semibold text-sm flex items-center justify-center gap-2">
+                  <FileText className="w-4 h-4" /> Factura electrónica
+                </button>
+              )}
+            </div>
+            <button onClick={() => { setLastSale(null); setInvoiceResult(null); }} className="w-full h-11 bg-glamor-primary hover:bg-glamor-primary-hover text-white rounded-lg font-semibold text-sm">Nueva venta</button>
           </div>
         </div>
       </div>
@@ -435,9 +515,12 @@ export default function POSPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">
                             <button onClick={() => { setLastSale(s); setViewMode('pos'); }} title="Ver detalle" className="p-1.5 rounded hover:bg-surface-hover text-muted-foreground"><Eye className="w-4 h-4" /></button>
-                            <button onClick={() => { setLastSale(s); setTimeout(() => handlePrint(), 200); }} title="Imprimir" className="p-1.5 rounded hover:bg-surface-hover text-muted-foreground"><Printer className="w-4 h-4" /></button>
+                            <button onClick={() => { setLastSale(s); setTimeout(() => handlePrint(), 200); }} title="Imprimir ticket" className="p-1.5 rounded hover:bg-surface-hover text-muted-foreground"><Printer className="w-4 h-4" /></button>
                             {s.status === 'completed' && (
                               <>
+                                {!s.invoiceId && (
+                                  <button onClick={() => { setInvoiceSaleData(s); setInvoiceResult(null); setShowInvoiceModal(true); }} title="Generar factura electrónica" className="p-1.5 rounded hover:bg-blue-50 text-muted-foreground hover:text-blue-600"><FileText className="w-4 h-4" /></button>
+                                )}
                                 <button onClick={() => openRefundModal(s)} title="Devolución" className="p-1.5 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600"><Undo2 className="w-4 h-4" /></button>
                                 <button onClick={() => handleCancelSale(s.id)} disabled={cancellingId === s.id} title="Anular" className="p-1.5 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600">{cancellingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}</button>
                               </>
@@ -622,7 +705,10 @@ export default function POSPage() {
           <button onClick={registerSession ? handleCobrar : () => { setViewMode('register'); setTimeout(() => setShowOpenRegister(true), 100); }} disabled={cart.items.length === 0} className={cn('w-full h-12 rounded-lg font-semibold text-sm transition flex items-center justify-center gap-2', registerSession ? 'bg-glamor-primary hover:bg-glamor-primary-hover text-white disabled:opacity-50' : 'bg-amber-50 border-2 border-amber-300 text-amber-700 hover:bg-amber-100')}><CreditCard className="w-5 h-5" /> {registerSession ? `Cobrar ${formatCurrency(total)}` : 'Abre la caja para cobrar'}</button>
           {/* Hold sale */}
           {cart.items.length > 0 && (
-            <button onClick={holdSale} className="w-full h-9 border border-amber-300 text-amber-700 bg-amber-50 rounded-lg text-sm font-medium hover:bg-amber-100 transition flex items-center justify-center gap-2"><Pause className="w-4 h-4" /> Pausar venta</button>
+            <div className="flex gap-2">
+              <button onClick={holdSale} className="flex-1 h-9 border border-amber-300 text-amber-700 bg-amber-50 rounded-lg text-sm font-medium hover:bg-amber-100 transition flex items-center justify-center gap-1.5"><Pause className="w-3.5 h-3.5" /> Pausar</button>
+              <button onClick={() => setShowQuoteModal(true)} className="flex-1 h-9 border border-indigo-300 text-indigo-700 bg-indigo-50 rounded-lg text-sm font-medium hover:bg-indigo-100 transition flex items-center justify-center gap-1.5"><FilePlus className="w-3.5 h-3.5" /> Cotización</button>
+            </div>
           )}
         </div>
       </div>
@@ -687,6 +773,35 @@ export default function POSPage() {
       {showOpenRegister && <OpenRegisterModal balance={openingBalance} setBalance={setOpeningBalance} notes={registerNotes} setNotes={setRegisterNotes} selectedRegisterId={selectedRegisterId} setSelectedRegisterId={setSelectedRegisterId} registers={registers} setRegisters={setRegisters} token={token} onOpen={openRegister} loading={processing} onClose={() => setShowOpenRegister(false)} />}
       {showCloseRegister && <CloseRegisterModal balance={closingBalance} setBalance={setClosingBalance} notes={registerNotes} setNotes={setRegisterNotes} reconciliation={reconciliation} onClose={closeRegister} loading={processing} onCancel={() => setShowCloseRegister(false)} />}
       {showCashMovement && <CashMovementModal type={movementType} setType={setMovementType} amount={movementAmount} setAmount={setMovementAmount} reason={movementReason} setReason={setMovementReason} desc={movementDesc} setDesc={setMovementDesc} onSave={addMovement} loading={processing} onClose={() => setShowCashMovement(false)} />}
+      {showInvoiceModal && invoiceSaleData && (
+        <ElectronicInvoiceModal
+          sale={invoiceSaleData}
+          token={token!}
+          onClose={() => setShowInvoiceModal(false)}
+          onSuccess={(inv) => {
+            setInvoiceResult(inv);
+            setShowInvoiceModal(false);
+            // Refresh history if we're in history view
+            if (viewMode === 'history') fetchSales();
+          }}
+          onPrint={handlePrintInvoice}
+        />
+      )}
+      {showQuoteModal && (
+        <QuoteModal
+          items={cart.items}
+          customerName={cart.customerName}
+          discountPercent={cart.discountPercent}
+          subtotal={subtotal}
+          discount={discount}
+          tax={tax}
+          total={total}
+          token={token!}
+          storeName={user?.firstName ? `Glamorapp` : 'Glamorapp'}
+          userName={`${user?.firstName || ''} ${user?.lastName || ''}`}
+          onClose={() => setShowQuoteModal(false)}
+        />
+      )}
     </div>
   );
 }
@@ -804,6 +919,281 @@ function CashMovementModal({ type, setType, amount, setAmount, reason, setReason
           <input value={desc} onChange={(e: any) => setDesc(e.target.value)} placeholder="Descripción (opcional)" className="w-full h-10 px-3 rounded-lg border border-border-primary text-sm" />
         </div>
         <div className="flex gap-3 mt-5"><button onClick={onClose} className="flex-1 h-10 rounded-lg border text-sm">Cancelar</button><button onClick={onSave} disabled={loading || !reason || !amount} className={cn('flex-1 h-10 text-white rounded-lg text-sm font-medium disabled:opacity-50', type === 'in' ? 'bg-green-600' : 'bg-red-600')}>{loading ? <Loader2 className="w-4 h-4 animate-spin inline" /> : 'Registrar'}</button></div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Electronic Invoice Modal ─────────────────────────────────────────────────
+
+const ID_TYPES_INV = [
+  { value: 'cc', label: 'CC' }, { value: 'nit', label: 'NIT' },
+  { value: 'ce', label: 'CE' }, { value: 'pasaporte', label: 'Pasaporte' },
+];
+const PAYMENT_METHODS_INV = [
+  { value: '10', label: 'Efectivo' }, { value: '42', label: 'Transferencia' },
+  { value: '48', label: 'Tarjeta débito' }, { value: '49', label: 'Tarjeta crédito' },
+  { value: '71', label: 'Nequi / Daviplata' },
+];
+
+function ElectronicInvoiceModal({ sale, token, onClose, onSuccess, onPrint }: any) {
+  const [receiverName, setReceiverName] = useState(
+    sale.customer ? `${sale.customer.firstName} ${sale.customer.lastName}` : ''
+  );
+  const [receiverIdType, setReceiverIdType] = useState(sale.customer?.idType || 'cc');
+  const [receiverIdNumber, setReceiverIdNumber] = useState(sale.customer?.idNumber || '');
+  const [receiverEmail, setReceiverEmail] = useState(sale.customer?.email || '');
+  const [receiverPhone, setReceiverPhone] = useState(sale.customer?.phone || '');
+  const [paymentMethodCode, setPaymentMethodCode] = useState('10');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleCreate = async () => {
+    if (!receiverName.trim()) { setError('El nombre del receptor es obligatorio'); return; }
+    setSaving(true); setError('');
+    try {
+      // Map sale items to invoice items
+      const items = (sale.items || []).map((it: any) => ({
+        itemType: it.serviceId ? 'service' : 'product',
+        productId: it.productId || undefined,
+        serviceId: it.serviceId || undefined,
+        description: it.name,
+        quantity: it.quantity,
+        unitMeasure: it.serviceId ? '58' : '94',
+        unitPrice: Number(it.unitPrice),
+        discountRate: it.discountAmount > 0 ? (it.discountAmount / (it.unitPrice * it.quantity)) * 100 : 0,
+        ivaRate: 19,
+        code: it.product?.sku || it.service?.code || '',
+      }));
+      const payload = {
+        saleId: sale.id,
+        invoiceType: 'pos_invoice',
+        customerId: sale.customerId || undefined,
+        receiverName, receiverIdType, receiverIdNumber, receiverEmail, receiverPhone,
+        paymentMeansCode: '1',
+        paymentMethodCode,
+        notes: notes || undefined,
+        items,
+      };
+      const result = await api.post('/accounting/invoices', payload, { token });
+      onSuccess(result);
+    } catch (e: any) {
+      setError(e?.message || 'Error al generar la factura');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={() => !saving && onClose()} />
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="p-5 border-b flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText className="w-5 h-5 text-blue-600" />
+            <h3 className="text-base font-bold">Factura electrónica</h3>
+          </div>
+          <button onClick={() => !saving && onClose()} className="p-1.5 rounded-lg hover:bg-surface-hover"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="flex-1 overflow-auto p-5 space-y-4">
+          {/* Sale summary */}
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm">
+            <p className="font-semibold text-blue-800 mb-2">Venta {sale.saleNumber}</p>
+            <div className="space-y-1">
+              {(sale.items || []).map((it: any) => (
+                <div key={it.id} className="flex justify-between text-blue-700">
+                  <span>{it.name} x{it.quantity}</span>
+                  <span>{formatCurrency(it.total)}</span>
+                </div>
+              ))}
+              <div className="flex justify-between font-bold text-blue-900 border-t border-blue-200 pt-1 mt-1">
+                <span>Total</span><span>{formatCurrency(sale.total)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Receiver */}
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Datos del receptor</p>
+            <div className="space-y-3">
+              <input value={receiverName} onChange={e => setReceiverName(e.target.value)} placeholder="Nombre / Razón social *" className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              <div className="flex gap-2">
+                <select value={receiverIdType} onChange={e => setReceiverIdType(e.target.value)} className="w-28 border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
+                  {ID_TYPES_INV.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+                <input value={receiverIdNumber} onChange={e => setReceiverIdNumber(e.target.value)} placeholder="Número de identificación" className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+              <div className="flex gap-2">
+                <input value={receiverEmail} onChange={e => setReceiverEmail(e.target.value)} placeholder="Correo electrónico" type="email" className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                <input value={receiverPhone} onChange={e => setReceiverPhone(e.target.value)} placeholder="Teléfono" className="w-36 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+            </div>
+          </div>
+
+          {/* Payment method */}
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Método de pago</p>
+            <div className="flex flex-wrap gap-2">
+              {PAYMENT_METHODS_INV.map(m => (
+                <button key={m.value} type="button" onClick={() => setPaymentMethodCode(m.value)}
+                  className={cn('px-3 py-1.5 text-xs rounded-lg border-2 transition font-medium',
+                    paymentMethodCode === m.value ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground hover:border-primary/40'
+                  )}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Observaciones para la factura (opcional)" className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+          </div>
+
+          {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+        </div>
+
+        <div className="p-5 border-t flex gap-3">
+          <button onClick={() => !saving && onClose()} className="flex-1 h-11 border rounded-lg text-sm font-medium hover:bg-muted transition">Cancelar</button>
+          <button onClick={handleCreate} disabled={saving} className="flex-1 h-11 bg-blue-600 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-60 transition">
+            {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Generando...</> : <><FileText className="w-4 h-4" /> Generar factura</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Quote Modal ──────────────────────────────────────────────────────────────
+
+function QuoteModal({ items, customerName, discountPercent, subtotal, discount, tax, total, token, storeName, userName, onClose }: any) {
+  const [clientName, setClientName] = useState(customerName || '');
+  const [clientEmail, setClientEmail] = useState('');
+  const [validDays, setValidDays] = useState('3');
+  const [notes, setNotes] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [sendError, setSendError] = useState('');
+
+  const validUntil = new Date(Date.now() + parseInt(validDays || '3') * 86400000)
+    .toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  const handlePrint = () => {
+    const now = new Date().toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' });
+    const win = window.open('', '_blank', 'width=680,height=900');
+    if (!win) return;
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Cotización</title>
+    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:12px;padding:24px;max-width:680px;margin:auto}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;padding-bottom:16px;border-bottom:2px solid #333}
+    .title{font-size:20px;font-weight:bold;color:#6d28d9}.subtitle{font-size:11px;color:#666;margin-top:2px}
+    .badge{background:#f5f3ff;border:1px solid #c4b5fd;border-radius:6px;padding:8px 14px;text-align:right}
+    .badge-num{font-size:14px;font-weight:bold;color:#4c1d95}.section-title{font-size:11px;font-weight:bold;color:#666;text-transform:uppercase;letter-spacing:0.05em;margin:12px 0 6px;border-bottom:1px solid #e5e7eb;padding-bottom:4px}
+    table{width:100%;border-collapse:collapse;margin:8px 0}th{background:#f9fafb;text-align:left;padding:7px 8px;font-size:11px;color:#555;border-bottom:2px solid #e5e7eb}
+    td{padding:7px 8px;font-size:11px;border-bottom:1px solid #f3f4f6}.text-right{text-align:right}
+    .totals{margin-left:auto;width:220px;margin-top:8px}.total-row{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}
+    .total-final{font-size:16px;font-weight:bold;border-top:2px solid #6d28d9;padding-top:8px;margin-top:4px;color:#4c1d95}
+    .validity{background:#f5f3ff;border:1px solid #c4b5fd;border-radius:8px;padding:10px;margin-top:14px;font-size:11px;color:#5b21b6}
+    .footer{margin-top:20px;padding-top:12px;border-top:1px dashed #ccc;text-align:center;font-size:10px;color:#888}
+    @media print{body{padding:10px}}</style></head><body>
+    <div class="header">
+      <div><div class="title">💅 ${storeName}</div><div class="subtitle">Cotización — ${now}</div></div>
+      <div class="badge"><div class="badge-num">COTIZACIÓN</div><div style="font-size:10px;color:#666;margin-top:2px">Atendido por: ${userName}</div></div>
+    </div>
+    ${clientName ? `<div><span style="font-size:11px;color:#666">Cliente: </span><strong>${clientName}</strong></div>` : ''}
+    <div class="section-title">Ítems</div>
+    <table><thead><tr><th>Descripción</th><th class="text-right">Cant.</th><th class="text-right">Precio unit.</th><th class="text-right">Total</th></tr></thead>
+    <tbody>${items.map((it: any) => `<tr><td>${it.name}</td><td class="text-right">${it.quantity}</td><td class="text-right">$${Number(it.unitPrice).toLocaleString('es-CO')}</td><td class="text-right">$${Number(it.unitPrice * it.quantity).toLocaleString('es-CO')}</td></tr>`).join('')}</tbody></table>
+    <div class="totals">
+      <div class="total-row"><span>Subtotal</span><span>$${Number(subtotal).toLocaleString('es-CO')}</span></div>
+      ${discount > 0 ? `<div class="total-row" style="color:#dc2626"><span>Descuento (${discountPercent}%)</span><span>-$${Number(discount).toLocaleString('es-CO')}</span></div>` : ''}
+      <div class="total-row"><span>IVA</span><span>$${Number(tax).toLocaleString('es-CO')}</span></div>
+      <div class="total-row total-final"><span>TOTAL</span><span>$${Number(total).toLocaleString('es-CO')}</span></div>
+    </div>
+    <div class="validity">⏰ Esta cotización es válida hasta el <strong>${validUntil}</strong></div>
+    ${notes ? `<div style="margin-top:12px;font-size:11px;color:#555"><strong>Observaciones:</strong> ${notes}</div>` : ''}
+    <div class="footer"><p>¡Gracias por contactarnos! · ${storeName}</p></div>
+    </body></html>`);
+    win.document.close(); win.focus(); setTimeout(() => { win.print(); win.close(); }, 500);
+  };
+
+  const handleSendEmail = async () => {
+    if (!clientEmail.trim()) { setSendError('Ingresa el correo del cliente'); return; }
+    setSending(true); setSendError('');
+    try {
+      // POST to a quote-by-email endpoint (if it exists) or show success message
+      await api.post('/quotes/send-email', {
+        clientName, clientEmail, validDays: parseInt(validDays),
+        notes, items, subtotal, discount, tax, total, discountPercent,
+      }, { token });
+      setSent(true);
+    } catch {
+      // Endpoint may not exist yet — show message to print instead
+      setSendError('El envío por email no está disponible aún. Usa "Imprimir" para generar el PDF.');
+    } finally { setSending(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] flex flex-col">
+        <div className="p-5 border-b flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FilePlus className="w-5 h-5 text-indigo-600" />
+            <h3 className="text-base font-bold">Cotización</h3>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-hover"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="flex-1 overflow-auto p-5 space-y-4">
+          {/* Items summary */}
+          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-1.5 text-sm">
+            {items.map((it: any) => (
+              <div key={it.id} className="flex justify-between text-indigo-700">
+                <span>{it.name} <span className="text-indigo-400">x{it.quantity}</span></span>
+                <span>{formatCurrency(it.unitPrice * it.quantity)}</span>
+              </div>
+            ))}
+            <div className="border-t border-indigo-200 pt-2 mt-1 space-y-0.5">
+              {discount > 0 && <div className="flex justify-between text-xs text-red-600"><span>Descuento ({discountPercent}%)</span><span>-{formatCurrency(discount)}</span></div>}
+              <div className="flex justify-between text-xs text-indigo-500"><span>IVA</span><span>{formatCurrency(tax)}</span></div>
+              <div className="flex justify-between font-bold text-indigo-900"><span>Total</span><span>{formatCurrency(total)}</span></div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <input value={clientName} onChange={e => setClientName(e.target.value)} placeholder="Nombre del cliente" className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            <input value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="Correo electrónico del cliente" type="email" className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-muted-foreground whitespace-nowrap">Válida por</label>
+              <select value={validDays} onChange={e => setValidDays(e.target.value)} className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                <option value="1">1 día</option>
+                <option value="3">3 días</option>
+                <option value="7">7 días</option>
+                <option value="15">15 días</option>
+                <option value="30">30 días</option>
+              </select>
+            </div>
+            <p className="text-xs text-indigo-600 bg-indigo-50 px-3 py-2 rounded-lg">⏰ Válida hasta: <strong>{validUntil}</strong></p>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Observaciones (opcional)" rows={2} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none" />
+          </div>
+
+          {sent && <p className="text-sm text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> Cotización enviada al correo del cliente.</p>}
+          {sendError && <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{sendError}</p>}
+        </div>
+
+        <div className="p-5 border-t space-y-2">
+          <div className="flex gap-2">
+            <button onClick={handlePrint} className="flex-1 h-11 border-2 border-indigo-500 text-indigo-700 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 hover:bg-indigo-50 transition">
+              <Printer className="w-4 h-4" /> Imprimir
+            </button>
+            <button onClick={handleSendEmail} disabled={sending} className="flex-1 h-11 bg-indigo-600 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 hover:bg-indigo-700 disabled:opacity-60 transition">
+              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+              {sending ? 'Enviando...' : 'Enviar por email'}
+            </button>
+          </div>
+          <button onClick={onClose} className="w-full h-9 border rounded-lg text-sm text-muted-foreground hover:bg-muted transition">Cerrar</button>
+        </div>
       </div>
     </div>
   );
