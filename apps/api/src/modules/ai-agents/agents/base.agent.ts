@@ -169,8 +169,20 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
         this.log(ctx, `✅ Análisis completado`);
         messages.push({ role: 'assistant', content: response.text });
 
-        // Save the final analysis as a recommendation if meaningful
-        if (response.text && response.text.length > 20) {
+        // Save the final text as a recommendation only if it is human-readable prose.
+        // Skip it when the text is raw tool-call JSON (happens when DeepSeek echoes its
+        // own function calls in the content field instead of in tool_calls).
+        const textIsToolCallJson = (() => {
+          try {
+            const t = (response.text || '').trim();
+            if (!t.startsWith('[') && !t.startsWith('{')) return false;
+            const parsed = JSON.parse(t);
+            const arr = Array.isArray(parsed) ? parsed : [parsed];
+            return arr.every((item: any) => item && typeof item === 'object' && ('name' in item || 'id' in item));
+          } catch { return false; }
+        })();
+
+        if (response.text && response.text.length > 20 && !textIsToolCallJson) {
           const structured = JSON.stringify({
             problema: 'Análisis general del agente.',
             accion_concreta: response.text,
@@ -343,16 +355,18 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
     let text = '';
     const toolCalls: any[] = [];
 
-    if (choice.message?.content) {
-      text = choice.message.content;
-    }
-
     if (choice.message?.tool_calls) {
       for (const tc of choice.message.tool_calls) {
         let input = {};
         try { input = JSON.parse(tc.function.arguments); } catch {}
         toolCalls.push({ id: tc.id, name: tc.function.name, input });
       }
+    }
+
+    // Only use content as text when there are no tool calls — DeepSeek sometimes
+    // echoes its own function-call JSON in content when tool_calls is also present.
+    if (toolCalls.length === 0 && choice.message?.content) {
+      text = choice.message.content;
     }
 
     return { text, toolCalls };

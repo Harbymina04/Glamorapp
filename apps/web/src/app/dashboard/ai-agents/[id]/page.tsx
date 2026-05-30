@@ -24,10 +24,31 @@ interface StructuredDescription {
   como_medir?: string;
 }
 
+/** Returns true if the string looks like raw LLM tool-call JSON (not user-facing content) */
+function isToolCallJson(text: string): boolean {
+  try {
+    const t = text.trim();
+    if (!t.startsWith('[') && !t.startsWith('{')) return false;
+    const parsed = JSON.parse(t);
+    const arr = Array.isArray(parsed) ? parsed : [parsed];
+    return arr.every(
+      (item: any) => item && typeof item === 'object' && ('name' in item || 'id' in item) && !('problema' in item),
+    );
+  } catch {
+    return false;
+  }
+}
+
 function parseDescription(raw: string): StructuredDescription | null {
   try {
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object' && parsed.problema) return parsed;
+    if (parsed && typeof parsed === 'object' && parsed.problema) {
+      // Sanitize accion_concreta — if it's raw tool-call JSON, replace with placeholder
+      if (parsed.accion_concreta && isToolCallJson(parsed.accion_concreta)) {
+        parsed.accion_concreta = 'El agente analizó los datos. Ejecuta el análisis nuevamente para obtener pasos detallados.';
+      }
+      return parsed;
+    }
   } catch {}
   return null;
 }
