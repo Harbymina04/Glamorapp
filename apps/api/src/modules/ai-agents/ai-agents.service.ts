@@ -41,7 +41,9 @@ export class AiAgentsService {
   async findAll(tenantId: string, storeId: string, query: any) {
     const { skip, take } = getPaginationParams(query.page || 1, query.limit || 20);
     const where: any = {
-      tenantId, storeId,
+      tenantId,
+      // storeId can be null for superadmin — skip the filter in that case
+      ...(storeId ? { storeId } : {}),
       ...(query.status ? { status: query.status } : {}),
     };
     const [data, total] = await Promise.all([
@@ -66,7 +68,7 @@ export class AiAgentsService {
 
   async findOne(tenantId: string, storeId: string, id: string) {
     const a = await this.prisma.aiAgent.findFirst({
-      where: { id, tenantId, storeId },
+      where: { id, tenantId, ...(storeId ? { storeId } : {}) },
       include: { permissions: true },
     });
     if (!a) throw new NotFoundException('AI Agent not found');
@@ -153,7 +155,7 @@ export class AiAgentsService {
 
   async getExecutions(tenantId: string, storeId: string, agentId: string, query: any) {
     const { skip, take } = getPaginationParams(query.page || 1, query.limit || 10);
-    const where: any = { tenantId, storeId, agentId };
+    const where: any = { tenantId, ...(storeId ? { storeId } : {}), agentId };
     const [data, total] = await Promise.all([
       this.prisma.aiAgentExecution.findMany({
         where, skip, take, orderBy: { startedAt: 'desc' },
@@ -174,7 +176,7 @@ export class AiAgentsService {
   async getRecommendations(tenantId: string, storeId: string, agentId: string, query: any) {
     const { skip, take } = getPaginationParams(query.page || 1, query.limit || 10);
     const where: any = {
-      tenantId, storeId, agentId,
+      tenantId, ...(storeId ? { storeId } : {}), agentId,
       ...(query.status ? { status: query.status } : {}),
       ...(query.type ? { type: query.type } : {}),
     };
@@ -203,7 +205,7 @@ export class AiAgentsService {
 
   async getRecentActivity(tenantId: string, storeId: string) {
     return this.prisma.aiRecommendation.findMany({
-      where: { tenantId, storeId },
+      where: { tenantId, ...(storeId ? { storeId } : {}) },
       orderBy: { createdAt: 'desc' },
       take: 10,
       include: { agent: { select: { name: true, icon: true } } },
