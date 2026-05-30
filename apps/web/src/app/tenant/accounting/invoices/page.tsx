@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { FileText, Loader2, Eye } from 'lucide-react';
+import { FileText, Loader2, Eye, Plus } from 'lucide-react';
+import Link from 'next/link';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700',
@@ -43,9 +44,17 @@ export default function TenantInvoicesPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold">Facturas electrónicas</h1>
-        <p className="text-sm text-muted-foreground mt-1">Todas las sucursales · {total} facturas en total</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Facturas electrónicas</h1>
+          <p className="text-sm text-muted-foreground mt-1">Todas las sucursales · {total} facturas en total</p>
+        </div>
+        <Link
+          href="/tenant/accounting/invoices/new"
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary/90 transition-colors"
+        >
+          <Plus className="w-4 h-4" /> Nueva factura
+        </Link>
       </div>
 
       {/* Filters */}
