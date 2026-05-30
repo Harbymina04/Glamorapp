@@ -174,13 +174,21 @@ async function main() {
 
   // Create store_admin
   const storeAdminPass = await bcrypt.hash('store123', 10);
-  await prisma.user.create({
+  const storeAdmin = await prisma.user.create({
     data: {
       tenantId: tenant.id, storeId: store.id,
       email: 'store@glamorapp.com', passwordHash: storeAdminPass,
       firstName: 'Carlos', lastName: 'Mendoza', role: 'store_admin',
     },
   });
+
+  // Permissions for store_admin — all operational modules
+  const storeAdminModules = ['dashboard', 'pos', 'inventory', 'catalog', 'appointments', 'customers', 'reports', 'ai_agents', 'suppliers', 'expenses', 'purchases', 'whatsapp', 'settings', 'users', 'stores'];
+  for (const mod of storeAdminModules) {
+    await prisma.permission.create({
+      data: { tenantId: tenant.id, userId: storeAdmin.id, module: mod, canView: true, canCreate: true, canEdit: true, canDelete: true, canExport: true },
+    });
+  }
 
   // Create professionals
   const pro1 = await prisma.user.create({
