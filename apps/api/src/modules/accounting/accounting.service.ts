@@ -627,4 +627,92 @@ export class AccountingService {
       },
     });
   }
+
+  // ────────────────────────────────────────────────────────────
+  // FE PROVIDER — update credentials & test connection
+  // ────────────────────────────────────────────────────────────
+
+  async updateFeProvider(tenantId: string, role: string, dto: {
+    feProvider: string;
+    feEnvironment: string;
+    feProviderApiKey?: string;
+    feProviderApiSecret?: string;
+    feProviderConfig?: Record<string, any>;
+  }) {
+    if (!isTenantAdmin(role)) throw new ForbiddenException('Only tenant admins can configure FE provider');
+    const existing = await this.prisma.fiscalConfig.findFirst({ where: { tenantId } });
+    if (!existing) throw new BadRequestException('Fiscal configuration not found. Create it first.');
+
+    return this.prisma.fiscalConfig.update({
+      where: { id: existing.id },
+      data: {
+        feProvider: dto.feProvider,
+        feEnvironment: dto.feEnvironment,
+        feProviderApiKey: dto.feProviderApiKey,
+        feProviderApiSecret: dto.feProviderApiSecret,
+        feProviderConfig: dto.feProviderConfig ?? {},
+      },
+    });
+  }
+
+  async testFeProviderConnection(tenantId: string, role: string) {
+    if (!isTenantAdmin(role)) throw new ForbiddenException('Only tenant admins can test FE connection');
+    const config = await this.prisma.fiscalConfig.findFirst({ where: { tenantId } });
+    if (!config) throw new BadRequestException('Fiscal configuration not found');
+    if (config.feProvider === 'none') {
+      return { success: false, message: 'No FE provider configured', provider: 'none' };
+    }
+    if (!config.feProviderApiKey) {
+      return { success: false, message: 'API Key not configured', provider: config.feProvider };
+    }
+
+    // Simulate connection test per provider
+    // In production, each provider would have its own adapter
+    try {
+      const result = await this.pingFeProvider(config.feProvider, config.feProviderApiKey, config.feProviderApiSecret, config.feEnvironment);
+      return { success: result.ok, message: result.message, provider: config.feProvider, environment: config.feEnvironment };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Connection failed', provider: config.feProvider };
+    }
+  }
+
+  private async pingFeProvider(provider: string, apiKey: string, apiSecret: string | null, environment: string): Promise<{ ok: boolean; message: string }> {
+    // Each provider has its own test endpoint
+    const testUrls: Record<string, string> = {
+      siigo: environment === 'production'
+        ? 'https://api.siigo.com/auth'
+        : 'https://api.siigo.com/auth',
+      alegra: 'https://api.alegra.com/api/v1/ping',
+      facturama: environment === 'production'
+        ? 'https://api.facturama.mx/api-lite/companies/info'
+        : 'https://apisandbox.facturama.mx/api-lite/companies/info',
+      custom: '',
+    };
+
+    if (provider === 'custom') {
+      return { ok: true, message: 'Custom provider — connection not testable automatically' };
+    }
+
+    const url = testUrls[provider];
+    if (!url) return { ok: false, message: `Unknown provider: ${provider}` };
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+    if (provider === 'alegra') {
+      headers['Authorization'] = `Basic ${Buffer.from(`${apiKey}:${apiSecret ?? ''}`).toString('base64')}`;
+    } else if (provider === 'siigo') {
+      headers['Authorization'] = `Basic ${Buffer.from(`${apiKey}:${apiSecret ?? ''}`).toString('base64')}`;
+    } else if (provider === 'facturama') {
+      headers['Authorization'] = `Basic ${Buffer.from(`${apiKey}:${apiSecret ?? ''}`).toString('base64')}`;
+    }
+
+    const res = await fetch(url, { method: 'GET', headers, signal: AbortSignal.timeout(8000) });
+    if (res.ok || res.status === 401) {
+      // 401 means the server responded — credentials may be wrong but connection works
+      return res.ok
+        ? { ok: true, message: 'Conexión exitosa con el proveedor' }
+        : { ok: false, message: 'Credenciales inválidas — servidor alcanzable' };
+    }
+    return { ok: false, message: `Error del servidor: ${res.status}` };
+  }
 }

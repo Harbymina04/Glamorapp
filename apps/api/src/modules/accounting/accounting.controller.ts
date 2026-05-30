@@ -176,6 +176,20 @@ export class AccountingController {
     return this.service.getCashFlow(req.user.tenantId, req.user.storeId, this.role(req), from, to, filterStoreId);
   }
 
+  // ─── FE Provider ─────────────────────────────────────────
+  @Put('fe-provider')
+  @ApiOperation({ summary: 'Update FE provider credentials (tenant admin only)' })
+  updateFeProvider(@Request() req: any, @Body() dto: any) {
+    return this.service.updateFeProvider(req.user.tenantId, this.role(req), dto);
+  }
+
+  @Post('fe-provider/test')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Test FE provider connection (tenant admin only)' })
+  testFeProvider(@Request() req: any) {
+    return this.service.testFeProviderConnection(req.user.tenantId, this.role(req));
+  }
+
   // ─── Auto-register (internal triggers) ───────────────────
   @Post('register/sale/:saleId')
   @HttpCode(HttpStatus.OK)
