@@ -9,7 +9,7 @@ import {
   TrendingUp, DollarSign, Receipt, CreditCard, BarChart3,
   RefreshCw, CheckCircle2, XCircle, Clock, AlertCircle,
   Building2, Settings, Shield, ChevronDown, Download,
-  Filter, Search, Plus, Loader2, Eye,
+  Filter, Search, Plus, Loader2, Eye, Printer,
 } from 'lucide-react';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -110,6 +110,9 @@ export default function AccountingPage() {
   const [fiscalForm, setFiscalForm] = useState<any>({});
   const [savingFiscal, setSavingFiscal] = useState(false);
   const [fiscalSaved, setFiscalSaved] = useState(false);
+
+  // Invoice PDF viewer
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -375,8 +378,12 @@ export default function AccountingPage() {
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{formatDate(inv.createdAt)}</td>
                       <td className="px-4 py-3">
-                        <button className="p-1 rounded hover:bg-muted">
-                          <Eye className="w-4 h-4 text-muted-foreground" />
+                        <button
+                          onClick={() => setSelectedInvoice(inv)}
+                          title="Ver factura"
+                          className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+                        >
+                          <Eye className="w-4 h-4" />
                         </button>
                       </td>
                     </tr>
@@ -777,6 +784,208 @@ export default function AccountingPage() {
           </div>
         </div>
       )}
+
+      {/* Invoice PDF Modal */}
+      {selectedInvoice && (
+        <InvoicePDFModal
+          invoice={selectedInvoice}
+          fiscalConfig={fiscalConfig}
+          onClose={() => setSelectedInvoice(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Invoice PDF Modal ────────────────────────────────────────────────────────
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  '10': 'Efectivo', '42': 'Transferencia', '48': 'Tarjeta débito',
+  '49': 'Tarjeta crédito', '71': 'Nequi / Daviplata', '20': 'Cheque',
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  invoice: 'Factura venta', pos_invoice: 'Factura POS',
+  credit_note: 'Nota crédito', debit_note: 'Nota débito',
+  support_document: 'Doc. soporte',
+};
+
+function InvoicePDFModal({ invoice, fiscalConfig, onClose }: { invoice: any; fiscalConfig: any; onClose: () => void }) {
+  const fmt = (n: any) => formatCurrency(Number(n) || 0);
+  const date = (d: string) => new Date(d).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  const handlePrint = () => {
+    const content = document.getElementById('invoice-pdf-content')?.innerHTML || '';
+    const win = window.open('', '_blank', 'width=900,height=1100');
+    if (!win) return;
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Factura ${invoice.invoiceNumber}</title>
+    <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:12px;color:#111;padding:32px;max-width:794px;margin:auto}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:24px}.box{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px}
+    .label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#9ca3af;margin-bottom:6px}
+    table{width:100%;border-collapse:collapse;margin:8px 0}th{background:#f9fafb;padding:8px 10px;text-align:left;font-size:11px;font-weight:600;color:#6b7280;border-bottom:2px solid #e5e7eb}
+    td{padding:10px;font-size:12px;border-bottom:1px solid #f3f4f6}.text-right{text-align:right}
+    .totals-row{display:flex;justify-content:space-between;padding:4px 0;font-size:12px}
+    .total-final{font-size:16px;font-weight:bold;border-top:2px solid #111;padding-top:8px;margin-top:4px}
+    @media print{body{padding:10px}}</style>
+    </head><body>${content}</body></html>`);
+    win.document.close(); win.focus(); setTimeout(() => { win.print(); win.close(); }, 600);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative bg-gray-100 rounded-2xl shadow-2xl w-full max-w-3xl mx-4 max-h-[95vh] flex flex-col">
+
+        {/* Toolbar */}
+        <div className="flex items-center justify-between px-5 py-3 bg-white rounded-t-2xl border-b">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <FileText className="w-4 h-4 text-primary" />
+            Factura {invoice.invoiceNumber}
+            <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium ${INVOICE_STATUS_COLORS[invoice.status] || 'bg-gray-100'}`}>
+              {INVOICE_STATUS_LABELS[invoice.status] || invoice.status}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-xs font-medium rounded-lg hover:bg-primary/90 transition">
+              <Printer className="w-3.5 h-3.5" /> Imprimir / PDF
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"><XCircle className="w-4 h-4" /></button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-auto p-6">
+          <div id="invoice-pdf-content" className="bg-white shadow-sm rounded-xl mx-auto" style={{ maxWidth: 794, padding: '40px 48px', minHeight: 900 }}>
+
+            {/* Header */}
+            <div className="flex justify-between items-start mb-8">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">{fiscalConfig?.businessName || 'Glamorapp'}</h1>
+                {fiscalConfig?.tradeName && fiscalConfig.tradeName !== fiscalConfig.businessName && (
+                  <p className="text-sm text-gray-500 mt-0.5">{fiscalConfig.tradeName}</p>
+                )}
+                <p className="text-sm text-gray-600 mt-1">{fiscalConfig?.idType?.toUpperCase() || 'NIT'}: {fiscalConfig?.idNumber || '—'}{fiscalConfig?.dv ? `-${fiscalConfig.dv}` : ''}</p>
+                {fiscalConfig?.fiscalAddress && <p className="text-xs text-gray-500 mt-0.5">{fiscalConfig.fiscalAddress}, {fiscalConfig.cityCode}</p>}
+                {fiscalConfig?.fiscalEmail && <p className="text-xs text-gray-500">{fiscalConfig.fiscalEmail}</p>}
+              </div>
+              <div className="text-right">
+                <div className="inline-block border-2 border-primary/20 rounded-xl px-5 py-3 bg-primary/5">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">{TYPE_LABELS[invoice.invoiceType] || invoice.invoiceType}</p>
+                  <p className="text-2xl font-bold text-primary mt-0.5">{invoice.invoiceNumber}</p>
+                  <p className="text-xs text-gray-500 mt-1">{date(invoice.createdAt)}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Resolution */}
+            {fiscalConfig?.resolutionNumber && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 mb-6 text-xs text-gray-600">
+                Resolución DIAN N° <strong>{fiscalConfig.resolutionNumber}</strong>
+                {fiscalConfig.resolutionPrefix && <> · Prefijo <strong>{fiscalConfig.resolutionPrefix}</strong></>}
+                {fiscalConfig.resolutionFrom && <> · Del {fiscalConfig.resolutionFrom} al {fiscalConfig.resolutionTo}</>}
+              </div>
+            )}
+
+            {/* Parties */}
+            <div className="grid grid-cols-2 gap-6 mb-6">
+              <div className="bg-gray-50 rounded-xl p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Emisor</p>
+                <p className="font-semibold text-gray-900">{fiscalConfig?.businessName || 'Glamorapp'}</p>
+                <p className="text-sm text-gray-600">{fiscalConfig?.idType?.toUpperCase() || 'NIT'}: {fiscalConfig?.idNumber}{fiscalConfig?.dv ? `-${fiscalConfig.dv}` : ''}</p>
+                {fiscalConfig?.fiscalPhone && <p className="text-xs text-gray-500 mt-1">Tel: {fiscalConfig.fiscalPhone}</p>}
+              </div>
+              <div className="bg-gray-50 rounded-xl p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Receptor</p>
+                <p className="font-semibold text-gray-900">{invoice.receiverName}</p>
+                {invoice.receiverIdNumber && <p className="text-sm text-gray-600">{invoice.receiverIdType?.toUpperCase()}: {invoice.receiverIdNumber}</p>}
+                {invoice.receiverEmail && <p className="text-sm text-gray-600">{invoice.receiverEmail}</p>}
+                {invoice.receiverPhone && <p className="text-xs text-gray-500">Tel: {invoice.receiverPhone}</p>}
+                {invoice.receiverAddress && <p className="text-xs text-gray-500">{invoice.receiverAddress}</p>}
+              </div>
+            </div>
+
+            {/* Payment info */}
+            <div className="flex gap-6 mb-6 text-sm">
+              <span className="text-gray-500">Condición: <strong>{invoice.paymentMeansCode === '1' ? 'Contado' : 'Crédito'}</strong></span>
+              <span className="text-gray-500">Método: <strong>{PAYMENT_METHOD_LABELS[invoice.paymentMethodCode] || invoice.paymentMethodCode || '—'}</strong></span>
+              {invoice.dueDate && <span className="text-gray-500">Vence: <strong>{date(invoice.dueDate)}</strong></span>}
+            </div>
+
+            {/* Items */}
+            <table className="w-full mb-6" style={{ borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #e5e7eb', background: '#f9fafb' }}>
+                  {['Descripción', 'Cant.', 'Precio unit.', 'Desc.', 'IVA', 'Total'].map((h, i) => (
+                    <th key={h} style={{ padding: '8px 10px', textAlign: i === 0 ? 'left' : 'right', fontSize: 11, fontWeight: 600, color: '#6b7280' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(invoice.items || []).map((item: any, i: number) => (
+                  <tr key={item.id} style={{ borderBottom: '1px solid #f3f4f6', background: i % 2 === 0 ? 'white' : '#fafafa' }}>
+                    <td style={{ padding: '10px', fontSize: 12 }}>
+                      <p className="font-medium text-gray-900">{item.description}</p>
+                      {item.code && <p className="text-xs text-gray-400">{item.code}</p>}
+                    </td>
+                    <td style={{ padding: '10px', fontSize: 12, textAlign: 'right' }}>{Number(item.quantity)}</td>
+                    <td style={{ padding: '10px', fontSize: 12, textAlign: 'right' }}>{fmt(item.unitPrice)}</td>
+                    <td style={{ padding: '10px', fontSize: 12, textAlign: 'right', color: '#dc2626' }}>{Number(item.discountRate) > 0 ? `-${Number(item.discountRate).toFixed(0)}%` : '—'}</td>
+                    <td style={{ padding: '10px', fontSize: 12, textAlign: 'right' }}>{Number(item.ivaRate)}%</td>
+                    <td style={{ padding: '10px', fontSize: 12, textAlign: 'right', fontWeight: 600 }}>{fmt(item.total)}</td>
+                  </tr>
+                ))}
+                {(!invoice.items || invoice.items.length === 0) && (
+                  <tr><td colSpan={6} style={{ padding: '16px', textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>Sin ítems registrados</td></tr>
+                )}
+              </tbody>
+            </table>
+
+            {/* Totals */}
+            <div className="flex justify-end mb-6">
+              <div style={{ minWidth: 260 }}>
+                <div className="space-y-1.5 text-sm">
+                  <div className="flex justify-between gap-10"><span className="text-gray-500">Subtotal</span><span>{fmt(invoice.subtotal)}</span></div>
+                  {Number(invoice.discountAmount) > 0 && <div className="flex justify-between gap-10 text-red-600"><span>Descuentos</span><span>-{fmt(invoice.discountAmount)}</span></div>}
+                  {Number(invoice.ivaAmount) > 0 && <div className="flex justify-between gap-10"><span className="text-gray-500">IVA</span><span>{fmt(invoice.ivaAmount)}</span></div>}
+                  {Number(invoice.retefuenteAmount) > 0 && <div className="flex justify-between gap-10 text-gray-500"><span>ReteFuente</span><span>-{fmt(invoice.retefuenteAmount)}</span></div>}
+                </div>
+                <div className="flex justify-between gap-10 mt-3 pt-3 border-t-2 border-gray-900">
+                  <span className="font-bold text-base">TOTAL</span>
+                  <span className="font-bold text-xl text-primary">{fmt(invoice.total)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Notes */}
+            {invoice.notes && (
+              <div className="border border-gray-200 rounded-lg p-4 mb-4 text-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">Observaciones</p>
+                <p className="text-gray-700">{invoice.notes}</p>
+              </div>
+            )}
+
+            {/* DIAN status */}
+            {invoice.status === 'approved' && invoice.cufe && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <p className="text-xs font-semibold text-green-700 mb-1 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Validada por la DIAN</p>
+                <p className="text-xs font-mono text-green-600 break-all">{invoice.cufe}</p>
+              </div>
+            )}
+            {invoice.status === 'rejected' && invoice.dianRejectionReason && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-xs font-semibold text-red-700 mb-1">Rechazada por la DIAN</p>
+                <p className="text-xs text-red-600">{invoice.dianRejectionReason}</p>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="mt-8 pt-4 border-t border-dashed border-gray-300 text-center text-xs text-gray-400">
+              <p>Generada el {date(invoice.createdAt)} · {fiscalConfig?.businessName || 'Glamorapp'}</p>
+              {fiscalConfig?.resolutionNumber && <p className="mt-0.5">Autorización DIAN: Resolución N° {fiscalConfig.resolutionNumber}</p>}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
