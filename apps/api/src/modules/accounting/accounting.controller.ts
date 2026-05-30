@@ -7,7 +7,7 @@ import { AccountingService } from './accounting.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { CreateFiscalConfigDto, UpdateFiscalConfigDto } from './dto/fiscal-config.dto';
+import { CreateFiscalConfigDto } from './dto/fiscal-config.dto';
 import { CreateInvoiceDto } from './dto/invoice.dto';
 import { CreateTransactionDto } from './dto/transaction.dto';
 
@@ -19,24 +19,29 @@ import { CreateTransactionDto } from './dto/transaction.dto';
 export class AccountingController {
   constructor(private service: AccountingService) {}
 
-  // ─── Dashboard ────────────────────────────────────────────
-  @Get('dashboard')
-  @ApiOperation({ summary: 'Get accounting dashboard summary' })
-  getDashboard(@Request() req: any) {
-    return this.service.getDashboard(req.user.tenantId, req.user.storeId);
+  // Helper to extract role from request
+  private role(req: any): string {
+    return req.user.role || 'store_admin';
   }
 
-  // ─── Fiscal Config ────────────────────────────────────────
+  // ─── Dashboard ────────────────────────────────────────────
+  @Get('dashboard')
+  @ApiOperation({ summary: 'Accounting dashboard — scoped by role' })
+  getDashboard(@Request() req: any) {
+    return this.service.getDashboard(req.user.tenantId, req.user.storeId, this.role(req));
+  }
+
+  // ─── Fiscal Config (tenant admin only) ───────────────────
   @Get('fiscal-config')
-  @ApiOperation({ summary: 'Get fiscal configuration' })
+  @ApiOperation({ summary: 'Get tenant fiscal configuration (tenant admin only)' })
   getFiscalConfig(@Request() req: any) {
-    return this.service.getFiscalConfig(req.user.tenantId, req.user.storeId);
+    return this.service.getFiscalConfig(req.user.tenantId, this.role(req));
   }
 
   @Put('fiscal-config')
-  @ApiOperation({ summary: 'Create or update fiscal configuration' })
+  @ApiOperation({ summary: 'Create or update tenant fiscal configuration (tenant admin only)' })
   upsertFiscalConfig(@Request() req: any, @Body() dto: CreateFiscalConfigDto) {
-    return this.service.upsertFiscalConfig(req.user.tenantId, req.user.storeId, dto);
+    return this.service.upsertFiscalConfig(req.user.tenantId, this.role(req), dto);
   }
 
   // ─── Tax Rates ────────────────────────────────────────────
@@ -47,65 +52,65 @@ export class AccountingController {
   }
 
   @Post('tax-rates')
-  @ApiOperation({ summary: 'Create a tax rate' })
+  @ApiOperation({ summary: 'Create tax rate (tenant admin only)' })
   createTaxRate(@Request() req: any, @Body() dto: any) {
-    return this.service.createTaxRate(req.user.tenantId, dto);
+    return this.service.createTaxRate(req.user.tenantId, this.role(req), dto);
   }
 
   @Put('tax-rates/:id')
-  @ApiOperation({ summary: 'Update a tax rate' })
+  @ApiOperation({ summary: 'Update tax rate (tenant admin only)' })
   updateTaxRate(@Request() req: any, @Param('id') id: string, @Body() dto: any) {
-    return this.service.updateTaxRate(req.user.tenantId, id, dto);
+    return this.service.updateTaxRate(req.user.tenantId, this.role(req), id, dto);
   }
 
   @Delete('tax-rates/:id')
-  @ApiOperation({ summary: 'Deactivate a tax rate' })
+  @ApiOperation({ summary: 'Deactivate tax rate (tenant admin only)' })
   deleteTaxRate(@Request() req: any, @Param('id') id: string) {
-    return this.service.deleteTaxRate(req.user.tenantId, id);
+    return this.service.deleteTaxRate(req.user.tenantId, this.role(req), id);
   }
 
   // ─── Invoices ─────────────────────────────────────────────
   @Get('invoices')
-  @ApiOperation({ summary: 'List invoices' })
+  @ApiOperation({ summary: 'List invoices — store_admin sees own store, tenant_admin sees all' })
   getInvoices(@Request() req: any, @Query() query: any) {
-    return this.service.getInvoices(req.user.tenantId, req.user.storeId, query);
+    return this.service.getInvoices(req.user.tenantId, req.user.storeId, this.role(req), query);
   }
 
   @Get('invoices/:id')
   @ApiOperation({ summary: 'Get invoice by id' })
   getInvoice(@Request() req: any, @Param('id') id: string) {
-    return this.service.getInvoice(req.user.tenantId, req.user.storeId, id);
+    return this.service.getInvoice(req.user.tenantId, req.user.storeId, this.role(req), id);
   }
 
   @Post('invoices')
-  @ApiOperation({ summary: 'Create invoice' })
+  @ApiOperation({ summary: 'Create invoice (uses tenant-level fiscal config for consecutive)' })
   createInvoice(@Request() req: any, @Body() dto: CreateInvoiceDto) {
-    return this.service.createInvoice(req.user.tenantId, req.user.storeId, req.user.sub, dto);
+    return this.service.createInvoice(req.user.tenantId, req.user.storeId, req.user.sub, this.role(req), dto);
   }
 
   @Patch('invoices/:id/cancel')
   @ApiOperation({ summary: 'Cancel an invoice' })
   cancelInvoice(@Request() req: any, @Param('id') id: string) {
-    return this.service.cancelInvoice(req.user.tenantId, req.user.storeId, id);
+    return this.service.cancelInvoice(req.user.tenantId, req.user.storeId, this.role(req), id);
   }
 
   @Patch('invoices/:id/status')
-  @ApiOperation({ summary: 'Update invoice status (DIAN response)' })
+  @ApiOperation({ summary: 'Update invoice status (DIAN webhook)' })
   updateInvoiceStatus(@Request() req: any, @Param('id') id: string, @Body() body: any) {
-    return this.service.updateInvoiceStatus(req.user.tenantId, req.user.storeId, id, body.status, body);
+    return this.service.updateInvoiceStatus(req.user.tenantId, req.user.storeId, this.role(req), id, body.status, body);
   }
 
   // ─── Accounting Transactions ──────────────────────────────
   @Get('transactions')
-  @ApiOperation({ summary: 'List accounting transactions' })
+  @ApiOperation({ summary: 'List transactions — store_admin sees own store, tenant_admin sees all' })
   getTransactions(@Request() req: any, @Query() query: any) {
-    return this.service.getTransactions(req.user.tenantId, req.user.storeId, query);
+    return this.service.getTransactions(req.user.tenantId, req.user.storeId, this.role(req), query);
   }
 
   @Get('transactions/:id')
   @ApiOperation({ summary: 'Get transaction by id' })
   getTransaction(@Request() req: any, @Param('id') id: string) {
-    return this.service.getTransaction(req.user.tenantId, req.user.storeId, id);
+    return this.service.getTransaction(req.user.tenantId, req.user.storeId, this.role(req), id);
   }
 
   @Post('transactions')
@@ -117,45 +122,58 @@ export class AccountingController {
   @Patch('transactions/:id/void')
   @ApiOperation({ summary: 'Void a transaction' })
   voidTransaction(@Request() req: any, @Param('id') id: string) {
-    return this.service.voidTransaction(req.user.tenantId, req.user.storeId, id);
+    return this.service.voidTransaction(req.user.tenantId, req.user.storeId, this.role(req), id);
   }
 
   @Patch('transactions/:id/reconcile')
-  @ApiOperation({ summary: 'Mark transaction as reconciled' })
+  @ApiOperation({ summary: 'Reconcile transaction (tenant admin only)' })
   reconcileTransaction(@Request() req: any, @Param('id') id: string) {
-    return this.service.reconcileTransaction(req.user.tenantId, req.user.storeId, id, req.user.sub);
+    return this.service.reconcileTransaction(req.user.tenantId, req.user.storeId, this.role(req), id, req.user.sub);
   }
 
-  // ─── Tax Summary & Declarations ──────────────────────────
+  // ─── Tax Summary & Declarations (tenant admin only) ───────
   @Get('tax-summary')
-  @ApiOperation({ summary: 'Get tax summary for a period' })
+  @ApiOperation({ summary: 'Tax summary by period (tenant admin only)' })
   getTaxSummary(@Request() req: any, @Query('year') year: string, @Query('month') month?: string) {
-    return this.service.getTaxSummary(req.user.tenantId, req.user.storeId, parseInt(year), month ? parseInt(month) : undefined);
+    return this.service.getTaxSummary(
+      req.user.tenantId, req.user.storeId, this.role(req),
+      parseInt(year), month ? parseInt(month) : undefined,
+    );
   }
 
   @Get('tax-declarations')
-  @ApiOperation({ summary: 'List tax declarations' })
+  @ApiOperation({ summary: 'List tax declarations (tenant admin only)' })
   getTaxDeclarations(@Request() req: any, @Query() query: any) {
-    return this.service.getTaxDeclarations(req.user.tenantId, query);
+    return this.service.getTaxDeclarations(req.user.tenantId, this.role(req), query);
   }
 
   @Post('tax-declarations')
-  @ApiOperation({ summary: 'Create or update a tax declaration' })
+  @ApiOperation({ summary: 'Create/update tax declaration (tenant admin only)' })
   createTaxDeclaration(@Request() req: any, @Body() dto: any) {
-    return this.service.createTaxDeclaration(req.user.tenantId, dto);
+    return this.service.createTaxDeclaration(req.user.tenantId, this.role(req), dto);
   }
 
   // ─── Financial Reports ────────────────────────────────────
   @Get('reports/income-statement')
-  @ApiOperation({ summary: 'Get income statement (P&L)' })
-  getIncomeStatement(@Request() req: any, @Query('from') from: string, @Query('to') to: string) {
-    return this.service.getIncomeStatement(req.user.tenantId, req.user.storeId, from, to);
+  @ApiOperation({ summary: 'P&L report — store_admin sees own store, tenant_admin can filter by storeId' })
+  getIncomeStatement(
+    @Request() req: any,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('storeId') filterStoreId?: string,
+  ) {
+    return this.service.getIncomeStatement(req.user.tenantId, req.user.storeId, this.role(req), from, to, filterStoreId);
   }
 
   @Get('reports/cash-flow')
-  @ApiOperation({ summary: 'Get cash flow report' })
-  getCashFlow(@Request() req: any, @Query('from') from: string, @Query('to') to: string) {
-    return this.service.getCashFlow(req.user.tenantId, req.user.storeId, from, to);
+  @ApiOperation({ summary: 'Cash flow report — store_admin sees own store, tenant_admin can filter' })
+  getCashFlow(
+    @Request() req: any,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('storeId') filterStoreId?: string,
+  ) {
+    return this.service.getCashFlow(req.user.tenantId, req.user.storeId, this.role(req), from, to, filterStoreId);
   }
 
   // ─── Auto-register (internal triggers) ───────────────────

@@ -643,12 +643,14 @@ model Customer {
   notes_rel    CustomerNote[]
   invoices     Invoice[]
 
-  @@unique([tenantId, storeId, phone])
+  // Customer is unique per tenant — storeId = origin store only
+  // Phone uniqueness enforced via partial index in DB (see migration)
+  @@index([tenantId])
   @@index([tenantId, storeId])
-  @@index([tenantId, storeId, segment])
-  @@index([tenantId, storeId, loyaltyTier])
-  @@index([tenantId, storeId, phone])
-  @@index([tenantId, storeId, dateOfBirth])
+  @@index([tenantId, segment])
+  @@index([tenantId, loyaltyTier])
+  @@index([tenantId, phone])
+  @@index([tenantId, dateOfBirth])
   @@map("customers")
 }
 
@@ -1297,10 +1299,11 @@ enum AccountingTransactionStatus {
 
 model FiscalConfig {
   id          String  @id @default(uuid()) @db.Uuid
-  tenantId    String  @map("tenant_id") @db.Uuid
+  tenantId    String  @unique @map("tenant_id") @db.Uuid
   tenant      Tenant  @relation(fields: [tenantId], references: [id])
-  storeId     String  @map("store_id") @db.Uuid
-  store       Store   @relation(fields: [storeId], references: [id])
+  // storeId is nullable — fiscal config belongs to the tenant, not a specific store
+  storeId     String? @map("store_id") @db.Uuid
+  store       Store?  @relation(fields: [storeId], references: [id])
 
   businessName           String     @map("business_name") @db.VarChar(255)
   tradeName              String?    @map("trade_name") @db.VarChar(255)
@@ -1349,8 +1352,7 @@ model FiscalConfig {
 
   invoices               Invoice[]
 
-  @@unique([tenantId, storeId])
-  @@index([tenantId, storeId])
+  @@index([tenantId])
   @@map("fiscal_config")
 }
 
@@ -1450,7 +1452,8 @@ model Invoice {
   items              InvoiceItem[]
   accountingTx       AccountingTransaction[]
 
-  @@unique([tenantId, storeId, invoiceNumber])
+  // Invoice number is unique per tenant (DIAN requirement — consecutive per NIT)
+  @@unique([tenantId, invoiceNumber])
   @@index([tenantId, storeId])
   @@index([saleId])
   @@index([customerId])

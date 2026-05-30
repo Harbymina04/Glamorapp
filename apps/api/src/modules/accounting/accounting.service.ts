@@ -1,10 +1,25 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getPaginationParams } from '../../common/utils/pagination';
 import { PaginatedResponse } from '../../common/dto/response.dto';
 import { CreateFiscalConfigDto, UpdateFiscalConfigDto } from './dto/fiscal-config.dto';
 import { CreateInvoiceDto } from './dto/invoice.dto';
 import { CreateTransactionDto } from './dto/transaction.dto';
+
+// ─── Permission helpers ──────────────────────────────────────────
+// Roles that have full accounting access (tenant-level)
+const TENANT_LEVEL_ROLES = ['superadmin', 'tenant_admin'];
+
+// Roles that have store-level accounting access (read invoices + transactions of their store)
+const STORE_LEVEL_ROLES = ['store_admin'];
+
+export function isTenantAdmin(role: string) {
+  return TENANT_LEVEL_ROLES.includes(role);
+}
+
+export function hasAccountingAccess(role: string) {
+  return [...TENANT_LEVEL_ROLES, ...STORE_LEVEL_ROLES].includes(role);
+}
 
 @Injectable()
 export class AccountingService {
@@ -14,66 +29,82 @@ export class AccountingService {
   // DASHBOARD
   // ────────────────────────────────────────────────────────────
 
-  async getDashboard(tenantId: string, storeId: string) {
+  async getDashboard(tenantId: string, storeId: string | null, role: string) {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const yearStart = new Date(now.getFullYear(), 0, 1);
 
-    const [
-      totalIncome,
-      totalExpenses,
-      pendingInvoices,
-      approvedInvoices,
-      recentTransactions,
-      taxSummary,
-    ] = await Promise.all([
-      this.prisma.accountingTransaction.aggregate({
-        where: { tenantId, storeId, transactionType: 'income', transactionDate: { gte: monthStart }, status: { not: 'voided' } },
-        _sum: { netAmount: true },
-      }),
-      this.prisma.accountingTransaction.aggregate({
-        where: { tenantId, storeId, transactionType: 'expense', transactionDate: { gte: monthStart }, status: { not: 'voided' } },
-        _sum: { netAmount: true },
-      }),
-      this.prisma.invoice.count({ where: { tenantId, storeId, status: 'pending_dian' } }),
-      this.prisma.invoice.count({ where: { tenantId, storeId, status: 'approved' } }),
-      this.prisma.accountingTransaction.findMany({
-        where: { tenantId, storeId },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-      }),
-      this.prisma.accountingTransaction.groupBy({
-        by: ['transactionType'],
-        where: { tenantId, storeId, transactionDate: { gte: yearStart }, status: { not: 'voided' } },
-        _sum: { ivaAmount: true, retefuenteAmount: true, reteIcaAmount: true, icaAmount: true },
-      }),
-    ]);
+    // store_admin: only sees their store's data
+    // tenant_admin: sees all stores consolidated
+    const txWhere: any = {
+      tenantId,
+      transactionDate: { gte: monthStart },
+      status: { not: 'voided' },
+      ...(isTenantAdmin(role) ? {} : { storeId: storeId ?? undefined }),
+    };
+
+    const [totalIncome, totalExpenses, pendingInvoices, approvedInvoices, recentTransactions] =
+      await Promise.all([
+        this.prisma.accountingTransaction.aggregate({
+          where: { ...txWhere, transactionType: 'income' },
+          _sum: { netAmount: true },
+        }),
+        this.prisma.accountingTransaction.aggregate({
+          where: { ...txWhere, transactionType: 'expense' },
+          _sum: { netAmount: true },
+        }),
+        this.prisma.invoice.count({
+          where: {
+            tenantId,
+            status: 'pending_dian',
+            ...(isTenantAdmin(role) ? {} : { storeId: storeId ?? undefined }),
+          },
+        }),
+        this.prisma.invoice.count({
+          where: {
+            tenantId,
+            status: 'approved',
+            ...(isTenantAdmin(role) ? {} : { storeId: storeId ?? undefined }),
+          },
+        }),
+        this.prisma.accountingTransaction.findMany({
+          where: { tenantId, ...(isTenantAdmin(role) ? {} : { storeId: storeId ?? undefined }) },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        }),
+      ]);
 
     const income = Number(totalIncome._sum.netAmount || 0);
     const expenses = Number(totalExpenses._sum.netAmount || 0);
 
     return {
+      scope: isTenantAdmin(role) ? 'tenant' : 'store',
       monthIncome: income,
       monthExpenses: expenses,
       monthProfit: income - expenses,
       pendingInvoices,
       approvedInvoices,
       recentTransactions,
-      taxSummary,
     };
   }
 
   // ────────────────────────────────────────────────────────────
-  // FISCAL CONFIG
+  // FISCAL CONFIG — tenant level only
   // ────────────────────────────────────────────────────────────
 
-  async getFiscalConfig(tenantId: string, storeId: string) {
-    return this.prisma.fiscalConfig.findUnique({
-      where: { tenantId_storeId: { tenantId, storeId } },
+  async getFiscalConfig(tenantId: string, role: string) {
+    if (!isTenantAdmin(role)) {
+      throw new ForbiddenException('Only tenant admins can access fiscal configuration');
+    }
+    return this.prisma.fiscalConfig.findFirst({
+      where: { tenantId },
     });
   }
 
-  async upsertFiscalConfig(tenantId: string, storeId: string, dto: CreateFiscalConfigDto | UpdateFiscalConfigDto) {
+  async upsertFiscalConfig(tenantId: string, role: string, dto: CreateFiscalConfigDto | UpdateFiscalConfigDto) {
+    if (!isTenantAdmin(role)) {
+      throw new ForbiddenException('Only tenant admins can modify fiscal configuration');
+    }
+
     const data: any = {
       businessName: dto.businessName,
       tradeName: dto.tradeName,
@@ -108,15 +139,16 @@ export class AccountingService {
       dnPrefix: dto.dnPrefix,
     };
 
-    return this.prisma.fiscalConfig.upsert({
-      where: { tenantId_storeId: { tenantId, storeId } },
-      create: { tenantId, storeId, ...data },
-      update: data,
-    });
+    // Use findFirst + create/update until Prisma client regenerates with new unique key
+    const existing = await this.prisma.fiscalConfig.findFirst({ where: { tenantId } });
+    if (existing) {
+      return this.prisma.fiscalConfig.update({ where: { id: existing.id }, data });
+    }
+    return this.prisma.fiscalConfig.create({ data: { tenantId, ...data } });
   }
 
   // ────────────────────────────────────────────────────────────
-  // TAX RATES
+  // TAX RATES — tenant level
   // ────────────────────────────────────────────────────────────
 
   async getTaxRates(tenantId: string) {
@@ -126,17 +158,20 @@ export class AccountingService {
     });
   }
 
-  async createTaxRate(tenantId: string, dto: any) {
+  async createTaxRate(tenantId: string, role: string, dto: any) {
+    if (!isTenantAdmin(role)) throw new ForbiddenException('Only tenant admins can manage tax rates');
     return this.prisma.taxRate.create({ data: { tenantId, ...dto } });
   }
 
-  async updateTaxRate(tenantId: string, id: string, dto: any) {
+  async updateTaxRate(tenantId: string, role: string, id: string, dto: any) {
+    if (!isTenantAdmin(role)) throw new ForbiddenException('Only tenant admins can manage tax rates');
     const rate = await this.prisma.taxRate.findFirst({ where: { id, tenantId } });
     if (!rate) throw new NotFoundException('Tax rate not found');
     return this.prisma.taxRate.update({ where: { id }, data: dto });
   }
 
-  async deleteTaxRate(tenantId: string, id: string) {
+  async deleteTaxRate(tenantId: string, role: string, id: string) {
+    if (!isTenantAdmin(role)) throw new ForbiddenException('Only tenant admins can manage tax rates');
     const rate = await this.prisma.taxRate.findFirst({ where: { id, tenantId } });
     if (!rate) throw new NotFoundException('Tax rate not found');
     return this.prisma.taxRate.update({ where: { id }, data: { isActive: false } });
@@ -144,52 +179,57 @@ export class AccountingService {
 
   // ────────────────────────────────────────────────────────────
   // INVOICES
+  // store_admin: sees only their store's invoices
+  // tenant_admin: sees all invoices, can filter by store
   // ────────────────────────────────────────────────────────────
 
-  async getInvoices(tenantId: string, storeId: string, query: any) {
+  async getInvoices(tenantId: string, storeId: string | null, role: string, query: any) {
     const { skip, take } = getPaginationParams(query.page || 1, query.limit || 20);
+
+    // store_admin is locked to their store; tenant_admin can optionally filter
+    const storeFilter = isTenantAdmin(role)
+      ? (query.storeId ? { storeId: query.storeId } : {})
+      : { storeId };
+
     const where: any = {
       tenantId,
-      storeId,
+      ...storeFilter,
       ...(query.status ? { status: query.status } : {}),
       ...(query.invoiceType ? { invoiceType: query.invoiceType } : {}),
       ...(query.customerId ? { customerId: query.customerId } : {}),
       ...(query.from ? { createdAt: { gte: new Date(query.from) } } : {}),
     };
+
     const [data, total] = await Promise.all([
-      this.prisma.invoice.findMany({
-        where,
-        skip,
-        take,
-        include: { items: true },
-        orderBy: { createdAt: 'desc' },
-      }),
+      this.prisma.invoice.findMany({ where, skip, take, include: { items: true }, orderBy: { createdAt: 'desc' } }),
       this.prisma.invoice.count({ where }),
     ]);
     return new PaginatedResponse(data, total, query.page || 1, query.limit || 20);
   }
 
-  async getInvoice(tenantId: string, storeId: string, id: string) {
+  async getInvoice(tenantId: string, storeId: string | null, role: string, id: string) {
+    const storeFilter = isTenantAdmin(role) ? {} : { storeId: storeId ?? undefined };
     const inv = await this.prisma.invoice.findFirst({
-      where: { id, tenantId, storeId },
+      where: { id, tenantId, ...storeFilter },
       include: { items: true },
     });
     if (!inv) throw new NotFoundException('Invoice not found');
     return inv;
   }
 
-  async createInvoice(tenantId: string, storeId: string, userId: string, dto: CreateInvoiceDto) {
-    // Get fiscal config for numbering
-    const config = await this.prisma.fiscalConfig.findUnique({
-      where: { tenantId_storeId: { tenantId, storeId } },
-    });
-    if (!config) throw new BadRequestException('Fiscal configuration not found. Please configure fiscal data first.');
+  async createInvoice(tenantId: string, storeId: string, userId: string, role: string, dto: CreateInvoiceDto) {
+    // Get fiscal config — tenant level
+    const config = await this.prisma.fiscalConfig.findFirst({ where: { tenantId } });
+    if (!config) {
+      throw new BadRequestException('Fiscal configuration not found. A tenant admin must configure fiscal data first.');
+    }
 
     // Calculate totals from items
     let subtotal = 0;
     let discountAmount = 0;
     let ivaAmount = 0;
     let retefuenteAmount = 0;
+
     const computedItems = dto.items.map((item) => {
       const itemSubtotal = item.quantity * item.unitPrice;
       const itemDiscount = itemSubtotal * ((item.discountRate ?? 0) / 100);
@@ -213,7 +253,7 @@ export class AccountingService {
         unitMeasure: item.unitMeasure,
         unitPrice: item.unitPrice,
         discountRate: item.discountRate ?? 0,
-        discountAmount: itemDiscount,
+        discountAmount: itemSubtotal * ((item.discountRate ?? 0) / 100),
         subtotal: taxBase,
         ivaRate: item.ivaRate,
         ivaAmount: itemIva,
@@ -227,10 +267,9 @@ export class AccountingService {
     });
 
     const taxBase = subtotal - discountAmount;
-    const totalTax = ivaAmount;
     const total = taxBase + ivaAmount - retefuenteAmount;
 
-    // Determine consecutive and invoice number
+    // Determine consecutive — ALWAYS from tenant-level config
     const isCredit = dto.invoiceType === 'credit_note';
     const isDebit = dto.invoiceType === 'debit_note';
     let consecutive: number;
@@ -249,12 +288,11 @@ export class AccountingService {
 
     const invoiceNumber = `${prefix ?? ''}${consecutive}`;
 
-    // Create invoice with items
     const invoice = await this.prisma.$transaction(async (tx) => {
       const inv = await tx.invoice.create({
         data: {
           tenantId,
-          storeId,
+          storeId,    // storeId = which store generated this invoice (for reporting)
           saleId: dto.saleId,
           purchaseId: dto.purchaseId,
           invoiceType: dto.invoiceType,
@@ -278,7 +316,7 @@ export class AccountingService {
           discountAmount,
           taxBase,
           ivaAmount,
-          totalTax,
+          totalTax: ivaAmount,
           total,
           retefuenteAmount,
           paymentMethodCode: dto.paymentMethodCode,
@@ -293,7 +331,7 @@ export class AccountingService {
         include: { items: true },
       });
 
-      // Update consecutive counter
+      // Update tenant-level consecutive counter
       if (isCredit) {
         await tx.fiscalConfig.update({ where: { id: config.id }, data: { cnCurrentNumber: consecutive } });
       } else if (isDebit) {
@@ -308,35 +346,38 @@ export class AccountingService {
     return invoice;
   }
 
-  async updateInvoiceStatus(tenantId: string, storeId: string, id: string, status: string, extra?: any) {
-    await this.getInvoice(tenantId, storeId, id);
-    return this.prisma.invoice.update({
-      where: { id },
-      data: { status: status as any, ...extra },
-    });
+  async updateInvoiceStatus(tenantId: string, storeId: string | null, role: string, id: string, status: string, extra?: any) {
+    await this.getInvoice(tenantId, storeId, role, id);
+    return this.prisma.invoice.update({ where: { id }, data: { status: status as any, ...extra } });
   }
 
-  async cancelInvoice(tenantId: string, storeId: string, id: string) {
-    const inv = await this.getInvoice(tenantId, storeId, id);
+  async cancelInvoice(tenantId: string, storeId: string | null, role: string, id: string) {
+    const inv = await this.getInvoice(tenantId, storeId, role, id);
     if (inv.status === 'cancelled') throw new BadRequestException('Invoice already cancelled');
     return this.prisma.invoice.update({ where: { id }, data: { status: 'cancelled' } });
   }
 
   // ────────────────────────────────────────────────────────────
   // ACCOUNTING TRANSACTIONS
+  // store_admin: only their store | tenant_admin: all or filtered
   // ────────────────────────────────────────────────────────────
 
-  async getTransactions(tenantId: string, storeId: string, query: any) {
+  async getTransactions(tenantId: string, storeId: string | null, role: string, query: any) {
     const { skip, take } = getPaginationParams(query.page || 1, query.limit || 20);
+    const storeFilter = isTenantAdmin(role)
+      ? (query.storeId ? { storeId: query.storeId } : {})
+      : { storeId };
+
     const where: any = {
       tenantId,
-      storeId,
+      ...storeFilter,
       ...(query.type ? { transactionType: query.type } : {}),
       ...(query.category ? { category: query.category } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.from ? { transactionDate: { gte: new Date(query.from) } } : {}),
       ...(query.to ? { transactionDate: { lte: new Date(query.to) } } : {}),
     };
+
     const [data, total] = await Promise.all([
       this.prisma.accountingTransaction.findMany({ where, skip, take, orderBy: { transactionDate: 'desc' } }),
       this.prisma.accountingTransaction.count({ where }),
@@ -344,8 +385,9 @@ export class AccountingService {
     return new PaginatedResponse(data, total, query.page || 1, query.limit || 20);
   }
 
-  async getTransaction(tenantId: string, storeId: string, id: string) {
-    const tx = await this.prisma.accountingTransaction.findFirst({ where: { id, tenantId, storeId } });
+  async getTransaction(tenantId: string, storeId: string | null, role: string, id: string) {
+    const storeFilter = isTenantAdmin(role) ? {} : { storeId: storeId ?? undefined };
+    const tx = await this.prisma.accountingTransaction.findFirst({ where: { id, tenantId, ...storeFilter } });
     if (!tx) throw new NotFoundException('Transaction not found');
     return tx;
   }
@@ -380,13 +422,14 @@ export class AccountingService {
     });
   }
 
-  async voidTransaction(tenantId: string, storeId: string, id: string) {
-    await this.getTransaction(tenantId, storeId, id);
+  async voidTransaction(tenantId: string, storeId: string | null, role: string, id: string) {
+    await this.getTransaction(tenantId, storeId, role, id);
     return this.prisma.accountingTransaction.update({ where: { id }, data: { status: 'voided' } });
   }
 
-  async reconcileTransaction(tenantId: string, storeId: string, id: string, userId: string) {
-    await this.getTransaction(tenantId, storeId, id);
+  async reconcileTransaction(tenantId: string, storeId: string | null, role: string, id: string, userId: string) {
+    if (!isTenantAdmin(role)) throw new ForbiddenException('Only tenant admins can reconcile transactions');
+    await this.getTransaction(tenantId, storeId, role, id);
     return this.prisma.accountingTransaction.update({
       where: { id },
       data: { isReconciled: true, reconciledAt: new Date(), reconciledBy: userId },
@@ -394,31 +437,19 @@ export class AccountingService {
   }
 
   // ────────────────────────────────────────────────────────────
-  // TAX DECLARATIONS
+  // TAX SUMMARY & DECLARATIONS — tenant admin only
   // ────────────────────────────────────────────────────────────
 
-  async getTaxDeclarations(tenantId: string, query: any) {
-    const where: any = {
-      tenantId,
-      ...(query.taxType ? { taxType: query.taxType } : {}),
-      ...(query.year ? { periodYear: parseInt(query.year) } : {}),
-    };
-    return this.prisma.taxDeclaration.findMany({ where, orderBy: [{ periodYear: 'desc' }, { periodMonth: 'desc' }] });
-  }
+  async getTaxSummary(tenantId: string, storeId: string | null, role: string, year: number, month?: number) {
+    if (!isTenantAdmin(role)) throw new ForbiddenException('Only tenant admins can view tax summaries');
 
-  async getTaxSummary(tenantId: string, storeId: string, year: number, month?: number) {
     const now = new Date();
     const y = year || now.getFullYear();
     const dateFrom = month ? new Date(y, month - 1, 1) : new Date(y, 0, 1);
     const dateTo = month ? new Date(y, month, 0) : new Date(y, 11, 31);
 
     const agg = await this.prisma.accountingTransaction.aggregate({
-      where: {
-        tenantId,
-        storeId,
-        status: { not: 'voided' },
-        transactionDate: { gte: dateFrom, lte: dateTo },
-      },
+      where: { tenantId, status: { not: 'voided' }, transactionDate: { gte: dateFrom, lte: dateTo } },
       _sum: {
         ivaAmount: true,
         retefuenteAmount: true,
@@ -428,6 +459,13 @@ export class AccountingService {
         grossAmount: true,
         netAmount: true,
       },
+    });
+
+    // Per-store breakdown for tenant_admin
+    const byStore = await this.prisma.accountingTransaction.groupBy({
+      by: ['storeId'],
+      where: { tenantId, status: { not: 'voided' }, transactionDate: { gte: dateFrom, lte: dateTo } },
+      _sum: { grossAmount: true, netAmount: true, ivaAmount: true },
     });
 
     return {
@@ -441,10 +479,22 @@ export class AccountingService {
         reteIca: Number(agg._sum.reteIcaAmount || 0),
         ica: Number(agg._sum.icaAmount || 0),
       },
+      byStore,
     };
   }
 
-  async createTaxDeclaration(tenantId: string, dto: any) {
+  async getTaxDeclarations(tenantId: string, role: string, query: any) {
+    if (!isTenantAdmin(role)) throw new ForbiddenException('Only tenant admins can view tax declarations');
+    const where: any = {
+      tenantId,
+      ...(query.taxType ? { taxType: query.taxType } : {}),
+      ...(query.year ? { periodYear: parseInt(query.year) } : {}),
+    };
+    return this.prisma.taxDeclaration.findMany({ where, orderBy: [{ periodYear: 'desc' }, { periodMonth: 'desc' }] });
+  }
+
+  async createTaxDeclaration(tenantId: string, role: string, dto: any) {
+    if (!isTenantAdmin(role)) throw new ForbiddenException('Only tenant admins can manage tax declarations');
     return this.prisma.taxDeclaration.upsert({
       where: {
         tenantId_taxType_periodYear_periodMonth: {
@@ -461,12 +511,18 @@ export class AccountingService {
 
   // ────────────────────────────────────────────────────────────
   // FINANCIAL REPORTS
+  // tenant_admin: all stores or filtered | store_admin: own store
   // ────────────────────────────────────────────────────────────
 
-  async getIncomeStatement(tenantId: string, storeId: string, from: string, to: string) {
+  async getIncomeStatement(tenantId: string, storeId: string | null, role: string, from: string, to: string, filterStoreId?: string) {
     const dateFrom = new Date(from);
     const dateTo = new Date(to);
-    const where = { tenantId, storeId, status: { not: 'voided' } as any, transactionDate: { gte: dateFrom, lte: dateTo } };
+
+    const storeFilter = isTenantAdmin(role)
+      ? (filterStoreId ? { storeId: filterStoreId } : {})
+      : { storeId: storeId ?? undefined };
+
+    const where = { tenantId, status: { not: 'voided' } as any, transactionDate: { gte: dateFrom, lte: dateTo }, ...storeFilter };
 
     const [income, expenses, taxes] = await Promise.all([
       this.prisma.accountingTransaction.aggregate({ where: { ...where, transactionType: 'income' }, _sum: { grossAmount: true, netAmount: true } }),
@@ -479,14 +535,9 @@ export class AccountingService {
 
     return {
       period: { from, to },
-      income: {
-        gross: Number(income._sum.grossAmount || 0),
-        net: totalIncome,
-      },
-      expenses: {
-        gross: Number(expenses._sum.grossAmount || 0),
-        net: totalExpenses,
-      },
+      scope: isTenantAdmin(role) ? (filterStoreId ? 'store' : 'tenant') : 'store',
+      income: { gross: Number(income._sum.grossAmount || 0), net: totalIncome },
+      expenses: { gross: Number(expenses._sum.grossAmount || 0), net: totalExpenses },
       grossProfit: totalIncome - totalExpenses,
       taxes: {
         iva: Number(taxes._sum.ivaAmount || 0),
@@ -498,13 +549,20 @@ export class AccountingService {
     };
   }
 
-  async getCashFlow(tenantId: string, storeId: string, from: string, to: string) {
-    const dateFrom = new Date(from);
-    const dateTo = new Date(to);
+  async getCashFlow(tenantId: string, storeId: string | null, role: string, from: string, to: string, filterStoreId?: string) {
+    const storeFilter = isTenantAdmin(role)
+      ? (filterStoreId ? { storeId: filterStoreId } : {})
+      : { storeId: storeId ?? undefined };
+
     const txs = await this.prisma.accountingTransaction.findMany({
-      where: { tenantId, storeId, status: { not: 'voided' }, transactionDate: { gte: dateFrom, lte: dateTo } },
+      where: {
+        tenantId,
+        status: { not: 'voided' },
+        transactionDate: { gte: new Date(from), lte: new Date(to) },
+        ...storeFilter,
+      },
       orderBy: { transactionDate: 'asc' },
-      select: { transactionDate: true, transactionType: true, netAmount: true, category: true, description: true },
+      select: { transactionDate: true, transactionType: true, netAmount: true, category: true, description: true, storeId: true },
     });
 
     let balance = 0;
@@ -518,14 +576,12 @@ export class AccountingService {
   }
 
   // ────────────────────────────────────────────────────────────
-  // AUTO-REGISTER from Sales/Expenses/Purchases (internal)
+  // AUTO-REGISTER from Sales/Expenses (internal)
   // ────────────────────────────────────────────────────────────
 
   async registerSaleTransaction(tenantId: string, storeId: string, saleId: string, userId: string) {
     const sale = await this.prisma.sale.findFirst({ where: { id: saleId, tenantId, storeId } });
     if (!sale) return;
-
-    // Check if already registered
     const existing = await this.prisma.accountingTransaction.findFirst({ where: { saleId } });
     if (existing) return existing;
 
@@ -551,7 +607,6 @@ export class AccountingService {
   async registerExpenseTransaction(tenantId: string, storeId: string, expenseId: string, userId: string) {
     const expense = await this.prisma.expense.findFirst({ where: { id: expenseId, tenantId, storeId } });
     if (!expense) return;
-
     const existing = await this.prisma.accountingTransaction.findFirst({ where: { expenseId } });
     if (existing) return existing;
 

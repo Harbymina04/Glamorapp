@@ -80,7 +80,8 @@ type Tab = 'resumen' | 'facturas' | 'transacciones' | 'impuestos' | 'configuraci
 
 // ─── Page ──────────────────────────────────────────────────────────
 export default function AccountingPage() {
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
+  const isTenantAdmin = user?.role === 'tenant_admin' || user?.role === 'superadmin';
   const [activeTab, setActiveTab] = useState<Tab>('resumen');
   const [loading, setLoading] = useState(false);
 
@@ -113,7 +114,7 @@ export default function AccountingPage() {
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.get('/accounting/dashboard');
+      const data = await api.get('/accounting/dashboard', { token: token! });
       setDashboard(data);
     } catch { /* ignore */ }
     finally { setLoading(false); }
@@ -123,7 +124,7 @@ export default function AccountingPage() {
     try {
       const params = new URLSearchParams({ page: String(invoicePage), limit: '20' });
       if (invoiceFilter) params.set('status', invoiceFilter);
-      const data = await api.get(`/accounting/invoices?${params}`);
+      const data = await api.get(`/accounting/invoices?${params}`, { token: token! });
       setInvoices(data.data || []);
       setInvoiceTotal(data.total || 0);
     } catch { /* ignore */ }
@@ -133,7 +134,7 @@ export default function AccountingPage() {
     try {
       const params = new URLSearchParams({ page: String(txPage), limit: '20' });
       if (txFilter) params.set('type', txFilter);
-      const data = await api.get(`/accounting/transactions?${params}`);
+      const data = await api.get(`/accounting/transactions?${params}`, { token: token! });
       setTransactions(data.data || []);
       setTxTotal(data.total || 0);
     } catch { /* ignore */ }
@@ -141,14 +142,14 @@ export default function AccountingPage() {
 
   const loadTaxSummary = useCallback(async () => {
     try {
-      const data = await api.get(`/accounting/tax-summary?year=${taxYear}&month=${taxMonth}`);
+      const data = await api.get(`/accounting/tax-summary?year=${taxYear}&month=${taxMonth}`, { token: token! });
       setTaxSummary(data);
     } catch { /* ignore */ }
   }, [taxYear, taxMonth]);
 
   const loadFiscalConfig = useCallback(async () => {
     try {
-      const data = await api.get('/accounting/fiscal-config');
+      const data = await api.get('/accounting/fiscal-config', { token: token! });
       setFiscalConfig(data);
       if (data) setFiscalForm(data);
     } catch { /* ignore */ }
@@ -164,21 +165,26 @@ export default function AccountingPage() {
 
   const handleSaveFiscalConfig = async () => {
     setSavingFiscal(true);
+    // Remove read-only fields before sending
+    const { id, createdAt, updatedAt, tenantId, storeId, isActive, currentInvoiceNumber, cnCurrentNumber, dnCurrentNumber, tenant, store, invoices, ...payload } = fiscalForm;
     try {
-      await api.put('/accounting/fiscal-config', fiscalForm);
+      await api.put('/accounting/fiscal-config', payload, { token: token! });
       setFiscalSaved(true);
       setTimeout(() => setFiscalSaved(false), 3000);
     } catch { /* ignore */ }
     finally { setSavingFiscal(false); }
   };
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+  // Tabs available depend on role:
+  // store_admin: resumen, facturas, transacciones
+  // tenant_admin: all tabs
+  const tabs: { key: Tab; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
     { key: 'resumen', label: 'Resumen', icon: <BarChart3 className="w-4 h-4" /> },
     { key: 'facturas', label: 'Facturas', icon: <FileText className="w-4 h-4" /> },
     { key: 'transacciones', label: 'Transacciones', icon: <CreditCard className="w-4 h-4" /> },
-    { key: 'impuestos', label: 'Impuestos', icon: <Receipt className="w-4 h-4" /> },
-    { key: 'configuracion', label: 'Configuración', icon: <Settings className="w-4 h-4" /> },
-  ];
+    { key: 'impuestos', label: 'Impuestos', icon: <Receipt className="w-4 h-4" />, adminOnly: true },
+    { key: 'configuracion', label: 'Configuración fiscal', icon: <Settings className="w-4 h-4" />, adminOnly: true },
+  ].filter(t => !t.adminOnly || isTenantAdmin);
 
   return (
     <div className="space-y-6">
