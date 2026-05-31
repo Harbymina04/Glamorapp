@@ -346,6 +346,12 @@ export class AccountingService {
       return inv;
     });
 
+    // Auto-send to Factus if configured (fire-and-forget — never blocks response)
+    if (config.feProvider === 'factus') {
+      this.sendInvoiceToFactus(invoice.id, tenantId)
+        .catch(err => console.warn(`Factus send failed for invoice ${invoice.id}: ${err.message}`));
+    }
+
     return invoice;
   }
 
@@ -1015,42 +1021,338 @@ export class AccountingService {
   }
 
   private async pingFeProvider(provider: string, apiKey: string, apiSecret: string | null, environment: string): Promise<{ ok: boolean; message: string }> {
-    // Each provider has its own test endpoint
-    const testUrls: Record<string, string> = {
-      siigo: environment === 'production'
-        ? 'https://api.siigo.com/auth'
-        : 'https://api.siigo.com/auth',
-      alegra: 'https://api.alegra.com/api/v1/ping',
-      facturama: environment === 'production'
-        ? 'https://api.facturama.mx/api-lite/companies/info'
-        : 'https://apisandbox.facturama.mx/api-lite/companies/info',
-      custom: '',
-    };
-
+    if (provider === 'factus') {
+      return this.testFactusConnection(apiKey, apiSecret ?? '', environment);
+    }
     if (provider === 'custom') {
       return { ok: true, message: 'Custom provider — connection not testable automatically' };
     }
+
+    const testUrls: Record<string, string> = {
+      siigo:     'https://api.siigo.com/auth',
+      alegra:    'https://api.alegra.com/api/v1/ping',
+      facturama: environment === 'production'
+        ? 'https://api.facturama.mx/api-lite/companies/info'
+        : 'https://apisandbox.facturama.mx/api-lite/companies/info',
+    };
 
     const url = testUrls[provider];
     if (!url) return { ok: false, message: `Unknown provider: ${provider}` };
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-
-    if (provider === 'alegra') {
-      headers['Authorization'] = `Basic ${Buffer.from(`${apiKey}:${apiSecret ?? ''}`).toString('base64')}`;
-    } else if (provider === 'siigo') {
-      headers['Authorization'] = `Basic ${Buffer.from(`${apiKey}:${apiSecret ?? ''}`).toString('base64')}`;
-    } else if (provider === 'facturama') {
+    if (provider === 'alegra' || provider === 'siigo' || provider === 'facturama') {
       headers['Authorization'] = `Basic ${Buffer.from(`${apiKey}:${apiSecret ?? ''}`).toString('base64')}`;
     }
 
     const res = await fetch(url, { method: 'GET', headers, signal: AbortSignal.timeout(8000) });
     if (res.ok || res.status === 401) {
-      // 401 means the server responded — credentials may be wrong but connection works
       return res.ok
         ? { ok: true, message: 'Conexión exitosa con el proveedor' }
         : { ok: false, message: 'Credenciales inválidas — servidor alcanzable' };
     }
     return { ok: false, message: `Error del servidor: ${res.status}` };
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // FACTUS — Full integration with DIAN FE provider
+  // Docs: https://developers.factus.com.co
+  // ────────────────────────────────────────────────────────────
+
+  /** Base URL depending on environment */
+  private factusBaseUrl(environment: string) {
+    return environment === 'production'
+      ? 'https://api.factus.com.co'
+      : 'https://api-sandbox.factus.com.co';
+  }
+
+  /**
+   * OAuth2 password-grant token.
+   * feProviderApiKey    = client_id
+   * feProviderApiSecret = client_secret
+   * feProviderConfig.username = Factus account email
+   * feProviderConfig.password = Factus account password
+   */
+  private async getFactusToken(config: any): Promise<string> {
+    const baseUrl  = this.factusBaseUrl(config.feEnvironment ?? 'sandbox');
+    const cfg      = (config.feProviderConfig as any) ?? {};
+    const body     = new URLSearchParams({
+      grant_type:    'password',
+      client_id:     config.feProviderApiKey     ?? '',
+      client_secret: config.feProviderApiSecret  ?? '',
+      username:      cfg.username                ?? '',
+      password:      cfg.password                ?? '',
+    });
+
+    const res = await fetch(`${baseUrl}/oauth/token`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:    body.toString(),
+      signal:  AbortSignal.timeout(10000),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new BadRequestException(`Factus auth error ${res.status}: ${err}`);
+    }
+
+    const data = await res.json() as any;
+    if (!data.access_token) throw new BadRequestException('Factus did not return an access_token');
+    return data.access_token as string;
+  }
+
+  /** Test Factus connection by obtaining a token and calling /v1/companies */
+  private async testFactusConnection(clientId: string, clientSecret: string, environment: string): Promise<{ ok: boolean; message: string }> {
+    try {
+      const baseUrl = this.factusBaseUrl(environment);
+      const body    = new URLSearchParams({
+        grant_type:    'password',
+        client_id:     clientId,
+        client_secret: clientSecret,
+        username:      '',
+        password:      '',
+      });
+      const res = await fetch(`${baseUrl}/oauth/token`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body:    body.toString(),
+        signal:  AbortSignal.timeout(8000),
+      });
+      if (res.ok) return { ok: true, message: 'Conexión con Factus exitosa' };
+      if (res.status === 401) return { ok: false, message: 'Credenciales Factus inválidas (client_id / client_secret)' };
+      return { ok: false, message: `Factus respondió con error ${res.status}` };
+    } catch (e: any) {
+      return { ok: false, message: `No se pudo conectar con Factus: ${e.message}` };
+    }
+  }
+
+  /**
+   * Map a Glamorapp Invoice + FiscalConfig to Factus /v2/bills/validate payload.
+   * Reference: https://developers.factus.com.co/facturas/descripcion-de-campos
+   */
+  private buildFactusPayload(invoice: any, fiscalConfig: any): Record<string, any> {
+    const cfg = (fiscalConfig.feProviderConfig as any) ?? {};
+
+    // Determine numbering range ID from config (set in FE provider config)
+    const numberingRangeId = cfg.numberingRangeId ?? null;
+
+    // Map payment form: '1' = Contado, '2' = Crédito
+    const paymentForm = invoice.paymentMeansCode === '2' ? '2' : '1';
+
+    // Map payment method to Factus codes
+    const methodMap: Record<string, string> = {
+      '10': '10',  // Efectivo
+      '42': '42',  // Transferencia
+      '48': '48',  // Tarjeta débito
+      '49': '49',  // Tarjeta crédito
+      '71': '71',  // Nequi / Daviplata
+      '20': '20',  // Cheque
+    };
+    const paymentMethodCode = methodMap[invoice.paymentMethodCode ?? '10'] ?? '10';
+
+    return {
+      numbering_range_id: numberingRangeId,
+      reference_code:     invoice.invoiceNumber,
+      observation:        invoice.notes ?? undefined,
+      payment_details: [{
+        payment_form:        paymentForm,
+        payment_method_code: paymentMethodCode,
+        amount:              String(Number(invoice.total).toFixed(2)),
+        due_date:            invoice.dueDate
+          ? new Date(invoice.dueDate).toISOString().split('T')[0]
+          : undefined,
+      }],
+      // Establishment from fiscal config
+      establishment: {
+        address:           fiscalConfig.fiscalAddress  ?? '',
+        phone_number:      fiscalConfig.fiscalPhone    ?? '',
+        email:             fiscalConfig.fiscalEmail    ?? '',
+        municipality_code: fiscalConfig.cityCode       ?? '001',
+      },
+      // Customer / Receiver
+      customer: {
+        identification_document_code: this.mapIdTypeToFactus(invoice.receiverIdType ?? 'cc'),
+        identification:               invoice.receiverIdNumber ?? '222222222222',
+        dv:                           invoice.receiverDv       ?? undefined,
+        legal_organization_code:      invoice.receiverIdType === 'nit' ? '1' : '2',
+        tribute_code:                 this.mapTaxRegimeToFactus(invoice.receiverTaxRegime ?? 'simplificado'),
+        company:                      invoice.receiverIdType === 'nit' ? invoice.receiverName : undefined,
+        names:                        invoice.receiverIdType !== 'nit' ? invoice.receiverName : undefined,
+        address:                      invoice.receiverAddress   ?? undefined,
+        email:                        invoice.receiverEmail     ?? undefined,
+        phone:                        invoice.receiverPhone     ?? undefined,
+        municipality_code:            invoice.receiverCityCode  ?? '001',
+      },
+      // Line items
+      items: (invoice.items ?? []).map((item: any, idx: number) => ({
+        code_reference:  item.code || `ITEM-${idx + 1}`,
+        name:            item.description,
+        quantity:        Number(item.quantity),
+        discount_rate:   Number(item.discountRate ?? 0).toFixed(2),
+        price:           Number(item.unitPrice).toFixed(2),
+        unit_measure_id: this.mapUnitMeasureToFactus(item.unitMeasure ?? '94'),
+        standard_code_id: 1, // 01 = Código estándar del artículo (UNSPC)
+        is_excluded:     item.isIvaExcluded ? 1 : 0,
+        tribute_id:      this.mapIvaRateToFactusTribute(Number(item.ivaRate ?? 19)),
+        withheld_amount: Number(item.retefuenteAmount ?? 0).toFixed(2),
+      })),
+    };
+  }
+
+  /** Map Colombian ID type to Factus identification_document_code */
+  private mapIdTypeToFactus(idType: string): string {
+    const map: Record<string, string> = {
+      cc:         '13',  // Cédula de ciudadanía
+      nit:        '31',  // NIT
+      ce:         '22',  // Cédula de extranjería
+      pasaporte:  '41',  // Pasaporte
+      ti:         '12',  // Tarjeta de identidad
+    };
+    return map[idType?.toLowerCase()] ?? '13';
+  }
+
+  /** Map tax regime to Factus tribute_code */
+  private mapTaxRegimeToFactus(taxRegime: string): string {
+    if (taxRegime === 'responsable_iva')   return '01'; // Responsable de IVA
+    if (taxRegime === 'gran_contribuyente') return '01';
+    return 'ZZ'; // No responsable (simplificado)
+  }
+
+  /** Map unit measure code to Factus unit_measure_id */
+  private mapUnitMeasureToFactus(unitMeasure: string): number {
+    const map: Record<string, number> = {
+      '94': 70,   // Unidad — id 70 in Factus
+      '58': 886,  // Servicio — id 886 in Factus
+      'HUR': 356, // Hora
+      'KGM': 35,  // Kilogramo
+      'GRM': 32,  // Gramo
+      'LTR': 45,  // Litro
+      'MLT': 47,  // Mililitro
+    };
+    return map[unitMeasure] ?? 70;
+  }
+
+  /** Map IVA rate to Factus tribute_id */
+  private mapIvaRateToFactusTribute(ivaRate: number): number {
+    if (ivaRate === 19) return 1;   // IVA 19%
+    if (ivaRate === 5)  return 4;   // IVA 5%
+    if (ivaRate === 0)  return 15;  // No aplica / Excluido
+    return 1;
+  }
+
+  /**
+   * Send a draft invoice to Factus for DIAN validation.
+   * Called automatically after invoice creation when feProvider === 'factus'.
+   */
+  async sendInvoiceToFactus(invoiceId: string, tenantId: string): Promise<void> {
+    const [invoice, fiscalConfig] = await Promise.all([
+      this.prisma.invoice.findFirst({
+        where: { id: invoiceId, tenantId },
+        include: { items: true },
+      }),
+      this.prisma.fiscalConfig.findFirst({ where: { tenantId } }),
+    ]);
+
+    if (!invoice || !fiscalConfig) return;
+    if (fiscalConfig.feProvider !== 'factus') return;
+
+    const baseUrl = this.factusBaseUrl(fiscalConfig.feEnvironment ?? 'sandbox');
+
+    try {
+      // 1. Get OAuth token
+      const token   = await this.getFactusToken(fiscalConfig);
+      const payload = this.buildFactusPayload(invoice, fiscalConfig);
+
+      // 2. Send to Factus /v2/bills/validate
+      const res = await fetch(`${baseUrl}/v2/bills/validate`, {
+        method:  'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${token}`,
+          'Accept':        'application/json',
+        },
+        body:   JSON.stringify(payload),
+        signal: AbortSignal.timeout(30000),
+      });
+
+      const data = await res.json() as any;
+
+      if (res.ok && data.data) {
+        // 3a. Success — update invoice with CUFE and status
+        const bill = data.data;
+        await this.prisma.invoice.update({
+          where: { id: invoiceId },
+          data: {
+            status:           'approved',
+            cufe:             bill.cufe           ?? bill.cude ?? null,
+            dianValidatedAt:  new Date(),
+            xmlUrl:           bill.xml_file_base64 ? null : null, // store separately if needed
+            pdfUrl:           bill.pdf_file_base64 ? null : null,
+            dianResponse:     data,
+          },
+        });
+      } else {
+        // 3b. Rejected by Factus / DIAN
+        const errorMsg = data.message
+          ?? data.errors
+          ?? `Error ${res.status}`;
+        await this.prisma.invoice.update({
+          where: { id: invoiceId },
+          data: {
+            status:               'rejected',
+            dianRejectionReason:  typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg),
+            dianResponse:         data,
+          },
+        });
+      }
+    } catch (err: any) {
+      // Network / timeout error — mark as pending for retry
+      await this.prisma.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          status:              'pending_dian',
+          dianRejectionReason: `Error de conexión con Factus: ${err.message}`,
+        },
+      });
+    }
+  }
+
+  /**
+   * Resend a previously created invoice to Factus (manual retry from UI).
+   */
+  async resendInvoiceToFactus(invoiceId: string, tenantId: string, role: string): Promise<any> {
+    if (!isTenantAdmin(role)) throw new ForbiddenException('Only tenant admins can resend invoices to DIAN');
+    const invoice = await this.prisma.invoice.findFirst({ where: { id: invoiceId, tenantId } });
+    if (!invoice) throw new NotFoundException('Invoice not found');
+    await this.sendInvoiceToFactus(invoiceId, tenantId);
+    return this.prisma.invoice.findFirst({ where: { id: invoiceId } });
+  }
+
+  /**
+   * Download invoice PDF from Factus and return base64.
+   */
+  async downloadFactusPdf(invoiceId: string, tenantId: string): Promise<{ pdf: string; filename: string }> {
+    const [invoice, fiscalConfig] = await Promise.all([
+      this.prisma.invoice.findFirst({ where: { id: invoiceId, tenantId } }),
+      this.prisma.fiscalConfig.findFirst({ where: { tenantId } }),
+    ]);
+    if (!invoice || !fiscalConfig) throw new NotFoundException('Invoice or fiscal config not found');
+    if (fiscalConfig.feProvider !== 'factus') throw new BadRequestException('FE provider is not Factus');
+    if (!invoice.cufe) throw new BadRequestException('Invoice has no CUFE — send to DIAN first');
+
+    const baseUrl = this.factusBaseUrl(fiscalConfig.feEnvironment ?? 'sandbox');
+    const token   = await this.getFactusToken(fiscalConfig);
+
+    const res = await fetch(`${baseUrl}/v2/bills/download-pdf/${invoice.invoiceNumber}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      signal:  AbortSignal.timeout(15000),
+    });
+
+    if (!res.ok) throw new BadRequestException(`Factus PDF error: ${res.status}`);
+    const data = await res.json() as any;
+
+    return {
+      pdf:      data.data?.pdf_base64 ?? data.pdf_base64 ?? '',
+      filename: `factura-${invoice.invoiceNumber}.pdf`,
+    };
   }
 }

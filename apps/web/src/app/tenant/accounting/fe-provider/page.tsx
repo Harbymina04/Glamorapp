@@ -48,6 +48,23 @@ const PROVIDERS = [
     badge: null,
   },
   {
+    id: 'factus',
+    name: 'Factus',
+    description: 'Proveedor tecnológico colombiano habilitado por la DIAN. OAuth2 con sandbox incluido. Recomendado para Colombia.',
+    logo: '🇨🇴',
+    docs: 'https://developers.factus.com.co',
+    needsKey: true,
+    needsSecret: true,
+    keyLabel: 'Client ID',
+    secretLabel: 'Client Secret',
+    extraFields: [
+      { key: 'username', label: 'Email de tu cuenta Factus', type: 'text', placeholder: 'correo@empresa.com' },
+      { key: 'password', label: 'Contraseña de tu cuenta Factus', type: 'password', placeholder: '••••••••' },
+      { key: 'numberingRangeId', label: 'ID del rango de numeración DIAN', type: 'text', placeholder: 'Ej: 123 (ver en panel Factus)' },
+    ],
+    badge: 'Recomendado Colombia',
+  },
+  {
     id: 'facturama',
     name: 'Facturama',
     description: 'Proveedor multipaís con soporte para Colombia. Sandbox disponible.',

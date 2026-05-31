@@ -177,6 +177,20 @@ export class AccountingController {
     return this.service.getCashFlow(req.user.tenantId, req.user.storeId, this.role(req), from, to, filterStoreId);
   }
 
+  // ─── Factus ───────────────────────────────────────────────
+  @Post('invoices/:id/send-factus')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Send/resend invoice to Factus (DIAN) — tenant admin only' })
+  resendToFactus(@Request() req: any, @Param('id') id: string) {
+    return this.service.resendInvoiceToFactus(id, req.user.tenantId, this.role(req));
+  }
+
+  @Get('invoices/:id/factus-pdf')
+  @ApiOperation({ summary: 'Download invoice PDF from Factus' })
+  downloadFactusPdf(@Request() req: any, @Param('id') id: string) {
+    return this.service.downloadFactusPdf(id, req.user.tenantId);
+  }
+
   // ─── IVA & ReteFuente Liquidation ────────────────────────
   @Get('reports/iva-liquidation')
   @ApiOperation({ summary: 'IVA pre-liquidation Form. 300 — tenant admin only' })

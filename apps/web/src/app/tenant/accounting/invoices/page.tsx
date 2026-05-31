@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { FileText, Loader2, Eye, Plus, Printer, X, Download, CheckCircle2, Clock, AlertCircle, XCircle, Ban } from 'lucide-react';
+import { FileText, Loader2, Eye, Plus, Printer, X, Download, CheckCircle2, Clock, AlertCircle, XCircle, Ban, Send, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -322,6 +322,7 @@ export default function TenantInvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [fiscalConfig, setFiscalConfig] = useState<any>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
 
   // Load fiscal config once for invoice header
   useEffect(() => {
@@ -409,13 +410,36 @@ export default function TenantInvoicesPage() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(inv.createdAt)}</td>
                     <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => setSelectedInvoice(inv)}
-                        title="Ver factura"
-                        className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => setSelectedInvoice(inv)}
+                          title="Ver factura"
+                          className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        {/* Factus: resend button for draft/rejected/pending_dian invoices */}
+                        {fiscalConfig?.feProvider === 'factus' && ['draft', 'rejected', 'pending_dian'].includes(inv.status) && (
+                          <button
+                            onClick={async () => {
+                              setSendingId(inv.id);
+                              try {
+                                await api.post(`/accounting/invoices/${inv.id}/send-factus`, {}, { token: token! });
+                                load();
+                              } catch { /* ignore */ }
+                              finally { setSendingId(null); }
+                            }}
+                            title={inv.status === 'pending_dian' ? 'Reenviar a DIAN' : 'Enviar a DIAN via Factus'}
+                            disabled={sendingId === inv.id}
+                            className="p-1.5 rounded-lg hover:bg-blue-50 text-muted-foreground hover:text-blue-600 transition-colors disabled:opacity-40"
+                          >
+                            {sendingId === inv.id
+                              ? <Loader2 className="w-4 h-4 animate-spin" />
+                              : <Send className="w-4 h-4" />
+                            }
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
