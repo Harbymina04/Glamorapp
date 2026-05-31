@@ -1,11 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaginatedResponse } from '../../common/dto/response.dto';
 import { getPaginationParams } from '../../common/utils/pagination';
+import { AccountingService } from '../accounting/accounting.service';
 
 @Injectable()
 export class ExpensesService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(ExpensesService.name);
+  constructor(private prisma: PrismaService, private accounting: AccountingService) {}
 
   async findAll(tenantId: string, storeId: string, query: any) {
     const { skip, take } = getPaginationParams(query.page || 1, query.limit || 10);
@@ -28,7 +30,13 @@ export class ExpensesService {
   }
 
   async create(tenantId: string, storeId: string, userId: string, dto: any) {
-    return this.prisma.expense.create({ data: { tenantId, storeId, createdBy: userId, ...dto } });
+    const expense = await this.prisma.expense.create({ data: { tenantId, storeId, createdBy: userId, ...dto } });
+
+    // Auto-register expense transaction in accounting (fire-and-forget — never blocks the response)
+    this.accounting.registerExpenseTransaction(tenantId, storeId, expense.id, userId)
+      .catch(err => this.logger.warn(`Accounting auto-register failed for expense ${expense.id}: ${err.message}`));
+
+    return expense;
   }
 
   async update(tenantId: string, storeId: string, id: string, dto: any) {

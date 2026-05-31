@@ -1,11 +1,13 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaginatedResponse } from '../../common/dto/response.dto';
 import { getPaginationParams } from '../../common/utils/pagination';
+import { AccountingService } from '../accounting/accounting.service';
 
 @Injectable()
 export class SalesService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(SalesService.name);
+  constructor(private prisma: PrismaService, private accounting: AccountingService) {}
 
   async findAll(tenantId: string, storeId: string, query: any) {
     const { skip, take } = getPaginationParams(query.page || 1, query.limit || 10);
@@ -168,6 +170,10 @@ export class SalesService {
     if (sale.customerId) {
       await this.updateCustomerStats(tenantId, storeId, sale.customerId);
     }
+
+    // Auto-register income transaction in accounting (fire-and-forget — never blocks the sale)
+    this.accounting.registerSaleTransaction(tenantId, storeId, id, sale.userId || '')
+      .catch(err => this.logger.warn(`Accounting auto-register failed for sale ${id}: ${err.message}`));
 
     return completed;
   }
