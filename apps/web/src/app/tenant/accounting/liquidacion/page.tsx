@@ -7,7 +7,9 @@ import { formatCurrency } from '@/lib/utils';
 import {
   FileText, Loader2, Calculator, AlertCircle, CheckCircle2,
   Printer, ChevronDown, Info, TrendingUp, TrendingDown, Minus,
+  Download, Table2, BookOpen,
 } from 'lucide-react';
+import { API_BASE_URL } from '@/lib/api-client';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -432,15 +434,124 @@ function RetefuenteLiquidation({ token }: { token: string }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-type Tab = 'iva' | 'retefuente';
+// ─── Accountant Export ────────────────────────────────────────────────────────
+
+function AccountantExport({ token }: { token: string }) {
+  const now = new Date();
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  const lastDay  = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+  const [from, setFrom] = useState(firstDay);
+  const [to,   setTo]   = useState(lastDay);
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState('');
+  const [done,    setDone]    = useState(false);
+
+  const handleExport = async () => {
+    setLoading(true); setError(''); setDone(false);
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/v1/accounting/reports/export?from=${from}&to=${to}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `glamorapp-contabilidad-${from}-${to}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setDone(true);
+    } catch (e: any) {
+      setError(e?.message || 'Error al generar el archivo');
+    } finally { setLoading(false); }
+  };
+
+  const sheets = [
+    { icon: '📋', name: '0. Resumen', desc: 'Totales del período: facturas, ingresos, gastos, IVA' },
+    { icon: '📈', name: '1. Ingresos (Facturas)', desc: 'Todas las facturas con NIT, bases gravables, IVA y retenciones por factura' },
+    { icon: '📉', name: '2. Gastos', desc: 'Gastos por categoría con proveedor, monto e IVA en compras' },
+    { icon: '📊', name: '3. Transacciones', desc: 'Movimientos contables completos del período' },
+    { icon: '🔖', name: '4. Retenciones', desc: 'Detalle de retenciones practicadas (ReteFuente, ReteIVA, ReteICA)' },
+  ];
+
+  return (
+    <div className="space-y-5">
+      {/* Selector */}
+      <div className="bg-white rounded-xl border shadow-sm p-5">
+        <h3 className="font-semibold mb-1 flex items-center gap-2">
+          <Table2 className="w-4 h-4 text-emerald-600" /> Exportar informe para contador
+        </h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Genera un archivo Excel (.xlsx) con 5 hojas listo para entregar a tu contador o importar en software contable (Siigo, World Office, Contapyme).
+        </p>
+        <div className="flex gap-4 flex-wrap items-end">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Desde</label>
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+              className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300" />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Hasta</label>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)}
+              className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300" />
+          </div>
+          <button onClick={handleExport} disabled={loading || !from || !to}
+            className="flex items-center gap-2 px-5 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 disabled:opacity-60 transition">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {loading ? 'Generando...' : 'Descargar Excel'}
+          </button>
+        </div>
+
+        {error && (
+          <div className="mt-3 flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <AlertCircle className="w-4 h-4 shrink-0" /> {error}
+          </div>
+        )}
+        {done && (
+          <div className="mt-3 flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" /> Archivo descargado correctamente
+          </div>
+        )}
+      </div>
+
+      {/* Sheets preview */}
+      <div className="bg-white rounded-xl border shadow-sm p-5">
+        <h3 className="font-semibold mb-4 flex items-center gap-2">
+          <BookOpen className="w-4 h-4 text-muted-foreground" /> Contenido del archivo Excel
+        </h3>
+        <div className="space-y-3">
+          {sheets.map(s => (
+            <div key={s.name} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100">
+              <span className="text-xl">{s.icon}</span>
+              <div>
+                <p className="text-sm font-semibold text-gray-800">{s.name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{s.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex items-start gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+          <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          Los montos están en pesos colombianos (COP) sin decimales. Compatibe con Excel 2016+, LibreOffice y Google Sheets.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+type Tab = 'iva' | 'retefuente' | 'exportar';
 
 export default function LiquidacionPage() {
   const { token } = useAuthStore();
   const [tab, setTab] = useState<Tab>('iva');
 
-  const tabs: { key: Tab; label: string; color: string }[] = [
-    { key: 'iva', label: 'Pre-liquidación IVA (Form. 300)', color: 'indigo' },
-    { key: 'retefuente', label: 'Pre-liquidación ReteFuente (Form. 350)', color: 'orange' },
+  const tabs: { key: Tab; label: string }[] = [
+    { key: 'iva',       label: 'IVA — Form. 300' },
+    { key: 'retefuente', label: 'ReteFuente — Form. 350' },
+    { key: 'exportar',  label: 'Exportar para contador' },
   ];
 
   return (
@@ -460,9 +571,9 @@ export default function LiquidacionPage() {
             onClick={() => setTab(t.key)}
             className={`px-4 py-2 rounded-lg text-sm font-medium border-2 transition ${
               tab === t.key
-                ? t.key === 'iva'
-                  ? 'bg-indigo-600 text-white border-indigo-600'
-                  : 'bg-orange-600 text-white border-orange-600'
+                ? t.key === 'iva'       ? 'bg-indigo-600 text-white border-indigo-600'
+                : t.key === 'retefuente' ? 'bg-orange-600 text-white border-orange-600'
+                :                         'bg-emerald-600 text-white border-emerald-600'
                 : 'border-border text-muted-foreground hover:bg-muted'
             }`}
           >
@@ -471,8 +582,9 @@ export default function LiquidacionPage() {
         ))}
       </div>
 
-      {tab === 'iva' && <IvaLiquidation token={token!} />}
+      {tab === 'iva'        && <IvaLiquidation token={token!} />}
       {tab === 'retefuente' && <RetefuenteLiquidation token={token!} />}
+      {tab === 'exportar'   && <AccountantExport token={token!} />}
     </div>
   );
 }

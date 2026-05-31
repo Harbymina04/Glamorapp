@@ -5,6 +5,7 @@ import { PaginatedResponse } from '../../common/dto/response.dto';
 import { CreateFiscalConfigDto, UpdateFiscalConfigDto } from './dto/fiscal-config.dto';
 import { CreateInvoiceDto } from './dto/invoice.dto';
 import { CreateTransactionDto } from './dto/transaction.dto';
+import * as XLSX from 'xlsx';
 
 // ─── Permission helpers ──────────────────────────────────────────
 // Roles that have full accounting access (tenant-level)
@@ -822,6 +823,147 @@ export class AccountingService {
         retefuente: Number(c._sum.retefuenteAmount || 0),
       })),
     };
+  }
+
+  async exportAccountantReport(tenantId: string, role: string, from: string, to: string): Promise<Buffer> {
+    if (!isTenantAdmin(role)) throw new ForbiddenException('Only tenant admins can export accounting reports');
+
+    const dateFrom = new Date(from);
+    const dateTo   = new Date(to + 'T23:59:59');
+
+    const fiscalConfig = await this.prisma.fiscalConfig.findFirst({ where: { tenantId } });
+
+    // ── Sheet 1: Ingresos (invoices) ────────────────────────────
+    const invoices = await this.prisma.invoice.findMany({
+      where: { tenantId, status: { not: 'cancelled' }, createdAt: { gte: dateFrom, lte: dateTo } },
+      include: { items: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const ingresosRows = invoices.map(inv => ({
+      'Fecha':              new Date(inv.createdAt).toLocaleDateString('es-CO'),
+      'N° Factura':         inv.invoiceNumber,
+      'Tipo':               inv.invoiceType.replace(/_/g, ' '),
+      'Estado':             inv.status,
+      'NIT Emisor':         fiscalConfig?.idNumber ?? '',
+      'Emisor':             fiscalConfig?.businessName ?? 'Glamorapp',
+      'NIT Receptor':       inv.receiverIdNumber ?? '',
+      'Receptor':           inv.receiverName,
+      'Subtotal':           Number(inv.subtotal),
+      'Descuentos':         Number(inv.discountAmount),
+      'Base Gravable':      Number(inv.taxBase),
+      'IVA':                Number(inv.ivaAmount),
+      'ReteFuente':         Number(inv.retefuenteAmount),
+      'ReteIVA':            Number(inv.reteIvaAmount),
+      'ReteICA':            Number(inv.reteIcaAmount),
+      'Total':              Number(inv.total),
+      'Forma de pago':      inv.paymentMeansCode === '1' ? 'Contado' : 'Crédito',
+      'Método de pago':     ({ '10':'Efectivo','42':'Transferencia','48':'Tarjeta débito','49':'Tarjeta crédito','71':'Nequi/Daviplata' } as Record<string,string>)[inv.paymentMethodCode ?? ''] ?? inv.paymentMethodCode ?? '',
+    }));
+
+    // ── Sheet 2: Gastos (expenses) ──────────────────────────────
+    const expenses = await this.prisma.expense.findMany({
+      where: { tenantId, isVoided: false, expenseDate: { gte: dateFrom, lte: dateTo } },
+      include: { category: true },
+      orderBy: { expenseDate: 'asc' },
+    });
+
+    const gastosRows = expenses.map(exp => ({
+      'Fecha':              new Date(exp.expenseDate).toLocaleDateString('es-CO'),
+      'Concepto':           exp.concept,
+      'Categoría':          (exp as any).category?.name ?? '',
+      'Proveedor / Pagado a': (exp as any).paidTo ?? '',
+      'NIT Proveedor':      (exp as any).supplierNit ?? '',
+      'Monto':              Number(exp.amount),
+      'IVA en compra':      Number((exp as any).ivaAmount ?? 0),
+      'ReteFuente aplicada': Number((exp as any).retefuenteAmount ?? 0),
+      'Estado':             exp.status,
+      'Notas':              exp.notes ?? '',
+    }));
+
+    // ── Sheet 3: Transacciones contables ────────────────────────
+    const transactions = await this.prisma.accountingTransaction.findMany({
+      where: { tenantId, status: { not: 'voided' }, transactionDate: { gte: dateFrom, lte: dateTo } },
+      orderBy: { transactionDate: 'asc' },
+    });
+
+    const txLabels: Record<string, string> = {
+      income: 'Ingreso', expense: 'Gasto', transfer: 'Transferencia',
+      tax_payment: 'Pago impuesto', adjustment: 'Ajuste',
+    };
+
+    const txRows = transactions.map(tx => ({
+      'Fecha':           new Date(tx.transactionDate).toLocaleDateString('es-CO'),
+      'Tipo':            txLabels[tx.transactionType] ?? tx.transactionType,
+      'Categoría':       tx.category,
+      'Descripción':     tx.description,
+      'Monto Bruto':     Number(tx.grossAmount),
+      'IVA':             Number(tx.ivaAmount),
+      'ReteFuente':      Number(tx.retefuenteAmount),
+      'ReteIVA':         Number(tx.reteIvaAmount),
+      'ReteICA':         Number(tx.reteIcaAmount),
+      'Monto Neto':      Number(tx.netAmount),
+      'Estado':          tx.status,
+    }));
+
+    // ── Sheet 4: Retenciones practicadas ───────────────────────
+    const retencionesRows = transactions
+      .filter(tx => Number(tx.retefuenteAmount) > 0 || Number(tx.reteIvaAmount) > 0 || Number(tx.reteIcaAmount) > 0)
+      .map(tx => ({
+        'Fecha':        new Date(tx.transactionDate).toLocaleDateString('es-CO'),
+        'Descripción':  tx.description,
+        'Categoría':    tx.category,
+        'Base':         Number(tx.grossAmount),
+        'ReteFuente':   Number(tx.retefuenteAmount),
+        'ReteIVA':      Number(tx.reteIvaAmount),
+        'ReteICA':      Number(tx.reteIcaAmount),
+        'Total Ret.':   Number(tx.retefuenteAmount) + Number(tx.reteIvaAmount) + Number(tx.reteIcaAmount),
+      }));
+
+    // ── Build workbook ──────────────────────────────────────────
+    const wb = XLSX.utils.book_new();
+
+    const addSheet = (name: string, rows: any[]) => {
+      if (rows.length === 0) rows = [{ '(Sin registros en el período)': '' }];
+      const ws = XLSX.utils.json_to_sheet(rows);
+
+      // Column widths
+      const cols = Object.keys(rows[0]).map(k => ({ wch: Math.max(k.length, 14) }));
+      ws['!cols'] = cols;
+
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    };
+
+    addSheet('1. Ingresos (Facturas)', ingresosRows);
+    addSheet('2. Gastos', gastosRows);
+    addSheet('3. Transacciones', txRows);
+    addSheet('4. Retenciones', retencionesRows);
+
+    // Cover sheet
+    const coverData = [
+      { Campo: 'Empresa',         Valor: fiscalConfig?.businessName ?? 'Glamorapp' },
+      { Campo: 'NIT',             Valor: `${fiscalConfig?.idNumber ?? ''}-${fiscalConfig?.dv ?? ''}` },
+      { Campo: 'Período desde',   Valor: new Date(dateFrom).toLocaleDateString('es-CO') },
+      { Campo: 'Período hasta',   Valor: new Date(dateTo).toLocaleDateString('es-CO') },
+      { Campo: 'Total facturas',  Valor: invoices.length },
+      { Campo: 'Total ingresos',  Valor: invoices.reduce((s, i) => s + Number(i.total), 0) },
+      { Campo: 'Total gastos',    Valor: expenses.reduce((s, e) => s + Number(e.amount), 0) },
+      { Campo: 'Total IVA facturado', Valor: invoices.reduce((s, i) => s + Number(i.ivaAmount), 0) },
+      { Campo: 'Generado el',     Valor: new Date().toLocaleString('es-CO') },
+    ];
+    const coverWs = XLSX.utils.json_to_sheet(coverData);
+    coverWs['!cols'] = [{ wch: 22 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, coverWs, '0. Resumen');
+    // Move cover sheet to first position
+    wb.SheetNames = [
+      '0. Resumen',
+      '1. Ingresos (Facturas)',
+      '2. Gastos',
+      '3. Transacciones',
+      '4. Retenciones',
+    ];
+
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
   }
 
   // ────────────────────────────────────────────────────────────

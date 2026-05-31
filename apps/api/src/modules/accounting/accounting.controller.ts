@@ -1,7 +1,8 @@
 import {
   Controller, Get, Post, Put, Patch, Delete, Body, Param, Query,
-  UseGuards, Request, HttpCode, HttpStatus,
+  UseGuards, Request, HttpCode, HttpStatus, Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AccountingService } from './accounting.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -195,6 +196,22 @@ export class AccountingController {
     @Query('month') month: string,
   ) {
     return this.service.getRetefuenteLiquidation(req.user.tenantId, this.role(req), parseInt(year), parseInt(month));
+  }
+
+  @Get('reports/export')
+  @ApiOperation({ summary: 'Export accountant Excel report (tenant admin only)' })
+  async exportAccountantReport(
+    @Request() req: any,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.service.exportAccountantReport(req.user.tenantId, this.role(req), from, to);
+    const filename = `glamorapp-contabilidad-${from}-${to}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
   }
 
   // ─── FE Provider ─────────────────────────────────────────
