@@ -115,7 +115,9 @@ export default function POSPage() {
   useEffect(() => {
     if (!token) return;
     api.get('/users?limit=100', { token: token! })
-      .then(res => setCollaborators((res.data || []).filter((u: any) => u.isActive !== false)))
+      .then(res => setCollaborators(
+        (res.data || []).filter((u: any) => u.isActive !== false && u.role === 'professional')
+      ))
       .catch(() => {});
   }, [token]);
 
