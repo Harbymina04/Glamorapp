@@ -176,6 +176,27 @@ export class AccountingController {
     return this.service.getCashFlow(req.user.tenantId, req.user.storeId, this.role(req), from, to, filterStoreId);
   }
 
+  // ─── IVA & ReteFuente Liquidation ────────────────────────
+  @Get('reports/iva-liquidation')
+  @ApiOperation({ summary: 'IVA pre-liquidation Form. 300 — tenant admin only' })
+  getIvaLiquidation(
+    @Request() req: any,
+    @Query('year') year: string,
+    @Query('bimester') bimester: string,
+  ) {
+    return this.service.getIvaLiquidation(req.user.tenantId, this.role(req), parseInt(year), parseInt(bimester));
+  }
+
+  @Get('reports/retefuente-liquidation')
+  @ApiOperation({ summary: 'ReteFuente pre-liquidation Form. 350 — tenant admin only' })
+  getRetefuenteLiquidation(
+    @Request() req: any,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ) {
+    return this.service.getRetefuenteLiquidation(req.user.tenantId, this.role(req), parseInt(year), parseInt(month));
+  }
+
   // ─── FE Provider ─────────────────────────────────────────
   @Put('fe-provider')
   @ApiOperation({ summary: 'Update FE provider credentials (tenant admin only)' })

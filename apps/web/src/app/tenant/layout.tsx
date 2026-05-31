@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Building2, Users, LayoutDashboard, BarChart3, ChevronLeft, Store, Brain, LogOut, Plug, Calculator, FileText, Receipt, Zap } from 'lucide-react';
+import { Building2, Users, LayoutDashboard, BarChart3, ChevronLeft, Store, Brain, LogOut, Plug, Calculator, FileText, Receipt, Zap, ScrollText } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 
 const TENANT_LINKS = [
@@ -18,6 +18,7 @@ const ACCOUNTING_LINKS = [
   { name: 'Resumen', href: '/tenant/accounting', icon: Calculator },
   { name: 'Facturas', href: '/tenant/accounting/invoices', icon: FileText },
   { name: 'Impuestos', href: '/tenant/accounting/taxes', icon: Receipt },
+  { name: 'Liquidación', href: '/tenant/accounting/liquidacion', icon: ScrollText },
   { name: 'Config. fiscal', href: '/tenant/accounting/config', icon: Building2 },
   { name: 'Proveedor FE', href: '/tenant/accounting/fe-provider', icon: Zap },
 ];

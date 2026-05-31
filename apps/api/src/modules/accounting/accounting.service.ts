@@ -144,7 +144,9 @@ export class AccountingService {
     if (existing) {
       return this.prisma.fiscalConfig.update({ where: { id: existing.id }, data });
     }
-    return this.prisma.fiscalConfig.create({ data: { tenantId, ...data } });
+    return this.prisma.fiscalConfig.create({
+      data: { tenant: { connect: { id: tenantId } }, ...data },
+    });
   }
 
   // ────────────────────────────────────────────────────────────
@@ -626,6 +628,200 @@ export class AccountingService {
         createdBy: userId,
       },
     });
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // REPORTS — IVA Liquidation (Formulario 300), ReteFuente (350)
+  //           and accountant export
+  // ────────────────────────────────────────────────────────────
+
+  async getIvaLiquidation(tenantId: string, role: string, year: number, bimester: number) {
+    if (!isTenantAdmin(role)) throw new ForbiddenException('Only tenant admins can view IVA liquidation');
+
+    // Colombia: IVA is declared bi-monthly (bimestres 1-6)
+    // Bimester 1 = Jan-Feb, 2 = Mar-Apr, 3 = May-Jun, 4 = Jul-Aug, 5 = Sep-Oct, 6 = Nov-Dec
+    const bimesterMonths: Record<number, [number, number]> = {
+      1: [1, 2], 2: [3, 4], 3: [5, 6], 4: [7, 8], 5: [9, 10], 6: [11, 12],
+    };
+    const [startMonth, endMonth] = bimesterMonths[bimester] || [1, 2];
+    const dateFrom = new Date(year, startMonth - 1, 1);
+    const dateTo = new Date(year, endMonth, 0, 23, 59, 59);
+
+    const fiscalConfig = await this.prisma.fiscalConfig.findFirst({ where: { tenantId } });
+
+    // ── IVA Generado: from sales invoices ──────────────────────
+    const [inv0, inv5, inv19] = await Promise.all([
+      this.prisma.invoiceItem.aggregate({
+        where: { invoice: { tenantId, status: { not: 'cancelled' }, createdAt: { gte: dateFrom, lte: dateTo } }, ivaRate: 0 },
+        _sum: { subtotal: true, ivaAmount: true },
+        _count: true,
+      }),
+      this.prisma.invoiceItem.aggregate({
+        where: { invoice: { tenantId, status: { not: 'cancelled' }, createdAt: { gte: dateFrom, lte: dateTo } }, ivaRate: 5 },
+        _sum: { subtotal: true, ivaAmount: true },
+        _count: true,
+      }),
+      this.prisma.invoiceItem.aggregate({
+        where: { invoice: { tenantId, status: { not: 'cancelled' }, createdAt: { gte: dateFrom, lte: dateTo } }, ivaRate: 19 },
+        _sum: { subtotal: true, ivaAmount: true },
+        _count: true,
+      }),
+    ]);
+
+    // Also sum from accounting transactions (sales not yet invoiced)
+    const txIncome = await this.prisma.accountingTransaction.aggregate({
+      where: { tenantId, transactionType: 'income', status: { not: 'voided' }, transactionDate: { gte: dateFrom, lte: dateTo } },
+      _sum: { grossAmount: true, ivaAmount: true, reteIvaAmount: true },
+    });
+
+    // ── IVA Descontable: from purchases/expenses with IVA ──────
+    const txExpense = await this.prisma.accountingTransaction.aggregate({
+      where: { tenantId, transactionType: 'expense', status: { not: 'voided' }, transactionDate: { gte: dateFrom, lte: dateTo } },
+      _sum: { grossAmount: true, ivaAmount: true },
+    });
+
+    // ── Retenciones de IVA sufridas (ReteIVA) ──────────────────
+    const reteIvaTotal = Number(txIncome._sum.reteIvaAmount || 0);
+
+    // ── Compute Form 300 fields ────────────────────────────────
+    const baseGravada0  = Number(inv0._sum.subtotal || 0);
+    const baseGravada5  = Number(inv5._sum.subtotal || 0);
+    const baseGravada19 = Number(inv19._sum.subtotal || 0);
+    const baseTotalGravada = baseGravada5 + baseGravada19;
+
+    const ivaGenerado5  = Number(inv5._sum.ivaAmount || 0);
+    const ivaGenerado19 = Number(inv19._sum.ivaAmount || 0);
+    const ivaGeneradoTotal = ivaGenerado5 + ivaGenerado19;
+
+    const ivaDescontable = Number(txExpense._sum.ivaAmount || 0);
+    const saldoFavorAnterior = 0; // TODO: pull from previous declaration
+
+    const ivaNetoPagar = Math.max(0, ivaGeneradoTotal - ivaDescontable - reteIvaTotal - saldoFavorAnterior);
+    const saldoFavorPeriodo = Math.max(0, ivaDescontable + reteIvaTotal - ivaGeneradoTotal);
+
+    // ── Invoice count summary ───────────────────────────────────
+    const invoiceSummary = await this.prisma.invoice.groupBy({
+      by: ['invoiceType'],
+      where: { tenantId, status: { not: 'cancelled' }, createdAt: { gte: dateFrom, lte: dateTo } },
+      _count: true,
+      _sum: { total: true, ivaAmount: true },
+    });
+
+    return {
+      period: { year, bimester, startMonth, endMonth, dateFrom, dateTo },
+      fiscalConfig: fiscalConfig ? {
+        businessName: fiscalConfig.businessName,
+        idType: fiscalConfig.idType,
+        idNumber: fiscalConfig.idNumber,
+        dv: fiscalConfig.dv,
+        taxRegime: fiscalConfig.taxRegime,
+      } : null,
+      // Formulario 300 fields
+      form300: {
+        // Ingresos por operaciones gravadas
+        casilla1_baseGravada19: baseGravada19,
+        casilla2_iva19: ivaGenerado19,
+        casilla3_baseGravada5: baseGravada5,
+        casilla4_iva5: ivaGenerado5,
+        casilla5_baseExcluida: baseGravada0,
+        casilla6_ivaGeneradoTotal: ivaGeneradoTotal,
+        // IVA descontable
+        casilla7_ivaDescontable: ivaDescontable,
+        casilla8_reteIva: reteIvaTotal,
+        casilla9_saldoFavorAnterior: saldoFavorAnterior,
+        casilla10_totalDescuentos: ivaDescontable + reteIvaTotal + saldoFavorAnterior,
+        // Saldo
+        casilla11_ivaNetoPagar: ivaNetoPagar,
+        casilla12_saldoFavorPeriodo: saldoFavorPeriodo,
+      },
+      // Summary breakdown
+      breakdown: {
+        ventas: {
+          baseGravada19, ivaGenerado19,
+          baseGravada5, ivaGenerado5,
+          baseExcluida: baseGravada0,
+          baseTotal: baseTotalGravada + baseGravada0,
+          ivaTotal: ivaGeneradoTotal,
+        },
+        compras: {
+          totalGastos: Number(txExpense._sum.grossAmount || 0),
+          ivaDescontable,
+        },
+        retenciones: { reteIva: reteIvaTotal },
+        resultado: {
+          ivaNetoPagar,
+          saldoFavorPeriodo,
+        },
+      },
+      invoices: invoiceSummary,
+    };
+  }
+
+  async getRetefuenteLiquidation(tenantId: string, role: string, year: number, month: number) {
+    if (!isTenantAdmin(role)) throw new ForbiddenException('Only tenant admins can view ReteFuente liquidation');
+
+    const dateFrom = new Date(year, month - 1, 1);
+    const dateTo = new Date(year, month, 0, 23, 59, 59);
+
+    const fiscalConfig = await this.prisma.fiscalConfig.findFirst({ where: { tenantId } });
+
+    // Retenciones practicadas por la empresa (como agente retenedor)
+    const retefuentePracticada = await this.prisma.accountingTransaction.aggregate({
+      where: { tenantId, status: { not: 'voided' }, transactionDate: { gte: dateFrom, lte: dateTo } },
+      _sum: { retefuenteAmount: true, reteIvaAmount: true, reteIcaAmount: true },
+    });
+
+    // From invoice items (retenciones en facturas)
+    const invoiceRetenciones = await this.prisma.invoiceItem.aggregate({
+      where: { invoice: { tenantId, status: { not: 'cancelled' }, createdAt: { gte: dateFrom, lte: dateTo } } },
+      _sum: { retefuenteAmount: true },
+    });
+
+    // Breakdown by category (from transactions)
+    const byCategory = await this.prisma.accountingTransaction.groupBy({
+      by: ['category'],
+      where: { tenantId, status: { not: 'voided' }, retefuenteAmount: { gt: 0 }, transactionDate: { gte: dateFrom, lte: dateTo } },
+      _sum: { grossAmount: true, retefuenteAmount: true },
+      _count: true,
+    });
+
+    const totalRetefuente = Number(retefuentePracticada._sum.retefuenteAmount || 0)
+      + Number(invoiceRetenciones._sum.retefuenteAmount || 0);
+    const totalReteIva    = Number(retefuentePracticada._sum.reteIvaAmount || 0);
+    const totalReteIca    = Number(retefuentePracticada._sum.reteIcaAmount || 0);
+
+    // Concept codes per DIAN Formulario 350
+    const conceptLabels: Record<string, string> = {
+      sales:               'Ingresos propios (servicios)',
+      operational_expense: 'Compras y servicios',
+      payroll:             'Pagos laborales',
+      rent:                'Arrendamientos',
+      honorarios:          'Honorarios',
+      services:            'Servicios generales',
+    };
+
+    return {
+      period: { year, month, dateFrom, dateTo },
+      fiscalConfig: fiscalConfig ? {
+        businessName: fiscalConfig.businessName,
+        idNumber: fiscalConfig.idNumber,
+        dv: fiscalConfig.dv,
+      } : null,
+      // Formulario 350 fields
+      form350: {
+        totalRetefuentePracticada: totalRetefuente,
+        totalReteIvaPracticada: totalReteIva,
+        totalReteIcaPracticada: totalReteIca,
+        totalAPagar: totalRetefuente + totalReteIva + totalReteIca,
+      },
+      byCategory: byCategory.map(c => ({
+        category: c.category,
+        label: conceptLabels[c.category] || c.category,
+        count: c._count,
+        baseGravable: Number(c._sum.grossAmount || 0),
+        retefuente: Number(c._sum.retefuenteAmount || 0),
+      })),
+    };
   }
 
   // ────────────────────────────────────────────────────────────
