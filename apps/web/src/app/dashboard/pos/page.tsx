@@ -416,6 +416,17 @@ export default function POSPage() {
             <button onClick={() => { setLastSale(null); setInvoiceResult(null); }} className="w-full h-11 bg-glamor-primary hover:bg-glamor-primary-hover text-white rounded-lg font-semibold text-sm">Nueva venta</button>
           </div>
         </div>
+
+        {/* Invoice modal — must be inside the early return block */}
+        {showInvoiceModal && invoiceSaleData && (
+          <ElectronicInvoiceModal
+            sale={invoiceSaleData}
+            token={token!}
+            onClose={() => setShowInvoiceModal(false)}
+            onSuccess={(inv: any) => { setInvoiceResult(inv); setShowInvoiceModal(false); }}
+            onPrint={handlePrintInvoice}
+          />
+        )}
       </div>
     );
   }
