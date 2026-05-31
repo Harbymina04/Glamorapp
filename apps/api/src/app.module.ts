@@ -30,6 +30,7 @@ import { PackagesModule } from './modules/packages/packages.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
+import { CommissionsModule } from './modules/commissions/commissions.module';
 import { PlansModule } from './modules/plans/plans.module';
 
 @Module({
@@ -65,6 +66,7 @@ import { PlansModule } from './modules/plans/plans.module';
     WhatsAppModule,
     TenantModule,
     AccountingModule,
+    CommissionsModule,
     PlansModule,
   ],
   providers: [

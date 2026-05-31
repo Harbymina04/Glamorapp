@@ -14,6 +14,7 @@ export const ADMIN_MODULES = [
   { name: 'Reportes', href: '/dashboard/reports', icon: 'BarChart3', feature: 'reports' },
   { name: 'Gastos', href: '/dashboard/expenses', icon: 'Wallet', feature: 'expenses' },
   { name: 'Usuarios', href: '/dashboard/users', icon: 'UserCog', feature: 'users' },
+  { name: 'Comisiones', href: '/dashboard/commissions', icon: 'DollarSign', feature: 'users' },
   { name: 'Agentes IA', href: '/dashboard/ai-agents', icon: 'Bot', feature: 'ai_agents' },
   { name: 'Configuración', href: '/dashboard/settings', icon: 'Settings', feature: 'settings' },
   { name: 'Contabilidad', href: '/dashboard/accounting', icon: 'Wallet', feature: 'accounting' },

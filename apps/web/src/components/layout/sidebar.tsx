@@ -9,12 +9,12 @@ import { usePlanGate } from '@/hooks/use-plan-gate';
 import {
   Home, Package, ShoppingCart, Calendar, BookOpen, Palette,
   Users, Truck, BarChart3, Wallet, UserCog, Bot, Settings,
-  ChevronLeft, Sparkles, Lock, Building2,
+  ChevronLeft, Sparkles, Lock, Building2, DollarSign,
 } from 'lucide-react';
 
 const iconMap: Record<string, any> = {
   Home, Package, ShoppingCart, Calendar, BookOpen, Palette,
-  Users, Truck, BarChart3, Wallet, UserCog, Bot, Settings,
+  Users, Truck, BarChart3, Wallet, UserCog, Bot, Settings, DollarSign,
 };
 
 function FilteredModuleLink({ mod }: { mod: { name: string; href: string; icon: string; feature: string } }) {

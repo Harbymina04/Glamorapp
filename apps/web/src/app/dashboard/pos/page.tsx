@@ -20,6 +20,8 @@ type ViewMode = 'pos' | 'history' | 'register';
 
 interface SplitPayment { method: PaymentMethod; amount: string; }
 interface HeldSale { id: string; cart: any; customerId: string; customerName: string; discountPercent: number; timestamp: number; }
+// performedBy: map from cart item id → { userId, userName }
+type PerformerMap = Record<string, { userId: string; userName: string }>;
 
 export default function POSPage() {
   const { token, user } = useAuthStore();
@@ -69,6 +71,10 @@ export default function POSPage() {
   // Held sales
   const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
 
+  // Performer (collaborator) per service item
+  const [performers, setPerformers] = useState<PerformerMap>({});
+  const [collaborators, setCollaborators] = useState<any[]>([]);
+
   // Electronic invoice modal
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceSaleData, setInvoiceSaleData] = useState<any>(null);
@@ -104,6 +110,14 @@ export default function POSPage() {
       .then(res => setProducts(res.data || []))
       .catch(console.error);
   }, [selectedTab, token]);
+
+  // Load collaborators (store users) once
+  useEffect(() => {
+    if (!token) return;
+    api.get('/users?limit=100&isActive=true', { token: token! })
+      .then(res => setCollaborators(res.data || res || []))
+      .catch(() => {});
+  }, [token]);
 
   // Load cash register session
   useEffect(() => {
@@ -204,14 +218,19 @@ export default function POSPage() {
     try {
       const sale = await api.post('/sales', {
         customerId: cart.customerId || undefined, discountPercent: cart.discountPercent,
-        items: cart.items.map(i => ({ productId: i.productId, serviceId: i.serviceId, itemType: i.itemType, name: i.name, quantity: i.quantity, unitPrice: i.unitPrice, discountAmount: i.discountAmount })),
+        items: cart.items.map(i => ({
+          productId: i.productId, serviceId: i.serviceId, itemType: i.itemType,
+          name: i.name, quantity: i.quantity, unitPrice: i.unitPrice, discountAmount: i.discountAmount,
+          // Include performer for service items
+          performedBy: i.itemType === 'service' ? (performers[i.id]?.userId || undefined) : undefined,
+        })),
         notes: saleNotes || undefined,
       }, { token: token! });
       const payments = getPaymentAmounts();
       await api.post(`/sales/${sale.id}/complete`, { payments }, { token: token! });
       const completedSale = await api.get(`/sales/${sale.id}`, { token: token! });
       setLastSale(completedSale);
-      cart.clearCart(); setDiscountInput(''); setSaleNotes(''); setShowPaymentModal(false);
+      cart.clearCart(); setDiscountInput(''); setSaleNotes(''); setPerformers({}); setShowPaymentModal(false);
       // Refresh register session
       if (registerSession) {
         api.get('/cash-register/reconciliation', { token }).then(r => { if (r) setReconciliation(r); }).catch(() => {});
@@ -688,14 +707,36 @@ export default function POSPage() {
           {cart.items.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground text-sm">Agrega productos o servicios</div>
           ) : cart.items.map(item => (
-            <div key={item.id} className="flex items-center gap-3 py-2 border-b border-border-primary/50">
-              <div className="flex-1 min-w-0"><p className="text-sm font-medium text-foreground truncate">{item.name}</p><p className="text-xs text-muted-foreground">{formatCurrency(item.unitPrice)} c/u</p></div>
-              <div className="flex items-center gap-1.5">
-                <button onClick={() => cart.updateQuantity(item.id, item.quantity - 1)} className="p-1 rounded hover:bg-surface-hover"><Minus className="w-3.5 h-3.5" /></button>
-                <span className="text-sm font-medium w-6 text-center">{item.quantity}</span>
-                <button onClick={() => cart.updateQuantity(item.id, item.quantity + 1)} className="p-1 rounded hover:bg-surface-hover"><Plus className="w-3.5 h-3.5" /></button>
+            <div key={item.id} className="py-2 border-b border-border-primary/50">
+              <div className="flex items-center gap-3">
+                <div className="flex-1 min-w-0"><p className="text-sm font-medium text-foreground truncate">{item.name}</p><p className="text-xs text-muted-foreground">{formatCurrency(item.unitPrice)} c/u</p></div>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => cart.updateQuantity(item.id, item.quantity - 1)} className="p-1 rounded hover:bg-surface-hover"><Minus className="w-3.5 h-3.5" /></button>
+                  <span className="text-sm font-medium w-6 text-center">{item.quantity}</span>
+                  <button onClick={() => cart.updateQuantity(item.id, item.quantity + 1)} className="p-1 rounded hover:bg-surface-hover"><Plus className="w-3.5 h-3.5" /></button>
+                </div>
+                <button onClick={() => { cart.removeItem(item.id); setPerformers(p => { const n = {...p}; delete n[item.id]; return n; }); }} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
               </div>
-              <button onClick={() => cart.removeItem(item.id)} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+              {/* Performer selector — only for services */}
+              {item.itemType === 'service' && collaborators.length > 0 && (
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <User className="w-3 h-3 text-glamor-primary shrink-0" />
+                  <select
+                    value={performers[item.id]?.userId || ''}
+                    onChange={e => {
+                      const col = collaborators.find((c: any) => c.id === e.target.value);
+                      if (col) setPerformers(p => ({ ...p, [item.id]: { userId: col.id, userName: `${col.firstName} ${col.lastName}` } }));
+                      else setPerformers(p => { const n = {...p}; delete n[item.id]; return n; });
+                    }}
+                    className="flex-1 text-xs border border-glamor-primary/30 rounded-lg px-2 py-1 bg-glamor-primary/5 text-glamor-primary focus:outline-none"
+                  >
+                    <option value="">— ¿Quién lo realiza? —</option>
+                    {collaborators.map((c: any) => (
+                      <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           ))}
         </div>

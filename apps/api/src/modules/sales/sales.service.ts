@@ -3,11 +3,16 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PaginatedResponse } from '../../common/dto/response.dto';
 import { getPaginationParams } from '../../common/utils/pagination';
 import { AccountingService } from '../accounting/accounting.service';
+import { CommissionsService } from '../commissions/commissions.service';
 
 @Injectable()
 export class SalesService {
   private readonly logger = new Logger(SalesService.name);
-  constructor(private prisma: PrismaService, private accounting: AccountingService) {}
+  constructor(
+    private prisma: PrismaService,
+    private accounting: AccountingService,
+    private commissions: CommissionsService,
+  ) {}
 
   async findAll(tenantId: string, storeId: string, query: any) {
     const { skip, take } = getPaginationParams(query.page || 1, query.limit || 10);
@@ -78,14 +83,18 @@ export class SalesService {
         notes: dto.notes,
         items: {
           create: dto.items.map((item: any) => ({
-            productId: item.productId,
-            serviceId: item.serviceId,
-            itemType: item.itemType || 'product',
-            name: item.name,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
+            productId:    item.productId,
+            serviceId:    item.serviceId,
+            itemType:     item.itemType || 'product',
+            name:         item.name,
+            quantity:     item.quantity,
+            unitPrice:    item.unitPrice,
             discountAmount: item.discountAmount || 0,
-            total: item.unitPrice * item.quantity - (item.discountAmount || 0),
+            total:        item.unitPrice * item.quantity - (item.discountAmount || 0),
+            // Commission fields — only for services
+            performedBy:      item.itemType === 'service' ? (item.performedBy || null) : null,
+            commissionRate:   item.commissionRate ?? 0,
+            commissionAmount: 0, // calculated when sale completes
           })),
         },
       },
@@ -171,9 +180,13 @@ export class SalesService {
       await this.updateCustomerStats(tenantId, storeId, sale.customerId);
     }
 
-    // Auto-register income transaction in accounting (fire-and-forget — never blocks the sale)
+    // Auto-register income transaction in accounting (fire-and-forget)
     this.accounting.registerSaleTransaction(tenantId, storeId, id, sale.userId || '')
       .catch(err => this.logger.warn(`Accounting auto-register failed for sale ${id}: ${err.message}`));
+
+    // Auto-register commissions for service items with a performer (fire-and-forget)
+    this.commissions.registerSaleCommissions(tenantId, storeId, id)
+      .catch(err => this.logger.warn(`Commissions auto-register failed for sale ${id}: ${err.message}`));
 
     return completed;
   }
