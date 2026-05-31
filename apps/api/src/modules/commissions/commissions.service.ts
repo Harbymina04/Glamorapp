@@ -141,40 +141,79 @@ export class CommissionsService {
     return Object.values(byUser).sort((a: any, b: any) => b.totalPending - a.totalPending);
   }
 
-  // ─── Pay commissions (bulk) ────────────────────────────────────
+  // ─── Pay commissions (bulk) + auto-register accounting expense ──
   async payCommissions(
     tenantId: string, paidById: string,
     dto: { userIds?: string[]; commissionIds?: string[]; periodStart?: string; periodEnd?: string; notes?: string }
   ) {
     const where: any = { tenantId, status: 'pending' };
-    if (dto.commissionIds?.length) where.id    = { in: dto.commissionIds };
-    if (dto.userIds?.length)       where.userId = { in: dto.userIds };
+    if (dto.commissionIds?.length) where.id     = { in: dto.commissionIds };
+    if (dto.userIds?.length)       where.userId  = { in: dto.userIds };
     if (dto.periodStart || dto.periodEnd) {
       where.createdAt = {
-        ...(dto.periodStart ? { gte: new Date(dto.periodStart) } : {}),
-        ...(dto.periodEnd   ? { lte: new Date(dto.periodEnd + 'T23:59:59') } : {}),
+        ...(dto.periodStart ? { gte: new Date(dto.periodStart) }                : {}),
+        ...(dto.periodEnd   ? { lte: new Date(dto.periodEnd + 'T23:59:59') }  : {}),
       };
     }
 
-    const pending = await this.prisma.commission.findMany({ where, select: { id: true, amount: true, userId: true } });
+    // Fetch pending commissions with user + store info
+    const pending = await this.prisma.commission.findMany({
+      where,
+      include: { user: { select: { id: true, firstName: true, lastName: true } } },
+    });
     if (pending.length === 0) throw new BadRequestException('No hay comisiones pendientes para pagar');
 
+    const now   = new Date();
     const total = pending.reduce((s, c) => s + Number(c.amount), 0);
 
+    // 1. Mark commissions as paid
     await this.prisma.commission.updateMany({
       where: { id: { in: pending.map(c => c.id) } },
-      data:  {
-        status:       'paid',
-        paidAt:       new Date(),
-        paidById,
-        paymentNotes: dto.notes ?? null,
-      },
+      data:  { status: 'paid', paidAt: now, paidById, paymentNotes: dto.notes ?? null },
     });
+
+    // 2. Group by user → one accounting expense transaction per collaborator
+    const byUser = pending.reduce<Record<string, { user: any; storeId: string; amount: number; count: number }>>(
+      (acc, c) => {
+        if (!acc[c.userId]) {
+          acc[c.userId] = { user: c.user, storeId: c.storeId, amount: 0, count: 0 };
+        }
+        acc[c.userId].amount += Number(c.amount);
+        acc[c.userId].count  += 1;
+        return acc;
+      },
+      {}
+    );
+
+    // 3. Create one expense transaction per collaborator (fire-and-forget)
+    const period = dto.periodStart && dto.periodEnd
+      ? `${dto.periodStart} al ${dto.periodEnd}`
+      : now.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+
+    await Promise.all(
+      Object.values(byUser).map(({ user, storeId, amount, count }) =>
+        this.prisma.accountingTransaction.create({
+          data: {
+            tenantId,
+            storeId,
+            transactionType: 'expense',
+            category:        'commissions',
+            description:     `Comisiones ${user.firstName} ${user.lastName} — ${count} servicio${count !== 1 ? 's' : ''} · ${period}`,
+            grossAmount:     amount,
+            taxAmount:       0,
+            retentionAmount: 0,
+            netAmount:       amount,
+            transactionDate: now,
+            createdBy:       paidById,
+          },
+        })
+      )
+    );
 
     return {
       paid:  pending.length,
       total,
-      users: [...new Set(pending.map(c => c.userId))].length,
+      users: Object.keys(byUser).length,
     };
   }
 
