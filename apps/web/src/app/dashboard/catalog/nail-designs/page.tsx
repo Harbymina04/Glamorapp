@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
-import { api } from '@/lib/api-client';
+import { api, API_BASE_URL } from '@/lib/api-client';
+const API_BASE = API_BASE_URL;
 import { formatCurrency } from '@/lib/utils';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -257,7 +258,7 @@ export default function NailDesignsPage() {
               <div className="h-44 bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center relative overflow-hidden">
                 {d.imageUrl ? (
                   <img
-                    src={d.imageUrl}
+                    src={`${API_BASE}${d.imageUrl}`}
                     alt={d.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
@@ -373,7 +374,7 @@ export default function NailDesignsPage() {
               {selectedDesign.imageUrl ? (
                 <div className="relative bg-surface-hover rounded-xl overflow-hidden aspect-square max-h-80 mx-auto mb-6">
                   <img
-                    src={selectedDesign.imageUrl}
+                    src={`${API_BASE}${selectedDesign.imageUrl}`}
                     alt={selectedDesign.name}
                     className="w-full h-full object-contain"
                   />

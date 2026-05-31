@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
-import { api } from '@/lib/api-client';
+import { api, API_BASE_URL } from '@/lib/api-client';
+const API_BASE = API_BASE_URL;
 import { formatCurrency } from '@/lib/utils';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -207,7 +208,7 @@ export default function CatalogProductsPage() {
                 <div className="h-40 bg-surface-hover flex items-center justify-center relative overflow-hidden">
                   {p.images?.[0]?.url ? (
                     <img
-                      src={p.images[0].url}
+                      src={`${API_BASE}${p.images[0].url}`}
                       alt={p.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
@@ -389,7 +390,7 @@ export default function CatalogProductsPage() {
                 <div className="mb-6">
                   <div className="relative bg-surface-hover rounded-xl overflow-hidden aspect-square max-h-80 mx-auto">
                     <img
-                      src={selectedProduct.images[modalImageIndex].url}
+                      src={`${API_BASE}${selectedProduct.images[modalImageIndex].url}`}
                       alt={`${selectedProduct.name} - imagen ${modalImageIndex + 1}`}
                       className="w-full h-full object-contain"
                     />
@@ -443,7 +444,7 @@ export default function CatalogProductsPage() {
                               : 'border-transparent opacity-60 hover:opacity-100'
                           }`}
                         >
-                          <img src={img.url} alt={`${selectedProduct.name} ${i + 1}`} className="w-full h-full object-cover" />
+                          <img src={`${API_BASE}${img.url}`} alt={`${selectedProduct.name} ${i + 1}`} className="w-full h-full object-cover" />
                         </button>
                       ))}
                     </div>
