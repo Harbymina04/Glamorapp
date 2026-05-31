@@ -114,8 +114,8 @@ export default function POSPage() {
   // Load collaborators (store users) once
   useEffect(() => {
     if (!token) return;
-    api.get('/users?limit=100&isActive=true', { token: token! })
-      .then(res => setCollaborators(res.data || res || []))
+    api.get('/users?limit=100', { token: token! })
+      .then(res => setCollaborators((res.data || []).filter((u: any) => u.isActive !== false)))
       .catch(() => {});
   }, [token]);
 
