@@ -11,7 +11,7 @@ import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import {
   UserCog, Plus, Search, X, Save, Loader2, AlertCircle,
   Pencil, Trash2, Mail, Phone, Shield, UserPlus,
-  UserCheck, UserX, Key,
+  UserCheck, UserX, Key, Percent, DollarSign,
 } from 'lucide-react';
 
 // ─── Types ─────────────────────────────────────────────────────────
@@ -30,6 +30,7 @@ interface UserForm {
   phone: string;
   password: string;
   role: string;
+  commissionRate: string; // stored as string for input, parsed on save
 }
 
 const emptyForm: UserForm = {
@@ -39,6 +40,7 @@ const emptyForm: UserForm = {
   phone: '',
   password: '',
   role: 'cashier',
+  commissionRate: '0',
 };
 
 // ─── Page ───────────────────────────────────────────────────────────
@@ -109,6 +111,7 @@ export default function UsersPage() {
       phone: u.phone || '',
       password: '',
       role: u.role || 'cashier',
+      commissionRate: String(Number(u.commissionRate ?? 0)),
     });
     setFormError('');
     setShowModal(true);
@@ -130,6 +133,7 @@ export default function UsersPage() {
         email: form.email.trim(),
         phone: form.phone.trim() || undefined,
         role: form.role,
+        commissionRate: parseFloat(form.commissionRate) || 0,
       };
 
       if (!editingId) {
@@ -218,6 +222,18 @@ export default function UsersPage() {
       key: 'isActive', header: 'Estado', render: (u: any) => (
         <StatusBadge status={u.isActive ? 'active' : 'inactive'} />
       ),
+    },
+    {
+      key: 'commissionRate', header: 'Comisión', render: (u: any) => {
+        const rate = Number(u.commissionRate ?? 0);
+        return rate > 0 ? (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+            <DollarSign className="w-3 h-3" />{rate}%
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        );
+      },
     },
     {
       key: 'lastLoginAt', header: 'Último acceso', render: (u: any) =>
@@ -369,6 +385,43 @@ export default function UsersPage() {
                       <option key={r.value} value={r.value}>{r.label}</option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              {/* Commission Rate */}
+              <div className="border border-green-200 bg-green-50 rounded-xl p-4">
+                <label className="block text-sm font-semibold text-green-800 mb-1 flex items-center gap-1.5">
+                  <DollarSign className="w-4 h-4" /> Comisión por servicios
+                </label>
+                <p className="text-xs text-green-700 mb-3">
+                  Porcentaje que recibe este colaborador sobre el valor de cada servicio que realice.
+                  Solo aplica a ítems de tipo servicio en el POS.
+                </p>
+                <div className="flex items-center gap-3">
+                  <div className="relative flex-1 max-w-[160px]">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.5"
+                      value={form.commissionRate}
+                      onChange={e => setForm(prev => ({ ...prev, commissionRate: e.target.value }))}
+                      className="w-full h-10 pl-3 pr-8 rounded-lg border border-green-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-400/40 font-semibold"
+                      placeholder="0"
+                    />
+                    <Percent className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
+                  </div>
+                  <div className="text-sm text-green-700">
+                    {Number(form.commissionRate) > 0 ? (
+                      <span>
+                        Ej: servicio de{' '}
+                        <strong>$100.000</strong> → comisión{' '}
+                        <strong>${(100000 * Number(form.commissionRate) / 100).toLocaleString('es-CO')}</strong>
+                      </span>
+                    ) : (
+                      <span className="text-green-500">Sin comisión configurada</span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
