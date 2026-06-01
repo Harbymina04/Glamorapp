@@ -277,7 +277,17 @@ export default function SalonPage() {
             <EmptyTab icon={<Package className="w-8 h-8" />} text="Este salón aún no tiene productos publicados" />
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {products.map(p => <ProductCard key={p.id} product={p} />)}
+              {products.map(p => (
+                <ProductCard key={p.id}
+                  id={p.id}
+                  name={p.name}
+                  price={Number(p.salePrice || p.price || 0)}
+                  imageUrl={p.images?.[0]?.url || p.imageUrl}
+                  category={p.category?.name}
+                  shopName={p.brand?.name || ''}
+                  tenantId={p.tenantId}
+                />
+              ))}
             </div>
           )
         )}
@@ -288,7 +298,12 @@ export default function SalonPage() {
             <EmptyTab icon={<Scissors className="w-8 h-8" />} text="Este salón aún no tiene servicios publicados" />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {services.map(s => <ServiceCard key={s.id} service={s} />)}
+              {services.map(s => (
+                <ServiceCard key={s.id} id={s.id} name={s.name}
+                  category={s.category} price={Number(s.price || 0)}
+                  durationMinutes={s.durationMinutes}
+                  allowsBooking={s.allowsOnlineBooking} />
+              ))}
             </div>
           )
         )}
@@ -299,7 +314,13 @@ export default function SalonPage() {
             <EmptyTab icon={<Palette className="w-8 h-8" />} text="Este salón aún no tiene diseños publicados" />
           ) : (
             <div className="columns-2 sm:columns-3 lg:columns-4 gap-4 space-y-4">
-              {designs.map(d => <div key={d.id} className="break-inside-avoid"><NailDesignCard design={d} /></div>)}
+              {designs.map(d => (
+                <div key={d.id} className="break-inside-avoid">
+                  <NailDesignCard id={d.id} name={d.name} technique={d.technique}
+                    price={d.suggestedPrice ? Number(d.suggestedPrice) : undefined}
+                    imageUrl={d.imageUrl} />
+                </div>
+              ))}
             </div>
           )
         )}
