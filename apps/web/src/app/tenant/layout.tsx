@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Building2, Users, LayoutDashboard, BarChart3, ChevronLeft, Store, Brain, LogOut, Plug, Calculator, FileText, Receipt, Zap, ScrollText } from 'lucide-react';
+import { Building2, Users, LayoutDashboard, BarChart3, ChevronLeft, Store, Brain, LogOut, Plug, Calculator, FileText, Receipt, Zap, ScrollText, ShoppingBag, Star, Package } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 
 const TENANT_LINKS = [
@@ -12,6 +12,12 @@ const TENANT_LINKS = [
   { name: 'Usuarios', href: '/tenant/users', icon: Users },
   { name: 'IA - Consumo', href: '/tenant/ai-usage', icon: Brain },
   { name: 'Integraciones', href: '/tenant/marketing', icon: Plug },
+];
+
+const STOREFRONT_LINKS = [
+  { name: 'Mi Vitrina', href: '/tenant/storefront', icon: Store },
+  { name: 'Pedidos Online', href: '/tenant/storefront/orders', icon: ShoppingBag },
+  { name: 'Reseñas', href: '/tenant/storefront/reviews', icon: Star },
 ];
 
 const ACCOUNTING_LINKS = [
@@ -67,6 +73,30 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
           {/* General */}
           {TENANT_LINKS.map(link => {
             const isActive = pathname === link.href || (link.href !== '/tenant' && pathname.startsWith(link.href));
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
+                  isActive
+                    ? 'bg-glamor-primary/10 text-glamor-primary'
+                    : 'text-muted-foreground hover:bg-surface-hover'
+                }`}
+              >
+                <link.icon className="w-4 h-4" />
+                {link.name}
+              </Link>
+            );
+          })}
+
+          {/* Tienda Digital */}
+          <div className="pt-3 pb-1">
+            <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+              Tienda Digital
+            </p>
+          </div>
+          {STOREFRONT_LINKS.map(link => {
+            const isActive = pathname === link.href || pathname.startsWith(link.href + '/');
             return (
               <Link
                 key={link.href}

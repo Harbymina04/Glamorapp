@@ -8,9 +8,6 @@ export const MODULES = [
 ] as const;
 
 export const ADMIN_MODULES = [
-  { name: 'Mi Vitrina', href: '/dashboard/storefront', icon: 'Store', feature: 'pos' },
-  { name: 'Pedidos Online', href: '/dashboard/storefront/orders', icon: 'ShoppingBag', feature: 'pos' },
-  { name: 'Reseñas', href: '/dashboard/storefront/reviews', icon: 'Star', feature: 'pos' },
   { name: 'Clientes', href: '/dashboard/customers', icon: 'Users', feature: 'customers' },
   { name: 'Proveedores', href: '/dashboard/suppliers', icon: 'Truck', feature: 'suppliers' },
   { name: 'Compras', href: '/dashboard/inventory/purchases', icon: 'ShoppingCart', feature: 'purchases' },
