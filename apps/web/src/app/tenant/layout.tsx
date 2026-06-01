@@ -36,8 +36,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    checkAuth();
-    setMounted(true);
+    checkAuth().finally(() => setMounted(true));
   }, []);
 
   if (!mounted || isLoading) {
