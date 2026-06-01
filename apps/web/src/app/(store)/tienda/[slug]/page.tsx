@@ -1,0 +1,362 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
+import Link from 'next/link';
+import {
+  MapPin, Star, Phone, Mail, Instagram, Facebook,
+  Globe, CheckCircle2, Package, Scissors, Palette,
+  MessageCircle, ChevronRight, Loader2, AlertCircle,
+} from 'lucide-react';
+import { ProductCard } from '@/components/store/ProductCard';
+import { ServiceCard } from '@/components/store/ServiceCard';
+import { NailDesignCard } from '@/components/store/NailDesignCard';
+import { StarRating } from '@/components/store/StarRating';
+import { storeApi, formatCOP, categoryColors } from '@/lib/store-utils';
+
+// ─── Tabs ─────────────────────────────────────────────────────────
+
+type Tab = 'productos' | 'servicios' | 'diseños' | 'reseñas' | 'ubicaciones';
+
+const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
+  { key: 'productos',   label: 'Productos',   icon: <Package className="w-4 h-4" /> },
+  { key: 'servicios',   label: 'Servicios',   icon: <Scissors className="w-4 h-4" /> },
+  { key: 'diseños',     label: 'Diseños',     icon: <Palette className="w-4 h-4" /> },
+  { key: 'reseñas',     label: 'Reseñas',     icon: <Star className="w-4 h-4" /> },
+  { key: 'ubicaciones', label: 'Ubicaciones', icon: <MapPin className="w-4 h-4" /> },
+];
+
+// ─── Review card ──────────────────────────────────────────────────
+
+function ReviewCard({ review }: { review: any }) {
+  const initials = review.reviewerName?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
+  return (
+    <div className="bg-white rounded-xl border p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-[#EF2D8F]/10 flex items-center justify-center text-[#EF2D8F] font-bold text-sm shrink-0">
+            {initials}
+          </div>
+          <div>
+            <p className="font-semibold text-sm text-[#111827]">{review.reviewerName}</p>
+            <p className="text-xs text-[#9CA3AF]">
+              {new Date(review.createdAt).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Star key={i} className={`w-3.5 h-3.5 ${i < review.rating ? 'fill-[#FBBF24] text-[#FBBF24]' : 'text-[#E5E7EB]'}`} />
+          ))}
+        </div>
+      </div>
+      {review.comment && <p className="text-sm text-[#374151] leading-relaxed">{review.comment}</p>}
+      {review.reply && (
+        <div className="bg-[#FFF1F8] border border-[#FCE7F3] rounded-lg p-3">
+          <p className="text-xs font-semibold text-[#EF2D8F] mb-1 flex items-center gap-1">
+            <MessageCircle className="w-3 h-3" /> Respuesta del salón
+          </p>
+          <p className="text-sm text-[#374151]">{review.reply}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Location card ────────────────────────────────────────────────
+
+function LocationCard({ store }: { store: any }) {
+  return (
+    <div className="bg-white rounded-xl border p-4 space-y-3">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-semibold text-[#111827]">{store.name}</p>
+          {store.address && <p className="text-sm text-[#6B7280] mt-0.5">{store.address}</p>}
+          {store.neighborhood && <p className="text-xs text-[#9CA3AF]">{store.neighborhood}</p>}
+        </div>
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${store.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+          {store.isActive ? 'Abierta' : 'Cerrada'}
+        </span>
+      </div>
+
+      <div className="flex gap-3 flex-wrap text-xs text-[#6B7280]">
+        {store.acceptsPickup && (
+          <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> Recogida en tienda</span>
+        )}
+        {store.acceptsOnlineAppointments && (
+          <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> Citas online</span>
+        )}
+      </div>
+
+      {store.phone && (
+        <a href={`tel:${store.phone}`} className="flex items-center gap-2 text-sm text-[#EF2D8F] hover:underline">
+          <Phone className="w-3.5 h-3.5" /> {store.phone}
+        </a>
+      )}
+
+      {(store.latitude && store.longitude) && (
+        <a
+          href={`https://maps.google.com/?q=${store.latitude},${store.longitude}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 text-xs font-semibold text-[#EF2D8F] hover:underline"
+        >
+          <MapPin className="w-3.5 h-3.5" /> Ver en Google Maps
+        </a>
+      )}
+    </div>
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────
+
+export default function SalonPage() {
+  const params = useParams();
+  const slug = params.slug as string;
+
+  const [storefront, setStorefront] = useState<any>(null);
+  const [products, setProducts]     = useState<any[]>([]);
+  const [services, setServices]     = useState<any[]>([]);
+  const [designs, setDesigns]       = useState<any[]>([]);
+  const [reviews, setReviews]       = useState<any[]>([]);
+  const [locations, setLocations]   = useState<any[]>([]);
+  const [activeTab, setActiveTab]   = useState<Tab>('productos');
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState('');
+
+  useEffect(() => {
+    if (!slug) return;
+    setLoading(true);
+    storeApi.get(`/storefront/public/${slug}`)
+      .then(async (sf) => {
+        setStorefront(sf);
+        // Load tab data in parallel
+        const tenantId = sf.tenantId;
+        const [pr, sv, ds, rv] = await Promise.all([
+          storeApi.get(`/storefront/public/products?tenantId=${tenantId}&limit=20`).catch(() => []),
+          storeApi.get(`/storefront/public/services?tenantId=${tenantId}&limit=20`).catch(() => []),
+          storeApi.get(`/storefront/public/designs?tenantId=${tenantId}&limit=12`).catch(() => []),
+          storeApi.get(`/storefront/reviews?tenantId=${tenantId}&limit=20`).catch(() => []),
+        ]);
+        setProducts(Array.isArray(pr) ? pr : pr?.data || []);
+        setServices(Array.isArray(sv) ? sv : sv?.data || []);
+        setDesigns(Array.isArray(ds) ? ds : ds?.data || []);
+        setReviews(Array.isArray(rv) ? rv : rv?.data || []);
+      })
+      .catch(() => setError('No se encontró este salón o no está disponible.'))
+      .finally(() => setLoading(false));
+  }, [slug]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-center space-y-3">
+          <Loader2 className="w-8 h-8 animate-spin text-[#EF2D8F] mx-auto" />
+          <p className="text-[#6B7280] text-sm">Cargando salón...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !storefront) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white px-4">
+        <div className="text-center space-y-4 max-w-sm">
+          <AlertCircle className="w-12 h-12 text-[#9CA3AF] mx-auto" />
+          <h1 className="text-xl font-bold text-[#111827]">Salón no encontrado</h1>
+          <p className="text-[#6B7280] text-sm">{error || 'Este salón no está disponible en la tienda digital.'}</p>
+          <Link href="/tienda" className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#EF2D8F] text-white rounded-full text-sm font-semibold hover:bg-[#D4267E] transition-colors">
+            ← Volver a la tienda
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const tags: string[] = Array.isArray(storefront.tags) ? storefront.tags : [];
+  const gradient = 'linear-gradient(135deg, #EF2D8F 0%, #8B5CF6 100%)';
+
+  return (
+    <div className="bg-white min-h-screen">
+      {/* ── Banner ── */}
+      <div className="relative h-64 md:h-80 overflow-hidden" style={{ background: gradient }}>
+        {storefront.bannerUrl && (
+          <img src={storefront.bannerUrl} alt={storefront.displayName} className="w-full h-full object-cover absolute inset-0" />
+        )}
+        <div className="absolute inset-0 bg-black/40" />
+        <div className="relative z-10 h-full flex items-end pb-6 px-4 md:px-8 max-w-5xl mx-auto">
+          <div className="flex items-end gap-4">
+            {/* Monogram logo */}
+            <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl bg-white/20 backdrop-blur border-2 border-white/50 flex items-center justify-center text-white text-3xl font-black shadow-lg shrink-0">
+              {storefront.displayName?.[0] || '✦'}
+            </div>
+            <div className="pb-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-2xl md:text-3xl font-black text-white">{storefront.displayName}</h1>
+                <span className="flex items-center gap-1 bg-white/20 backdrop-blur px-2 py-0.5 rounded-full text-xs text-white font-medium">
+                  <CheckCircle2 className="w-3 h-3" /> Verificado
+                </span>
+              </div>
+              {storefront.tagline && <p className="text-white/80 text-sm mt-1">{storefront.tagline}</p>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Info bar ── */}
+      <div className="bg-white border-b sticky top-0 z-20 shadow-sm">
+        <div className="max-w-5xl mx-auto px-4 md:px-8 py-3 flex items-center gap-4 flex-wrap">
+          {storefront.averageRating > 0 && (
+            <StarRating rating={Number(storefront.averageRating)} count={storefront.totalReviews} size="sm" />
+          )}
+          {storefront.businessType && (
+            <span className="text-sm text-[#6B7280]">{storefront.businessType}</span>
+          )}
+          {tags.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              {tags.map((tag: string) => (
+                <span key={tag} className="px-2 py-0.5 bg-[#FFF1F8] text-[#EF2D8F] text-xs rounded-full font-medium">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+          {/* Social links */}
+          <div className="flex gap-2 ml-auto">
+            {storefront.instagram && (
+              <a href={`https://instagram.com/${storefront.instagram.replace('@','')}`} target="_blank" rel="noopener noreferrer"
+                className="p-1.5 rounded-full hover:bg-[#FFF1F8] text-[#9CA3AF] hover:text-[#EF2D8F] transition-colors">
+                <Instagram className="w-4 h-4" />
+              </a>
+            )}
+            {storefront.whatsapp && (
+              <a href={`https://wa.me/${storefront.whatsapp.replace(/\D/g,'')}`} target="_blank" rel="noopener noreferrer"
+                className="p-1.5 rounded-full hover:bg-[#FFF1F8] text-[#9CA3AF] hover:text-[#EF2D8F] transition-colors">
+                <MessageCircle className="w-4 h-4" />
+              </a>
+            )}
+            {storefront.website && (
+              <a href={storefront.website} target="_blank" rel="noopener noreferrer"
+                className="p-1.5 rounded-full hover:bg-[#FFF1F8] text-[#9CA3AF] hover:text-[#EF2D8F] transition-colors">
+                <Globe className="w-4 h-4" />
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="max-w-5xl mx-auto px-4 md:px-8">
+          <div className="flex gap-1 overflow-x-auto scrollbar-none">
+            {TABS.map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
+                  activeTab === tab.key
+                    ? 'border-[#EF2D8F] text-[#EF2D8F]'
+                    : 'border-transparent text-[#6B7280] hover:text-[#111827]'
+                }`}
+              >
+                {tab.icon} {tab.label}
+                {tab.key === 'productos'   && products.length > 0 && <span className="text-xs text-[#9CA3AF]">({products.length})</span>}
+                {tab.key === 'servicios'   && services.length > 0 && <span className="text-xs text-[#9CA3AF]">({services.length})</span>}
+                {tab.key === 'diseños'     && designs.length  > 0 && <span className="text-xs text-[#9CA3AF]">({designs.length})</span>}
+                {tab.key === 'reseñas'     && reviews.length  > 0 && <span className="text-xs text-[#9CA3AF]">({reviews.length})</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Tab content ── */}
+      <div className="max-w-5xl mx-auto px-4 md:px-8 py-8">
+
+        {/* Productos */}
+        {activeTab === 'productos' && (
+          products.length === 0 ? (
+            <EmptyTab icon={<Package className="w-8 h-8" />} text="Este salón aún no tiene productos publicados" />
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {products.map(p => <ProductCard key={p.id} product={p} />)}
+            </div>
+          )
+        )}
+
+        {/* Servicios */}
+        {activeTab === 'servicios' && (
+          services.length === 0 ? (
+            <EmptyTab icon={<Scissors className="w-8 h-8" />} text="Este salón aún no tiene servicios publicados" />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {services.map(s => <ServiceCard key={s.id} service={s} />)}
+            </div>
+          )
+        )}
+
+        {/* Diseños */}
+        {activeTab === 'diseños' && (
+          designs.length === 0 ? (
+            <EmptyTab icon={<Palette className="w-8 h-8" />} text="Este salón aún no tiene diseños publicados" />
+          ) : (
+            <div className="columns-2 sm:columns-3 lg:columns-4 gap-4 space-y-4">
+              {designs.map(d => <div key={d.id} className="break-inside-avoid"><NailDesignCard design={d} /></div>)}
+            </div>
+          )
+        )}
+
+        {/* Reseñas */}
+        {activeTab === 'reseñas' && (
+          reviews.length === 0 ? (
+            <EmptyTab icon={<Star className="w-8 h-8" />} text="Aún no hay reseñas para este salón" />
+          ) : (
+            <div className="space-y-4">
+              {/* Summary */}
+              {storefront.averageRating > 0 && (
+                <div className="bg-[#FFF1F8] rounded-2xl p-6 flex items-center gap-6 mb-6">
+                  <div className="text-center shrink-0">
+                    <p className="text-5xl font-black text-[#EF2D8F]">{Number(storefront.averageRating).toFixed(1)}</p>
+                    <StarRating rating={Number(storefront.averageRating)} size="sm" />
+                    <p className="text-xs text-[#6B7280] mt-1">{storefront.totalReviews} reseñas</p>
+                  </div>
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {reviews.map(r => <ReviewCard key={r.id} review={r} />)}
+              </div>
+            </div>
+          )
+        )}
+
+        {/* Ubicaciones */}
+        {activeTab === 'ubicaciones' && (
+          locations.length === 0 ? (
+            <EmptyTab icon={<MapPin className="w-8 h-8" />} text="No hay sucursales configuradas para esta tienda" />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {locations.map(l => <LocationCard key={l.id} store={l} />)}
+            </div>
+          )
+        )}
+      </div>
+
+      {/* ── Description ── */}
+      {storefront.description && (
+        <div className="bg-[#FAFAFA] border-t mt-4">
+          <div className="max-w-5xl mx-auto px-4 md:px-8 py-8">
+            <h2 className="text-lg font-bold text-[#111827] mb-3">Sobre {storefront.displayName}</h2>
+            <p className="text-[#374151] leading-relaxed">{storefront.description}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EmptyTab({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <div className="text-center py-16 text-[#9CA3AF]">
+      <div className="w-14 h-14 rounded-full bg-[#F3F4F6] flex items-center justify-center mx-auto mb-3">{icon}</div>
+      <p className="text-sm">{text}</p>
+    </div>
+  );
+}
