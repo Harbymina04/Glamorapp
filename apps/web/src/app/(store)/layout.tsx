@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Heart, ShoppingBag, User } from 'lucide-react';
 import { useStoreCart } from '@/stores/store-cart';
 import { CartDrawer } from '@/components/store/CartDrawer';
@@ -20,8 +20,13 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
   const { count, favorites } = useStoreCart();
   const [cartOpen, setCartOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [mounted, setMounted] = useState(false);
 
-  const itemCount = count();
+  // Avoid hydration mismatch: Zustand persist reads localStorage only on client
+  useEffect(() => { setMounted(true); }, []);
+
+  const itemCount = mounted ? count() : 0;
+  const favCount  = mounted ? favorites.length : 0;
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -54,9 +59,9 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
             {/* Favorites */}
             <button className="relative p-2.5 rounded-full hover:bg-gray-100 transition">
               <Heart className="w-5 h-5 text-gray-600" />
-              {favorites.length > 0 && (
+              {favCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[#EF2D8F] text-white text-xs rounded-full flex items-center justify-center font-bold">
-                  {favorites.length}
+                  {favCount}
                 </span>
               )}
             </button>
