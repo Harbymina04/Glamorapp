@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Heart, ShoppingBag, MapPin } from 'lucide-react';
 import { useStoreCart } from '@/stores/store-cart';
 import { formatCOP } from '@/lib/store-utils';
@@ -43,12 +44,9 @@ export function ProductCard({
   };
 
   return (
-    <div
-      className="group bg-white border border-gray-200 rounded-xl overflow-hidden cursor-pointer hover:-translate-y-1 hover:shadow-lg transition-all duration-200"
-      style={{ borderRadius: 12 }}
-    >
-      {/* Image */}
-      <div className="relative aspect-square overflow-hidden">
+    <div className="group bg-white border border-gray-200 rounded-xl overflow-hidden hover:-translate-y-1 hover:shadow-lg transition-all duration-200">
+      {/* Image — clicking navigates to product detail */}
+      <Link href={`/tienda/producto/${id}`} className="block relative aspect-square overflow-hidden">
         {imageUrl ? (
           <img src={imageUrl} alt={name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
         ) : (
@@ -62,17 +60,19 @@ export function ProductCard({
           </span>
         )}
         <button
-          onClick={(e) => { e.stopPropagation(); toggleFavorite(id); }}
-          className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow hover:bg-white transition"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(id); }}
+          className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow hover:bg-white transition z-10"
         >
           <Heart className={`w-4 h-4 ${fav ? 'fill-[#EF2D8F] text-[#EF2D8F]' : 'text-gray-400'}`} />
         </button>
-      </div>
+      </Link>
 
       {/* Content */}
       <div className="p-3 space-y-2">
         {rating > 0 && <StarRating rating={rating} count={reviewCount} size="sm" />}
-        <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 leading-tight">{name}</h3>
+        <Link href={`/tienda/producto/${id}`} className="block">
+          <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 leading-tight hover:text-[#EF2D8F] transition-colors">{name}</h3>
+        </Link>
         {shopName && (
           <div className="flex items-center gap-1">
             <MapPin className="w-3 h-3 text-gray-400" />

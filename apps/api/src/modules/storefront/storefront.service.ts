@@ -284,6 +284,19 @@ export class StorefrontService {
     return sf;
   }
 
+  async getPublicProduct(id: string) {
+    const product = await this.prisma.product.findFirst({
+      where: { id, isStoreVisible: true, deletedAt: null },
+      include: {
+        category: { select: { id: true, name: true } },
+        images:   { take: 4, orderBy: { sortOrder: 'asc' } },
+        brand:    { select: { name: true } },
+      },
+    });
+    if (!product) throw new NotFoundException('Product not found or not available in store');
+    return product;
+  }
+
   async getPublicProducts(query: any) {
     const where: any = { isStoreVisible: true, deletedAt: null };
     if (query.tenantId) where.tenantId = query.tenantId;

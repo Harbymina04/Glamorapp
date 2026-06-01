@@ -36,6 +36,12 @@ export class StorefrontController {
     return this.service.getPublicProducts(query);
   }
 
+  @Get('public/products/:id')
+  @ApiOperation({ summary: 'Get single visible product by id (public)' })
+  getPublicProduct(@Param('id') id: string) {
+    return this.service.getPublicProduct(id);
+  }
+
   @Get('public/services')
   getPublicServices(@Query() query: any) {
     return this.service.getPublicServices(query);

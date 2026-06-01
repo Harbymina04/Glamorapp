@@ -25,16 +25,22 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const fav = isFavorite(id);
 
   useEffect(() => {
-    storeApi.get(`/storefront/public/products?limit=1`)
-      .then(res => {
-        const all = Array.isArray(res) ? res : [];
-        const found = all.find((p: any) => p.id === id) || all[0] || null;
+    if (!id) return;
+    // Fetch product by ID using the products endpoint with id filter
+    storeApi.get(`/storefront/public/products/${id}`)
+      .then(found => {
         setProduct(found);
-        if (found) {
-          setSimilar(all.filter((p: any) => p.id !== found.id && p.category?.name === found.category?.name).slice(0, 4));
+        // Load similar products from same category
+        if (found?.tenantId) {
+          storeApi.get(`/storefront/public/products?tenantId=${found.tenantId}&limit=8`)
+            .then((res: any) => {
+              const all = Array.isArray(res) ? res : [];
+              setSimilar(all.filter((p: any) => p.id !== id).slice(0, 4));
+            })
+            .catch(() => {});
         }
       })
-      .catch(() => {})
+      .catch(() => setProduct(null))
       .finally(() => setLoading(false));
   }, [id]);
 
