@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { X, Minus, Plus, Trash2, ShoppingBag } from 'lucide-react';
 import { useStoreCart } from '@/stores/store-cart';
 import { formatCOP } from '@/lib/store-utils';
@@ -13,10 +14,17 @@ interface CartDrawerProps {
 export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const router = useRouter();
   const { items, updateQty, removeItem, total, count } = useStoreCart();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  // Use empty state until client hydrates to avoid mismatch
+  const clientItems = mounted ? items : [];
+  const clientCount = mounted ? count() : 0;
+  const clientTotal = mounted ? total() : 0;
 
   // Group by shopName
   const grouped: Record<string, typeof items> = {};
-  items.forEach(item => {
+  clientItems.forEach(item => {
     const shop = item.shopName || 'Tienda';
     if (!grouped[shop]) grouped[shop] = [];
     grouped[shop].push(item);
@@ -44,7 +52,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
           <h2 className="font-bold text-gray-900 flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-[#EF2D8F]" />
-            Tu carrito <span className="text-sm font-normal text-gray-500">({count()} ítems)</span>
+            Tu carrito <span className="text-sm font-normal text-gray-500">({clientCount} ítems)</span>
           </h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
             <X className="w-5 h-5 text-gray-500" />
@@ -53,7 +61,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
         {/* Items */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-          {items.length === 0 ? (
+          {clientItems.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center gap-4">
               <ShoppingBag className="w-16 h-16 text-gray-200" />
               <div>
@@ -109,11 +117,11 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         </div>
 
         {/* Footer */}
-        {items.length > 0 && (
+        {clientItems.length > 0 && (
           <div className="border-t border-gray-200 px-5 py-4 space-y-3">
             <div className="flex justify-between text-sm text-gray-600">
               <span>Subtotal</span>
-              <span className="font-semibold text-gray-900">{formatCOP(total())}</span>
+              <span className="font-semibold text-gray-900">{formatCOP(clientTotal)}</span>
             </div>
             <div className="flex justify-between text-sm text-green-600">
               <span>Envío</span>
@@ -121,7 +129,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
             </div>
             <div className="flex justify-between font-bold text-gray-900">
               <span>Total</span>
-              <span>{formatCOP(total())}</span>
+              <span>{formatCOP(clientTotal)}</span>
             </div>
             <button
               onClick={handleCheckout}
