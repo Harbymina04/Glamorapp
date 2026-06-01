@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { use } from 'react';
 import { Heart, Minus, Plus, ShoppingBag, CheckCircle, Store } from 'lucide-react';
 import { useStoreCart } from '@/stores/store-cart';
 import { storeApi, formatCOP } from '@/lib/store-utils';
@@ -10,8 +9,8 @@ import { ProductCard } from '@/components/store/ProductCard';
 
 type Tab = 'descripcion' | 'resenas' | 'similares';
 
-export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function ProductDetailPage({ params }: { params: { id: string } }) {
+  const { id } = params;
   const { addItem, toggleFavorite, isFavorite, updateQty, items } = useStoreCart();
 
   const [product, setProduct] = useState<any>(null);
