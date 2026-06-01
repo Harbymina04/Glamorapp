@@ -32,6 +32,7 @@ import { TenantModule } from './modules/tenant/tenant.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
 import { CommissionsModule } from './modules/commissions/commissions.module';
 import { PlansModule } from './modules/plans/plans.module';
+import { StorefrontModule } from './modules/storefront/storefront.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { PlansModule } from './modules/plans/plans.module';
     AccountingModule,
     CommissionsModule,
     PlansModule,
+    StorefrontModule,
   ],
   providers: [
     // Apply rate limiting globally — auth endpoints override with stricter limits

@@ -181,6 +181,9 @@ model Tenant {
   invoices           Invoice[]
   accountingTx       AccountingTransaction[]
   taxDeclarations    TaxDeclaration[]
+  storefront         Storefront?
+  storefrontOrders   StorefrontOrder[]
+  storefrontReviews  StorefrontReview[]
 
   @@map("tenants")
 }
@@ -217,6 +220,12 @@ model Store {
   sessionDurationMinutes Int       @default(60) @map("session_duration_minutes")
   initialFolioNumber     Int       @default(1) @map("initial_folio_number")
   isActive               Boolean   @default(true) @map("is_active")
+  isStoreVisible            Boolean  @default(false) @map("is_store_visible")
+  latitude                  Decimal? @db.Decimal(10, 7)
+  longitude                 Decimal? @db.Decimal(10, 7)
+  neighborhood              String?  @db.VarChar(100)
+  acceptsPickup             Boolean  @default(true) @map("accepts_pickup")
+  acceptsOnlineAppointments Boolean  @default(true) @map("accepts_online_appointments")
   businessHours          Json      @default("{}") @map("business_hours")
   invoiceTemplate        Json      @default("{}") @map("invoice_template")
   ticketTemplate         Json      @default("{}") @map("ticket_template")
@@ -248,6 +257,8 @@ model Store {
   commissions        Commission[]
   invoices           Invoice[]
   accountingTx       AccountingTransaction[]
+  storefrontOrders   StorefrontOrder[]
+  storefrontReviews  StorefrontReview[]
 
   @@unique([tenantId, slug])
   @@index([tenantId])
@@ -390,6 +401,9 @@ model Product {
   isFeatured      Boolean       @default(false) @map("is_featured")
   isCatalogVisible Boolean      @default(true) @map("is_catalog_visible")
   catalogViews    Int           @default(0) @map("catalog_views")
+  isStoreVisible   Boolean  @default(false) @map("is_store_visible")
+  storeDescription String?  @map("store_description")
+  storeSortOrder   Int      @default(0) @map("store_sort_order")
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
   deletedAt       DateTime?     @map("deleted_at")
@@ -547,6 +561,9 @@ model Service {
   color           String   @default("#EF2D8F") @db.VarChar(7)
   commissionRate  Decimal  @default(0) @map("commission_rate") @db.Decimal(5, 2)
   isActive        Boolean  @default(true) @map("is_active")
+  isStoreVisible      Boolean @default(false) @map("is_store_visible")
+  storeDescription    String? @map("store_description")
+  allowsOnlineBooking Boolean @default(false) @map("allows_online_booking")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
@@ -644,6 +661,7 @@ model NailDesign {
   suggestedPrice            Decimal?          @map("suggested_price") @db.Decimal(12, 2)
   estimatedDurationMinutes  Int?              @map("estimated_duration_minutes")
   isActive                  Boolean           @default(true) @map("is_active")
+  isStoreVisible            Boolean           @default(true) @map("is_store_visible")
   isFavorite                Boolean           @default(false) @map("is_favorite")
   popularityScore           Int               @default(0) @map("popularity_score")
   createdAt                 DateTime          @default(now()) @map("created_at")
@@ -1626,4 +1644,91 @@ model TaxDeclaration {
 
   @@unique([tenantId, taxType, periodYear, periodMonth])
   @@map("tax_declarations")
+}
+
+// ─── Storefront ──────────────────────────────────────────────────
+
+model Storefront {
+  id                    String   @id @default(uuid()) @db.Uuid
+  tenantId              String   @unique @map("tenant_id") @db.Uuid
+  tenant                Tenant   @relation(fields: [tenantId], references: [id])
+  displayName           String   @default("") @map("display_name") @db.VarChar(255)
+  slug                  String?  @unique @db.VarChar(100)
+  tagline               String?  @db.VarChar(300)
+  description           String?
+  logoUrl               String?  @map("logo_url")
+  bannerUrl             String?  @map("banner_url")
+  galleryUrls           Json     @default("[]") @map("gallery_urls")
+  businessType          String?  @map("business_type") @db.VarChar(50)
+  tags                  Json     @default("[]")
+  publicEmail           String?  @map("public_email") @db.VarChar(255)
+  publicPhone           String?  @map("public_phone") @db.VarChar(50)
+  whatsapp              String?  @db.VarChar(50)
+  instagram             String?  @db.VarChar(100)
+  facebook              String?  @db.VarChar(255)
+  tiktok                String?  @db.VarChar(100)
+  website               String?  @db.VarChar(255)
+  acceptsOrders         Boolean  @default(true) @map("accepts_orders")
+  acceptsAppointments   Boolean  @default(true) @map("accepts_appointments")
+  acceptsDelivery       Boolean  @default(false) @map("accepts_delivery")
+  deliveryFee           Decimal  @default(0) @map("delivery_fee") @db.Decimal(12, 2)
+  deliveryRadiusKm      Int      @default(10) @map("delivery_radius_km")
+  minOrderAmount        Decimal  @default(0) @map("min_order_amount") @db.Decimal(12, 2)
+  advancePaymentPercent Decimal  @default(0) @map("advance_payment_percent") @db.Decimal(5, 2)
+  averageRating         Decimal  @default(0) @map("average_rating") @db.Decimal(3, 2)
+  totalReviews          Int      @default(0) @map("total_reviews")
+  totalOrdersCompleted  Int      @default(0) @map("total_orders_completed")
+  isActive              Boolean  @default(false) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("storefronts")
+}
+
+model StorefrontReview {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  tenant        Tenant    @relation(fields: [tenantId], references: [id])
+  storeId       String?   @map("store_id") @db.Uuid
+  store         Store?    @relation(fields: [storeId], references: [id])
+  reviewerName  String    @map("reviewer_name") @db.VarChar(255)
+  reviewerEmail String?   @map("reviewer_email") @db.VarChar(255)
+  rating        Int
+  comment       String?
+  reply         String?
+  repliedAt     DateTime? @map("replied_at")
+  isVerified    Boolean   @default(false) @map("is_verified")
+  productId     String?   @map("product_id") @db.Uuid
+  serviceId     String?   @map("service_id") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("storefront_reviews")
+}
+
+model StorefrontOrder {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  storeId       String?  @map("store_id") @db.Uuid
+  store         Store?   @relation(fields: [storeId], references: [id])
+  orderNumber   String   @map("order_number") @db.VarChar(20)
+  buyerName     String   @map("buyer_name") @db.VarChar(255)
+  buyerEmail    String?  @map("buyer_email") @db.VarChar(255)
+  buyerPhone    String?  @map("buyer_phone") @db.VarChar(50)
+  buyerNotes    String?  @map("buyer_notes")
+  items         Json     @default("[]")
+  subtotal      Decimal  @default(0) @db.Decimal(12, 2)
+  deliveryFee   Decimal  @default(0) @map("delivery_fee") @db.Decimal(12, 2)
+  total         Decimal  @default(0) @db.Decimal(12, 2)
+  paymentMethod String   @default("store") @map("payment_method") @db.VarChar(50)
+  status        String   @default("pending") @db.VarChar(30)
+  saleId        String?  @map("sale_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("storefront_orders")
 }

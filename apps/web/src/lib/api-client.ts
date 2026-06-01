@@ -65,6 +65,19 @@ export const api = {
     return handleResponse(res);
   },
 
+  async patch(path: string, body?: any, options?: FetchOptions) {
+    const res = await fetch(`${API_URL}${path}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options?.token ? { Authorization: `Bearer ${options.token}` } : {}),
+        ...options?.headers,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return handleResponse(res);
+  },
+
   async del(path: string, options?: FetchOptions) {
     const res = await fetch(`${API_URL}${path}`, {
       method: 'DELETE',
