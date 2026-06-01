@@ -19,6 +19,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
   const [qty, setQty] = useState(1);
   const [tab, setTab] = useState<Tab>('descripcion');
   const [added, setAdded] = useState(false);
+  const [activeImg, setActiveImg] = useState(0);
 
   const cartItem = items.find(i => i.productId === id);
   const fav = isFavorite(id);
@@ -87,25 +88,36 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
         {/* Left: images */}
         <div className="space-y-3">
           <div className="sticky top-20 space-y-3">
+            {/* Main image */}
             <div className={`aspect-square rounded-2xl bg-gradient-to-br ${grad} flex items-center justify-center overflow-hidden`}>
-              {product.images?.[0]?.url ? (
-                <img src={product.images[0].url} alt={product.name} className="w-full h-full object-cover" />
+              {product.images?.[activeImg]?.url ? (
+                <img
+                  src={product.images[activeImg].url}
+                  alt={product.name}
+                  className="w-full h-full object-cover transition-opacity duration-200"
+                />
               ) : (
                 <ShoppingBag className="w-20 h-20 text-white/60" />
               )}
             </div>
-            {/* Thumbnail strip */}
-            <div className="flex gap-2">
-              {[0,1,2,3].map(i => (
-                <div key={i} className={`w-16 h-16 rounded-lg ${i === 0 ? 'ring-2 ring-[#EF2D8F]' : ''} bg-gray-100 overflow-hidden flex items-center justify-center`}>
-                  {product.images?.[i]?.url ? (
-                    <img src={product.images[i].url} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <ShoppingBag className="w-6 h-6 text-gray-300" />
-                  )}
-                </div>
-              ))}
-            </div>
+            {/* Thumbnail strip — only shown when product has images */}
+            {product.images?.length > 1 && (
+              <div className="flex gap-2">
+                {product.images.map((img: any, i: number) => (
+                  <button
+                    key={img.id || i}
+                    onClick={() => setActiveImg(i)}
+                    className={`w-16 h-16 rounded-lg flex-shrink-0 overflow-hidden border-2 transition-all ${
+                      i === activeImg
+                        ? 'border-[#EF2D8F] shadow-md'
+                        : 'border-gray-200 hover:border-gray-400'
+                    }`}
+                  >
+                    <img src={img.url} alt={`Vista ${i + 1}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
