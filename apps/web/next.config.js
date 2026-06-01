@@ -53,6 +53,13 @@ const nextConfig = {
         source: '/api/:path*',
         destination: `${API_INTERNAL}/api/:path*`,
       },
+      {
+        // Proxy uploads (product images, nail designs, etc.) through Next.js.
+        // This way image URLs like /uploads/products/... work without needing
+        // an absolute host prefix in every <img src>.
+        source: '/uploads/:path*',
+        destination: `${API_INTERNAL}/uploads/:path*`,
+      },
     ];
   },
 };

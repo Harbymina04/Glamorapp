@@ -258,7 +258,7 @@ export default function NailDesignsPage() {
               <div className="h-44 bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center relative overflow-hidden">
                 {d.imageUrl ? (
                   <img
-                    src={`${API_BASE}${d.imageUrl}`}
+                    src={d.imageUrl}
                     alt={d.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
@@ -374,7 +374,7 @@ export default function NailDesignsPage() {
               {selectedDesign.imageUrl ? (
                 <div className="relative bg-surface-hover rounded-xl overflow-hidden aspect-square max-h-80 mx-auto mb-6">
                   <img
-                    src={`${API_BASE}${selectedDesign.imageUrl}`}
+                    src={selectedDesign.imageUrl}
                     alt={selectedDesign.name}
                     className="w-full h-full object-contain"
                   />
