@@ -2,6 +2,7 @@ export const MODULES = [
   { name: 'Inicio', href: '/dashboard', icon: 'Home', feature: 'pos' },
   { name: 'Inventario', href: '/dashboard/inventory', icon: 'Package', feature: 'inventory' },
   { name: 'Ventas POS', href: '/dashboard/pos', icon: 'ShoppingCart', feature: 'pos' },
+  { name: 'Pedidos Online', href: '/dashboard/pedidos', icon: 'ShoppingBag', feature: 'pos' },
   { name: 'Agendamiento', href: '/dashboard/appointments', icon: 'Calendar', feature: 'appointments' },
   { name: 'Catálogo Productos', href: '/dashboard/catalog/products', icon: 'BookOpen', feature: 'catalog' },
   { name: 'Catálogo Uñas', href: '/dashboard/catalog/nail-designs', icon: 'Palette', feature: 'catalog' },
