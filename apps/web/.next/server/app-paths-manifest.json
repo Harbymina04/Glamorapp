@@ -1,7 +1,7 @@
 {
-  "/auth/login/page": "app/auth/login/page.js",
-  "/dashboard/accounting/page": "app/dashboard/accounting/page.js",
   "/dashboard/page": "app/dashboard/page.js",
-  "/dashboard/catalog/products/page": "app/dashboard/catalog/products/page.js",
-  "/dashboard/pos/page": "app/dashboard/pos/page.js"
+  "/dashboard/catalog/nail-designs/page": "app/dashboard/catalog/nail-designs/page.js",
+  "/dashboard/appointments/page": "app/dashboard/appointments/page.js",
+  "/dashboard/commissions/page": "app/dashboard/commissions/page.js",
+  "/dashboard/catalog/products/page": "app/dashboard/catalog/products/page.js"
 }
