@@ -6,6 +6,8 @@ import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
 import { ArrowLeft, Save, Loader2, Trash2, Scissors } from 'lucide-react';
 
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+
 export default function EditServicePage() {
   const router = useRouter();
   const params = useParams();
@@ -13,6 +15,14 @@ export default function EditServicePage() {
   const serviceId = params.id as string;
 
   const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    fetch(`${API}/master-data/categories?type=service&lang=es`)
+      .then(r => r.json())
+      .then(data => setCategories(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
@@ -138,7 +148,10 @@ export default function EditServicePage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className={labelClass}>Categoría</label>
-            <input className={inputClass} value={form.category} onChange={e => handleChange('category', e.target.value)} placeholder="Ej: Uñas, Cabello, Facial..." />
+            <select className={inputClass} value={form.category} onChange={e => handleChange('category', e.target.value)}>
+              <option value="">Sin categoría</option>
+              {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            </select>
           </div>
           <div>
             <label className={labelClass}>Duración (minutos)</label>

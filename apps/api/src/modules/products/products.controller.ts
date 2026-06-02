@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards,
-  UseInterceptors, UploadedFiles, BadRequestException,
+  UseInterceptors, UploadedFiles, BadRequestException, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -30,6 +30,26 @@ export class ProductsController {
   @Get('brands/list')
   getBrands(@TenantId() tenantId: string, @StoreId() storeId: string) {
     return this.productsService.getBrands(tenantId, storeId);
+  }
+
+  @Post('categories/from-master')
+  @HttpCode(HttpStatus.OK)
+  createCategoryFromMaster(
+    @TenantId() tenantId: string,
+    @StoreId() storeId: string,
+    @Body() body: { masterId: string },
+  ) {
+    return this.productsService.createCategoryFromMaster(tenantId, storeId, body.masterId);
+  }
+
+  @Post('brands/from-master')
+  @HttpCode(HttpStatus.OK)
+  createBrandFromMaster(
+    @TenantId() tenantId: string,
+    @StoreId() storeId: string,
+    @Body() body: { masterId: string },
+  ) {
+    return this.productsService.createBrandFromMaster(tenantId, storeId, body.masterId);
   }
 
   @Get()

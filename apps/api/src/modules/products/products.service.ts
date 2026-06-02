@@ -88,16 +88,68 @@ export class ProductsService {
   }
 
   async getCategories(tenantId: string, storeId: string) {
-    return this.prisma.productCategory.findMany({
+    const tenant = await this.prisma.productCategory.findMany({
       where: { tenantId, storeId, isActive: true },
       orderBy: { sortOrder: 'asc' },
     });
+    if (tenant.length > 0) return tenant;
+
+    // Fallback: return master categories marked with fromMaster flag
+    const master = await this.prisma.masterCategory.findMany({
+      where: { isActive: true, type: { in: ['product', 'general'] } },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    });
+    return master.map(m => ({
+      id: `master_${m.id}`,
+      name: (m.translations as any)?.es || m.name,
+      icon: m.icon,
+      color: m.color,
+      fromMaster: true,
+      masterId: m.id,
+    }));
   }
 
   async getBrands(tenantId: string, storeId: string) {
-    return this.prisma.brand.findMany({
+    const tenant = await this.prisma.brand.findMany({
       where: { tenantId, storeId, isActive: true },
       orderBy: { name: 'asc' },
+    });
+    if (tenant.length > 0) return tenant;
+
+    // Fallback: return master brands marked with fromMaster flag
+    const master = await this.prisma.masterBrand.findMany({
+      where: { isActive: true },
+      orderBy: { name: 'asc' },
+    });
+    return master.map(m => ({
+      id: `master_${m.id}`,
+      name: (m.translations as any)?.es || m.name,
+      logoUrl: m.logoUrl,
+      fromMaster: true,
+      masterId: m.id,
+    }));
+  }
+
+  async createCategoryFromMaster(tenantId: string, storeId: string, masterId: string) {
+    const master = await this.prisma.masterCategory.findUnique({ where: { id: masterId } });
+    if (!master) throw new Error('Master category not found');
+    const name = (master.translations as any)?.es || master.name;
+    // Upsert to avoid duplicates if called multiple times
+    const existing = await this.prisma.productCategory.findFirst({ where: { tenantId, storeId, name } });
+    if (existing) return existing;
+    return this.prisma.productCategory.create({
+      data: { tenantId, storeId, name, icon: master.icon ?? undefined, color: master.color ?? undefined, sortOrder: master.sortOrder },
+    });
+  }
+
+  async createBrandFromMaster(tenantId: string, storeId: string, masterId: string) {
+    const master = await this.prisma.masterBrand.findUnique({ where: { id: masterId } });
+    if (!master) throw new Error('Master brand not found');
+    const name = (master.translations as any)?.es || master.name;
+    const existing = await this.prisma.brand.findFirst({ where: { tenantId, storeId, name } });
+    if (existing) return existing;
+    return this.prisma.brand.create({
+      data: { tenantId, storeId, name, logoUrl: master.logoUrl ?? undefined },
     });
   }
 

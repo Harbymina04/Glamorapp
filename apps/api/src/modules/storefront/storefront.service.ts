@@ -284,6 +284,18 @@ export class StorefrontService {
     return sf;
   }
 
+  async getPublicLocations(tenantId: string) {
+    return this.prisma.store.findMany({
+      where: { tenantId, isActive: true },
+      select: {
+        id: true, name: true, slug: true, address: true,
+        neighborhood: true, city: true, phone: true,
+        latitude: true, longitude: true, isActive: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   async getPublicProduct(id: string) {
     const product = await this.prisma.product.findFirst({
       where: { id, isStoreVisible: true, deletedAt: null },

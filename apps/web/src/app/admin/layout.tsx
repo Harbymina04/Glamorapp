@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Crown, CreditCard, Users, ChevronLeft, MessageCircle, Brain, LayoutDashboard, LogOut } from 'lucide-react';
+import { Crown, CreditCard, Users, ChevronLeft, MessageCircle, Brain, LayoutDashboard, LogOut, Database } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 
 const ADMIN_LINKS = [
@@ -13,6 +13,7 @@ const ADMIN_LINKS = [
   { name: 'Clientes', href: '/admin/clients', icon: Users },
   { name: 'WhatsApp', href: '/admin/whatsapp', icon: MessageCircle },
   { name: 'IA - Consumo', href: '/admin/ai-usage', icon: Brain },
+  { name: 'Datos Maestros', href: '/admin/master-data/categories', icon: Database },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

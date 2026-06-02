@@ -75,11 +75,19 @@ export default function ProductDetailPage() {
         unitOfMeasure: p.unitOfMeasure || 'unit',
       });
       setImages(p.images || []);
-      setCategories(Array.isArray(cats) ? cats : cats.data || []);
-      setBrands(Array.isArray(brands) ? brands : brands.data || []);
+      setCategories(Array.isArray(cats) ? cats : cats?.data || []);
+      setBrands(Array.isArray(brands) ? brands : brands?.data || []);
     }).catch(() => setError('Producto no encontrado'))
       .finally(() => setLoading(false));
   }, [token, productId]);
+
+  // Resolve master_ prefixed IDs before saving
+  const resolveMasterId = async (id: string, type: 'categories' | 'brands'): Promise<string> => {
+    if (!id.startsWith('master_')) return id;
+    const masterId = id.replace('master_', '');
+    const result = await api.post(`/products/${type}/from-master`, { masterId }, { token: token! });
+    return result.id;
+  };
 
   // Load suppliers when tab activated
   useEffect(() => {
@@ -127,10 +135,12 @@ export default function ProductDetailPage() {
     if (!form.name.trim()) return setError('El nombre es obligatorio');
     setSaving(true); setError('');
     try {
+      const categoryId = form.categoryId ? await resolveMasterId(form.categoryId, 'categories') : undefined;
+      const brandId = form.brandId ? await resolveMasterId(form.brandId, 'brands') : undefined;
       await api.put(`/products/${productId}`, {
         name: form.name.trim(), sku: form.sku.trim() || undefined,
         description: form.description.trim() || undefined,
-        categoryId: form.categoryId || undefined, brandId: form.brandId || undefined,
+        categoryId, brandId,
         salePrice: parseFloat(form.salePrice) || 0,
         costPrice: parseFloat(form.costPrice) || undefined,
         minStock: parseInt(form.minStock) || 5, unitOfMeasure: form.unitOfMeasure || 'unit',

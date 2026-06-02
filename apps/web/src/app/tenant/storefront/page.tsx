@@ -55,6 +55,9 @@ function PerfilTab({ storefront, onSave }: { storefront: any; onSave: (data: any
   const [copied, setCopied] = useState(false);
   const [tagInput, setTagInput] = useState('');
 
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+
   useEffect(() => {
     if (storefront) {
       setForm({
@@ -71,9 +74,32 @@ function PerfilTab({ storefront, onSave }: { storefront: any; onSave: (data: any
         website: storefront.website || '',
         publicEmail: storefront.publicEmail || '',
         publicPhone: storefront.publicPhone || '',
+        logoUrl: storefront.logoUrl || '',
+        bannerUrl: storefront.bannerUrl || '',
       });
     }
   }, [storefront]);
+
+  const uploadImage = async (file: File, field: 'logoUrl' | 'bannerUrl') => {
+    const setUploading = field === 'logoUrl' ? setUploadingLogo : setUploadingBanner;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const token = useAuthStore.getState().token;
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/upload/image`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData }
+      );
+      if (!res.ok) throw new Error('Error al subir imagen');
+      const data = await res.json();
+      set(field, data.url);
+    } catch (e: any) {
+      alert(e.message || 'Error al subir imagen');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
@@ -113,6 +139,88 @@ function PerfilTab({ storefront, onSave }: { storefront: any; onSave: (data: any
           {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
           {copied ? 'Copiado' : 'Copiar'}
         </button>
+      </div>
+
+      {/* Images */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-5">
+        <h3 className="font-semibold text-gray-900">Imágenes</h3>
+
+        {/* Banner */}
+        <div>
+          <label className="text-xs font-medium text-gray-600 block mb-2">Banner de portada</label>
+          <div
+            className="relative w-full h-36 rounded-xl overflow-hidden border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center cursor-pointer hover:border-[#EF2D8F] transition group"
+            style={form.bannerUrl ? { backgroundImage: `url(${form.bannerUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', borderStyle: 'solid' } : {}}
+            onClick={() => document.getElementById('banner-upload')?.click()}
+          >
+            {!form.bannerUrl && (
+              <div className="text-center text-gray-400 group-hover:text-[#EF2D8F] transition">
+                <div className="text-2xl mb-1">🖼️</div>
+                <p className="text-xs font-medium">Subir banner</p>
+                <p className="text-xs">JPG, PNG, WEBP · máx. 10MB</p>
+              </div>
+            )}
+            {form.bannerUrl && (
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                <p className="text-white text-xs font-semibold">Cambiar banner</p>
+              </div>
+            )}
+            {uploadingBanner && (
+              <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
+                <div className="w-5 h-5 border-2 border-[#EF2D8F] border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
+          </div>
+          <input id="banner-upload" type="file" accept="image/*" className="hidden"
+            onChange={e => e.target.files?.[0] && uploadImage(e.target.files[0], 'bannerUrl')} />
+          {form.bannerUrl && (
+            <button onClick={() => set('bannerUrl', '')} className="mt-1 text-xs text-red-500 hover:underline">
+              Quitar banner
+            </button>
+          )}
+        </div>
+
+        {/* Logo */}
+        <div>
+          <label className="text-xs font-medium text-gray-600 block mb-2">Logo del salón</label>
+          <div className="flex items-center gap-4">
+            <div
+              className="w-20 h-20 rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center cursor-pointer hover:border-[#EF2D8F] transition overflow-hidden flex-shrink-0 group relative"
+              onClick={() => document.getElementById('logo-upload')?.click()}
+            >
+              {form.logoUrl ? (
+                <>
+                  <img src={form.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                    <p className="text-white text-xs font-bold">Cambiar</p>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center text-gray-400 group-hover:text-[#EF2D8F] transition">
+                  <div className="text-xl">🏷️</div>
+                  <p className="text-xs">Logo</p>
+                </div>
+              )}
+              {uploadingLogo && (
+                <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
+                  <div className="w-4 h-4 border-2 border-[#EF2D8F] border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+            </div>
+            <div className="text-xs text-gray-500 space-y-1">
+              <p>Recomendado: <strong>200×200 px</strong></p>
+              <p>Formatos: JPG, PNG, WEBP</p>
+              <p>Máx. 10 MB</p>
+              {form.logoUrl && (
+                <button onClick={() => set('logoUrl', '')} className="text-red-500 hover:underline">
+                  Quitar logo
+                </button>
+              )}
+            </div>
+          </div>
+          <input id="logo-upload" type="file" accept="image/*" className="hidden"
+            onChange={e => e.target.files?.[0] && uploadImage(e.target.files[0], 'logoUrl')} />
+        </div>
       </div>
 
       {/* Basic info */}

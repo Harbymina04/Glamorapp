@@ -7,12 +7,15 @@ import {
   MapPin, Star, Phone, Mail, Instagram, Facebook,
   Globe, CheckCircle2, Package, Scissors, Palette,
   MessageCircle, ChevronRight, Loader2, AlertCircle,
+  X, Heart, Clock,
 } from 'lucide-react';
 import { ProductCard } from '@/components/store/ProductCard';
 import { ServiceCard } from '@/components/store/ServiceCard';
 import { NailDesignCard } from '@/components/store/NailDesignCard';
 import { StarRating } from '@/components/store/StarRating';
+import { ReviewCard } from '@/components/store/ReviewCard';
 import { storeApi, formatCOP, categoryColors } from '@/lib/store-utils';
+import { useStoreCart } from '@/stores/store-cart';
 
 // ─── Tabs ─────────────────────────────────────────────────────────
 
@@ -25,43 +28,6 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'reseñas',     label: 'Reseñas',     icon: <Star className="w-4 h-4" /> },
   { key: 'ubicaciones', label: 'Ubicaciones', icon: <MapPin className="w-4 h-4" /> },
 ];
-
-// ─── Review card ──────────────────────────────────────────────────
-
-function ReviewCard({ review }: { review: any }) {
-  const initials = review.reviewerName?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
-  return (
-    <div className="bg-white rounded-xl border p-4 space-y-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-[#EF2D8F]/10 flex items-center justify-center text-[#EF2D8F] font-bold text-sm shrink-0">
-            {initials}
-          </div>
-          <div>
-            <p className="font-semibold text-sm text-[#111827]">{review.reviewerName}</p>
-            <p className="text-xs text-[#9CA3AF]">
-              {new Date(review.createdAt).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Star key={i} className={`w-3.5 h-3.5 ${i < review.rating ? 'fill-[#FBBF24] text-[#FBBF24]' : 'text-[#E5E7EB]'}`} />
-          ))}
-        </div>
-      </div>
-      {review.comment && <p className="text-sm text-[#374151] leading-relaxed">{review.comment}</p>}
-      {review.reply && (
-        <div className="bg-[#FFF1F8] border border-[#FCE7F3] rounded-lg p-3">
-          <p className="text-xs font-semibold text-[#EF2D8F] mb-1 flex items-center gap-1">
-            <MessageCircle className="w-3 h-3" /> Respuesta del salón
-          </p>
-          <p className="text-sm text-[#374151]">{review.reply}</p>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─── Location card ────────────────────────────────────────────────
 
@@ -108,6 +74,117 @@ function LocationCard({ store }: { store: any }) {
   );
 }
 
+// ─── Nail Design Modal ────────────────────────────────────────────
+
+function NailDesignModal({ design, onClose }: { design: any; onClose: () => void }) {
+  const { toggleFavorite, isFavorite } = useStoreCart();
+  const fav = isFavorite(design.id);
+
+  const GRADIENTS = [
+    'from-rose-300 via-pink-400 to-fuchsia-500',
+    'from-violet-400 via-purple-400 to-pink-400',
+    'from-fuchsia-400 via-pink-400 to-rose-400',
+    'from-indigo-300 via-violet-400 to-purple-500',
+  ];
+  const grad = GRADIENTS[design.name?.charCodeAt(0) % GRADIENTS.length];
+
+  // Support single imageUrl or array of images
+  const images: string[] = design.images?.length
+    ? design.images.map((img: any) => img.url || img)
+    : design.imageUrl
+    ? [design.imageUrl]
+    : [];
+
+  const [activeImg, setActiveImg] = useState(0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl overflow-hidden shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+
+        {/* Main image */}
+        <div className={`relative bg-gradient-to-b ${grad} flex-shrink-0`} style={{ height: '320px' }}>
+          {images.length > 0 ? (
+            <img src={images[activeImg]} alt={design.name} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+
+          {/* Controls */}
+          <button onClick={onClose}
+            className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/50 transition">
+            <X className="w-5 h-5" />
+          </button>
+          <button onClick={() => toggleFavorite(design.id)}
+            className="absolute top-3 left-3 w-9 h-9 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-white/40 transition">
+            <Heart className={`w-4 h-4 ${fav ? 'fill-[#EF2D8F] text-[#EF2D8F]' : 'text-white'}`} />
+          </button>
+
+          {/* Name overlay */}
+          <div className="absolute bottom-4 left-4">
+            <h2 className="text-2xl font-black text-white">{design.name}</h2>
+            {design.technique && (
+              <span className="mt-1 inline-block px-3 py-1 bg-white/20 backdrop-blur-sm text-white text-xs rounded-full">
+                {design.technique}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Thumbnail strip — show if multiple images */}
+        {images.length > 1 && (
+          <div className="flex gap-2 px-4 py-3 bg-gray-50 border-b overflow-x-auto scrollbar-hide flex-shrink-0">
+            {images.map((url, i) => (
+              <button key={i} onClick={() => setActiveImg(i)}
+                className={`w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 border-2 transition ${i === activeImg ? 'border-[#EF2D8F]' : 'border-transparent opacity-60 hover:opacity-100'}`}>
+                <img src={url} alt={`foto ${i + 1}`} className="w-full h-full object-cover" />
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Info */}
+        <div className="p-5 space-y-4 overflow-y-auto">
+          <div className="flex items-center justify-between">
+            {design.suggestedPrice ? (
+              <div>
+                <p className="text-xs text-gray-400 uppercase tracking-wide">Precio desde</p>
+                <p className="text-2xl font-black text-gray-900">{formatCOP(Number(design.suggestedPrice))}</p>
+              </div>
+            ) : <div />}
+            {design.estimatedDurationMinutes && (
+              <div className="text-right">
+                <p className="text-xs text-gray-400 uppercase tracking-wide">Duración aprox.</p>
+                <p className="text-lg font-bold text-gray-700 flex items-center gap-1 justify-end">
+                  <Clock className="w-4 h-4" /> {design.estimatedDurationMinutes} min
+                </p>
+              </div>
+            )}
+          </div>
+
+          {design.colors?.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Colores</p>
+              <div className="flex gap-2 flex-wrap">
+                {design.colors.map((c: string) => (
+                  <div key={c} className="w-7 h-7 rounded-full border-2 border-white shadow-sm ring-1 ring-gray-200"
+                    style={{ backgroundColor: c }} title={c} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          <button onClick={onClose}
+            className="block w-full py-3 bg-[#EF2D8F] text-white rounded-xl font-bold text-center hover:bg-[#d4267e] transition">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────
 
 export default function SalonPage() {
@@ -123,6 +200,7 @@ export default function SalonPage() {
   const [activeTab, setActiveTab]   = useState<Tab>('productos');
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState('');
+  const [selectedDesign, setSelectedDesign] = useState<any>(null);
 
   useEffect(() => {
     if (!slug) return;
@@ -132,16 +210,18 @@ export default function SalonPage() {
         setStorefront(sf);
         // Load tab data in parallel
         const tenantId = sf.tenantId;
-        const [pr, sv, ds, rv] = await Promise.all([
+        const [pr, sv, ds, rv, lc] = await Promise.all([
           storeApi.get(`/storefront/public/products?tenantId=${tenantId}&limit=20`).catch(() => []),
           storeApi.get(`/storefront/public/services?tenantId=${tenantId}&limit=20`).catch(() => []),
           storeApi.get(`/storefront/public/designs?tenantId=${tenantId}&limit=12`).catch(() => []),
           storeApi.get(`/storefront/reviews?tenantId=${tenantId}&limit=20`).catch(() => []),
+          storeApi.get(`/storefront/public/locations/${tenantId}`).catch(() => []),
         ]);
         setProducts(Array.isArray(pr) ? pr : pr?.data || []);
         setServices(Array.isArray(sv) ? sv : sv?.data || []);
         setDesigns(Array.isArray(ds) ? ds : ds?.data || []);
         setReviews(Array.isArray(rv) ? rv : rv?.data || []);
+        setLocations(Array.isArray(lc) ? lc : []);
       })
       .catch(() => setError('No se encontró este salón o no está disponible.'))
       .finally(() => setLoading(false));
@@ -186,9 +266,15 @@ export default function SalonPage() {
         <div className="absolute inset-0 bg-black/40" />
         <div className="relative z-10 h-full flex items-end pb-6 px-4 md:px-8 max-w-5xl mx-auto">
           <div className="flex items-end gap-4">
-            {/* Monogram logo */}
-            <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl bg-white/20 backdrop-blur border-2 border-white/50 flex items-center justify-center text-white text-3xl font-black shadow-lg shrink-0">
-              {storefront.displayName?.[0] || '✦'}
+            {/* Logo */}
+            <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl border-2 border-white/50 shadow-lg shrink-0 overflow-hidden flex-shrink-0">
+              {storefront.logoUrl ? (
+                <img src={storefront.logoUrl} alt={storefront.displayName} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-white/20 backdrop-blur flex items-center justify-center text-white text-3xl font-black">
+                  {storefront.displayName?.[0] || '✦'}
+                </div>
+              )}
             </div>
             <div className="pb-1">
               <div className="flex items-center gap-2 flex-wrap">
@@ -302,7 +388,9 @@ export default function SalonPage() {
                 <ServiceCard key={s.id} id={s.id} name={s.name}
                   category={s.category} price={Number(s.price || 0)}
                   durationMinutes={s.durationMinutes}
-                  allowsBooking={s.allowsOnlineBooking} />
+                  allowsBooking={s.allowsOnlineBooking}
+                  storeId={s.storeId}
+                  tenantId={s.tenantId} />
               ))}
             </div>
           )
@@ -318,7 +406,8 @@ export default function SalonPage() {
                 <div key={d.id} className="break-inside-avoid">
                   <NailDesignCard id={d.id} name={d.name} technique={d.technique}
                     price={d.suggestedPrice ? Number(d.suggestedPrice) : undefined}
-                    imageUrl={d.imageUrl} />
+                    imageUrl={d.imageUrl}
+                    onClick={() => setSelectedDesign(d)} />
                 </div>
               ))}
             </div>
@@ -359,6 +448,11 @@ export default function SalonPage() {
           )
         )}
       </div>
+
+      {/* ── Nail Design Modal ── */}
+      {selectedDesign && (
+        <NailDesignModal design={selectedDesign} onClose={() => setSelectedDesign(null)} />
+      )}
 
       {/* ── Description ── */}
       {storefront.description && (

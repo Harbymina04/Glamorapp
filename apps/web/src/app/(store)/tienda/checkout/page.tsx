@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle, CreditCard, Smartphone, Building2, Store, Loader2, ShoppingBag } from 'lucide-react';
+import { CheckCircle, CreditCard, Smartphone, Building2, Store, Loader2, ShoppingBag, AlertCircle } from 'lucide-react';
 import { useStoreCart } from '@/stores/store-cart';
 import { storeApi, formatCOP } from '@/lib/store-utils';
 
@@ -19,6 +19,7 @@ export default function CheckoutPage() {
   const { items, total, clearCart } = useStoreCart();
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const [orderNumber, setOrderNumber] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('store');
   const [form, setForm] = useState({ name: '', phone: '', email: '', notes: '' });
@@ -42,6 +43,7 @@ export default function CheckoutPage() {
   const handleSubmit = async () => {
     if (!form.name || !form.phone) return;
     setSubmitting(true);
+    setSubmitError('');
     try {
       // Create one order per shop
       let lastOrder: any = null;
@@ -62,8 +64,8 @@ export default function CheckoutPage() {
       setOrderNumber(lastOrder?.orderNumber || 'GA-XXXXX');
       clearCart();
       setStep(3);
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      setSubmitError(e?.message || 'Ocurrió un error al procesar el pedido. Intenta de nuevo.');
     } finally {
       setSubmitting(false);
     }
@@ -214,6 +216,12 @@ export default function CheckoutPage() {
                 <span>{formatCOP(total())}</span>
               </div>
             </div>
+            {submitError && (
+              <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                {submitError}
+              </div>
+            )}
             <button onClick={handleSubmit} disabled={submitting || !form.name || !form.phone}
               className="w-full py-3.5 bg-[#EF2D8F] text-white rounded-xl font-bold hover:bg-[#d4267e] transition disabled:opacity-60 flex items-center justify-center gap-2">
               {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle className="w-5 h-5" />}

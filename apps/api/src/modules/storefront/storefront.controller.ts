@@ -57,6 +57,11 @@ export class StorefrontController {
     return this.service.getPublicStorefront(slug);
   }
 
+  @Get('public/locations/:tenantId')
+  getPublicLocations(@Param('tenantId') tenantId: string) {
+    return this.service.getPublicLocations(tenantId);
+  }
+
   @Post('public/orders')
   @HttpCode(HttpStatus.CREATED)
   createPublicOrder(@Body() dto: any) {

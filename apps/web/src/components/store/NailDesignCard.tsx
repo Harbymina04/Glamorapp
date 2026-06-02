@@ -13,6 +13,7 @@ interface NailDesignCardProps {
   likes?: number;
   gradient?: string;
   imageUrl?: string;
+  onClick?: () => void;
 }
 
 const GRADIENTS = [
@@ -22,13 +23,17 @@ const GRADIENTS = [
   'from-indigo-300 via-violet-400 to-purple-500',
 ];
 
-export function NailDesignCard({ id, name, technique, price, shopName, likes = 0, gradient, imageUrl }: NailDesignCardProps) {
+export function NailDesignCard({ id, name, technique, price, shopName, likes = 0, gradient, imageUrl, onClick }: NailDesignCardProps) {
   const { toggleFavorite, isFavorite } = useStoreCart();
   const fav = isFavorite(id);
   const grad = gradient || GRADIENTS[name.charCodeAt(0) % GRADIENTS.length];
 
   return (
-    <div className="group relative bg-white rounded-2xl overflow-hidden border border-gray-200 hover:shadow-lg hover:-translate-y-1 transition-all duration-200" style={{ aspectRatio: '3/4' }}>
+    <div
+      className="group relative bg-white rounded-2xl overflow-hidden border border-gray-200 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 cursor-pointer"
+      style={{ aspectRatio: '3/4' }}
+      onClick={onClick}
+    >
       {/* Image / gradient bg */}
       <div className={`absolute inset-0 bg-gradient-to-b ${grad}`}>
         {imageUrl && (
@@ -39,9 +44,9 @@ export function NailDesignCard({ id, name, technique, price, shopName, likes = 0
       {/* Overlay */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
 
-      {/* Heart */}
+      {/* Heart — stop propagation so click doesn't open modal */}
       <button
-        onClick={() => toggleFavorite(id)}
+        onClick={e => { e.stopPropagation(); toggleFavorite(id); }}
         className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-white/40 transition"
       >
         <Heart className={`w-4 h-4 ${fav ? 'fill-[#EF2D8F] text-[#EF2D8F]' : 'text-white'}`} />

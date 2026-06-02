@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { Heart, ShoppingBag, MapPin } from 'lucide-react';
 import { useStoreCart } from '@/stores/store-cart';
@@ -34,6 +35,8 @@ export function ProductCard({
   shopName, imageUrl, category, tenantId = '',
 }: ProductCardProps) {
   const { addItem, toggleFavorite, isFavorite } = useStoreCart();
+  const [toastMsg, setToastMsg] = useState('');
+
   const fav = isFavorite(id);
   const gradKey = (category || 'default').toLowerCase();
   const grad = CATEGORY_GRADIENTS[gradKey] || CATEGORY_GRADIENTS.default;
@@ -43,9 +46,18 @@ export function ProductCard({
     addItem({ productId: id, name, price, shopName: shopName || '', tenantId, imageUrl });
   };
 
+  const handleFavorite = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const wasFav = isFavorite(id);
+    toggleFavorite(id);
+    setToastMsg(wasFav ? 'Eliminado de favoritos' : 'Agregado a favoritos');
+    setTimeout(() => setToastMsg(''), 2000);
+  };
+
   return (
     <div className="group bg-white border border-gray-200 rounded-xl overflow-hidden hover:-translate-y-1 hover:shadow-lg transition-all duration-200">
-      {/* Image — clicking navigates to product detail */}
+      {/* Image */}
       <Link href={`/tienda/producto/${id}`} className="block relative aspect-square overflow-hidden">
         {imageUrl ? (
           <img src={imageUrl} alt={name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
@@ -59,12 +71,19 @@ export function ProductCard({
             -{discount}%
           </span>
         )}
-        <button
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(id); }}
-          className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow hover:bg-white transition z-10"
-        >
-          <Heart className={`w-4 h-4 ${fav ? 'fill-[#EF2D8F] text-[#EF2D8F]' : 'text-gray-400'}`} />
-        </button>
+        <div className="absolute top-2 right-2">
+          <button
+            onClick={handleFavorite}
+            className="w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow hover:bg-white transition z-10"
+          >
+            <Heart className={`w-4 h-4 ${fav ? 'fill-[#EF2D8F] text-[#EF2D8F]' : 'text-gray-400'}`} />
+          </button>
+          {toastMsg && (
+            <div className="absolute right-0 top-9 z-20 px-2.5 py-1.5 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap shadow-lg">
+              {toastMsg}
+            </div>
+          )}
+        </div>
       </Link>
 
       {/* Content */}

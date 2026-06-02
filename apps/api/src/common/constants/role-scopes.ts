@@ -94,6 +94,12 @@ export const DEFAULT_ROLE_SCOPES: Record<UserRole, Record<string, ScopeAction[]>
     'reports':     ['view'],
     'ai_agents':   ['view'],
   },
+
+  customer: {
+    // Platform customers can only view their own appointments and profile
+    'appointments': ['view', 'create'],
+    'profile':      ['view', 'edit'],
+  },
 };
 
 /**

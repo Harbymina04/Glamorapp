@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
-import { Search, Heart, ShoppingBag, User } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Search, Heart, ShoppingBag, User, LogOut } from 'lucide-react';
 import { useStoreCart } from '@/stores/store-cart';
 import { CartDrawer } from '@/components/store/CartDrawer';
+import { useAuthStore } from '@/stores/auth-store';
 
 const CATEGORIES = [
   { id: 'all', label: 'Todos' },
@@ -18,15 +20,27 @@ const CATEGORIES = [
 
 export default function StoreLayout({ children }: { children: React.ReactNode }) {
   const { count, favorites } = useStoreCart();
+  const { user, isAuthenticated, logout, checkAuth } = useAuthStore();
   const [cartOpen, setCartOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [mounted, setMounted] = useState(false);
 
   // Avoid hydration mismatch: Zustand persist reads localStorage only on client
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+    // Rehydrate auth state from localStorage on mount
+    checkAuth();
+  }, []);
 
+  const router = useRouter();
   const itemCount = mounted ? count() : 0;
   const favCount  = mounted ? favorites.length : 0;
+
+  const handleSearchKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && search.trim()) {
+      router.push(`/tienda/catalogo?q=${encodeURIComponent(search.trim())}`);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -48,6 +62,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
+                onKeyDown={handleSearchKey}
                 placeholder="Buscar productos, salones, servicios..."
                 className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30 focus:border-[#EF2D8F]/50"
               />
@@ -76,14 +91,29 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
               )}
             </button>
 
-            {/* Login */}
-            <Link
-              href="/auth/login"
-              className="flex items-center gap-1.5 px-4 py-2 bg-[#EF2D8F] text-white rounded-full text-sm font-semibold hover:bg-[#d4267e] transition"
-            >
-              <User className="w-4 h-4" />
-              Ingresar
-            </Link>
+            {/* Auth */}
+            {mounted && isAuthenticated && user?.role === 'customer' ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700 hidden sm:block">
+                  {user.firstName}
+                </span>
+                <button
+                  onClick={() => logout()}
+                  title="Cerrar sesión"
+                  className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-full text-sm text-gray-600 hover:bg-gray-50 transition"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <Link
+                href="/tienda/auth/login"
+                className="flex items-center gap-1.5 px-4 py-2 bg-[#EF2D8F] text-white rounded-full text-sm font-semibold hover:bg-[#d4267e] transition"
+              >
+                <User className="w-4 h-4" />
+                Ingresar
+              </Link>
+            )}
           </div>
         </div>
 
@@ -92,12 +122,13 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
           <div className="max-w-7xl mx-auto px-4">
             <div className="flex gap-1 overflow-x-auto py-2 scrollbar-hide">
               {CATEGORIES.map(cat => (
-                <button
+                <Link
                   key={cat.id}
+                  href={cat.id === 'all' ? '/tienda/catalogo' : `/tienda/catalogo?cat=${cat.id}`}
                   className="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium text-gray-600 hover:bg-pink-50 hover:text-[#EF2D8F] transition whitespace-nowrap"
                 >
                   {cat.label}
-                </button>
+                </Link>
               ))}
             </div>
           </div>

@@ -36,11 +36,22 @@ export default function NewProductPage() {
     Promise.all([
       api.get('/products/categories/list', { token }),
       api.get('/products/brands/list', { token }),
-    ]).then(([cats, brands]) => {
-      setCategories(Array.isArray(cats) ? cats : cats.data || []);
-      setBrands(Array.isArray(brands) ? brands : brands.data || []);
+    ]).then(([cats, brnds]) => {
+      setCategories(Array.isArray(cats) ? cats : cats?.data || []);
+      setBrands(Array.isArray(brnds) ? brnds : brnds?.data || []);
     }).catch(console.error);
   }, [token]);
+
+  // Resolve master_ prefixed IDs before saving: auto-create tenant category/brand
+  const resolveMasterId = async (
+    id: string,
+    type: 'categories' | 'brands',
+  ): Promise<string> => {
+    if (!id.startsWith('master_')) return id;
+    const masterId = id.replace('master_', '');
+    const result = await api.post(`/products/${type}/from-master`, { masterId }, { token: token! });
+    return result.id;
+  };
 
   const handleChange = (field: string, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -86,13 +97,21 @@ export default function NewProductPage() {
     setSaving(true);
     setError('');
     try {
+      // Resolve master_ IDs to real tenant IDs (creates them if needed)
+      const categoryId = form.categoryId
+        ? await resolveMasterId(form.categoryId, 'categories')
+        : undefined;
+      const brandId = form.brandId
+        ? await resolveMasterId(form.brandId, 'brands')
+        : undefined;
+
       // 1. Create the product
       const product = await api.post('/products', {
         name: form.name.trim(),
         sku: form.sku.trim() || undefined,
         description: form.description.trim() || undefined,
-        categoryId: form.categoryId || undefined,
-        brandId: form.brandId || undefined,
+        categoryId,
+        brandId,
         salePrice: parseFloat(form.salePrice) || 0,
         costPrice: parseFloat(form.costPrice) || undefined,
         currentStock: parseInt(form.currentStock) || 0,

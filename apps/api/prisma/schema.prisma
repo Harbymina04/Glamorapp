@@ -18,6 +18,7 @@ enum UserRole {
   professional
   financial
   readonly
+  customer
 }
 
 enum ProductStatus {
@@ -269,8 +270,8 @@ model Store {
 
 model User {
   id           String    @id @default(uuid()) @db.Uuid
-  tenantId     String    @map("tenant_id") @db.Uuid
-  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  tenantId     String?   @map("tenant_id") @db.Uuid
+  tenant       Tenant?   @relation(fields: [tenantId], references: [id])
   storeId      String?   @map("store_id") @db.Uuid
   store        Store?    @relation(fields: [storeId], references: [id])
   email        String    @db.VarChar(255)
@@ -614,10 +615,10 @@ model Appointment {
   tenantId       String            @map("tenant_id") @db.Uuid
   storeId        String            @map("store_id") @db.Uuid
   store          Store             @relation(fields: [storeId], references: [id])
-  customerId     String            @map("customer_id") @db.Uuid
-  customer       Customer          @relation(fields: [customerId], references: [id])
-  professionalId String            @map("professional_id") @db.Uuid
-  professional   User              @relation("ProfessionalAppointments", fields: [professionalId], references: [id])
+  customerId     String?           @map("customer_id") @db.Uuid
+  customer       Customer?         @relation(fields: [customerId], references: [id])
+  professionalId String?           @map("professional_id") @db.Uuid
+  professional   User?             @relation("ProfessionalAppointments", fields: [professionalId], references: [id])
   serviceId      String            @map("service_id") @db.Uuid
   service        Service           @relation(fields: [serviceId], references: [id])
   nailDesignId   String?           @map("nail_design_id") @db.Uuid
@@ -1731,4 +1732,81 @@ model StorefrontOrder {
   @@index([tenantId])
   @@index([status])
   @@map("storefront_orders")
+}
+
+// ─── Master Data (gestionado por superadmin) ─────────────────────
+
+enum MasterCategoryType {
+  product
+  service
+  design
+  general
+}
+
+model MasterCategory {
+  id           String             @id @default(uuid())
+  name         String             @db.VarChar(100)
+  translations Json               @default("{}")
+  type         MasterCategoryType @default(general)
+  icon         String?            @db.VarChar(50)
+  color        String?            @db.VarChar(7)
+  isActive     Boolean            @default(true) @map("is_active")
+  sortOrder    Int                @default(0) @map("sort_order")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  @@index([type, isActive])
+  @@map("master_categories")
+}
+
+model MasterBrand {
+  id           String   @id @default(uuid())
+  name         String   @db.VarChar(100)
+  translations Json     @default("{}")
+  logoUrl      String?  @map("logo_url")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("master_brands")
+}
+
+model Country {
+  id          String       @id @default(uuid())
+  isoCode     String       @unique @map("iso_code") @db.VarChar(2)
+  name        String       @db.VarChar(100)
+  translations Json        @default("{}")
+  dialCode    String       @map("dial_code") @db.VarChar(5)
+  flag        String?      @db.VarChar(10)
+  isActive    Boolean      @default(true) @map("is_active")
+  sortOrder   Int          @default(999) @map("sort_order")
+  departments Department[]
+
+  @@map("countries")
+}
+
+model Department {
+  id           String   @id @default(uuid())
+  countryId    String   @map("country_id")
+  country      Country  @relation(fields: [countryId], references: [id])
+  code         String   @db.VarChar(20)
+  name         String   @db.VarChar(100)
+  translations Json     @default("{}")
+  cities       City[]
+
+  @@unique([countryId, code])
+  @@map("departments")
+}
+
+model City {
+  id           String     @id @default(uuid())
+  departmentId String     @map("department_id")
+  department   Department @relation(fields: [departmentId], references: [id])
+  code         String     @db.VarChar(20)
+  name         String     @db.VarChar(100)
+  translations Json       @default("{}")
+
+  @@unique([departmentId, code])
+  @@index([departmentId])
+  @@map("cities")
 }
