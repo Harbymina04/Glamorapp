@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/stores/auth-store';
-import { Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,6 +19,14 @@ export default function LoginPage() {
     setError('');
     try {
       const redirectPath = await login(email, password);
+
+      // Customers belong to the storefront, not the SaaS
+      if (redirectPath === '/tienda') {
+        useAuthStore.getState().logout();
+        setError('Esta cuenta es de cliente. Accede desde la tienda virtual en /tienda');
+        return;
+      }
+
       const ALLOWED = ['/dashboard', '/tenant', '/admin'];
       const safePath = ALLOWED.includes(redirectPath) ? redirectPath : '/dashboard';
       router.push(safePath);
@@ -55,7 +63,18 @@ export default function LoginPage() {
           <p className="text-muted-foreground mb-8">Ingresa a tu cuenta para continuar</p>
 
           {error && (
-            <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm mb-4">{error}</div>
+            <div className="bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-lg text-sm mb-4 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>
+                {error.startsWith('Esta cuenta es de cliente') ? (
+                  <>Esta cuenta es de cliente.{' '}
+                    <a href="/tienda/auth/login" className="underline font-semibold">
+                      Ingresa desde la tienda virtual →
+                    </a>
+                  </>
+                ) : error}
+              </span>
+            </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -71,7 +90,12 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Contraseña</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-muted-foreground">Contraseña</label>
+                <Link href="/auth/forgot-password" className="text-xs text-glamor-primary hover:underline">
+                  ¿Olvidaste tu contraseña?
+                </Link>
+              </div>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}

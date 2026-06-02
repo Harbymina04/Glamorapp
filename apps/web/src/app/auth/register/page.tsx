@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
 import { ArrowRight, Check, X, Loader2, Eye, EyeOff } from 'lucide-react';
+import { PhoneInput } from '@/components/ui/PhoneInput';
 
 // ─── Password strength ──────────────────────────────────────
 function getPasswordStrength(pw: string): { score: number; label: string; color: string } {
@@ -51,6 +52,7 @@ export default function RegisterPage() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [slugStatus, setSlugStatus] = useState<SlugStatus>('idle');
@@ -114,6 +116,8 @@ export default function RegisterPage() {
       errors.password = 'Debe tener mayúscula, minúscula y número';
     if (form.password !== form.confirmPassword)
       errors.confirmPassword = 'Las contraseñas no coinciden';
+    if (!acceptTerms)
+      errors.terms = 'Debes aceptar los términos y condiciones para continuar';
 
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
@@ -261,12 +265,10 @@ export default function RegisterPage() {
 
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Teléfono</label>
-              <input
-                type="tel"
+              <PhoneInput
                 value={form.phone}
-                onChange={e => handleChange('phone', e.target.value)}
-                className={inputClass('phone')}
-                placeholder="+1 555 000 0000"
+                onChange={v => handleChange('phone', v)}
+                placeholder="3001234567"
               />
             </div>
           </div>
@@ -339,6 +341,35 @@ export default function RegisterPage() {
                 <p className="text-xs text-red-500 mt-1">{fieldErrors.confirmPassword}</p>
               )}
             </div>
+          </div>
+
+          {/* Términos y condiciones */}
+          <div className="space-y-1">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={acceptTerms}
+                onChange={e => {
+                  setAcceptTerms(e.target.checked);
+                  if (fieldErrors.terms) setFieldErrors(prev => ({ ...prev, terms: '' }));
+                }}
+                className="mt-0.5 w-4 h-4 rounded border-border-primary text-glamor-primary accent-glamor-primary shrink-0"
+              />
+              <span className="text-xs text-muted-foreground leading-relaxed">
+                Acepto los{' '}
+                <a href="/terminos" target="_blank" rel="noopener noreferrer" className="text-glamor-primary hover:underline font-medium">
+                  Términos y Condiciones
+                </a>{' '}
+                y la{' '}
+                <a href="/privacidad" target="_blank" rel="noopener noreferrer" className="text-glamor-primary hover:underline font-medium">
+                  Política de Privacidad
+                </a>{' '}
+                de Glamorapp.
+              </span>
+            </label>
+            {fieldErrors.terms && (
+              <p className="text-xs text-red-500">{fieldErrors.terms}</p>
+            )}
           </div>
 
           <button

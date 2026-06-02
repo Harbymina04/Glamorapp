@@ -8,8 +8,10 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { CustomerRegisterDto } from './dto/customer-register.dto';
 import { v4 as uuidv4 } from 'uuid';
 import { getEffectiveScopes } from '../../common/constants/role-scopes';
 
@@ -19,6 +21,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private email: EmailService,
   ) {}
 
   private static readonly MAX_ATTEMPTS = 5;
@@ -137,7 +140,35 @@ export class AuthService {
       return user;
     });
 
+    const appUrl = this.configService.get<string>('APP_URL') || 'http://localhost:3000';
+    this.email.sendWelcome(result.email, result.firstName, appUrl)
+      .catch(err => console.error('Welcome email failed:', err.message));
+
     return this.generateTokens(result);
+  }
+
+  async registerCustomer(dto: CustomerRegisterDto) {
+    // Platform customers are not tied to any tenant/store
+    const existing = await this.prisma.user.findFirst({
+      where: { tenantId: null, email: dto.email },
+    });
+    if (existing) throw new ConflictException('Este email ya tiene una cuenta en la plataforma');
+
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const user = await this.prisma.user.create({
+      data: {
+        tenantId: null,
+        storeId: null,
+        email: dto.email,
+        passwordHash,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        phone: dto.phone ?? null,
+        role: 'customer' as any,
+      },
+    });
+
+    return this.generateTokens(user);
   }
 
   async refreshToken(refreshToken: string) {
@@ -165,8 +196,8 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('User not found');
     const { passwordHash, permissions, ...safe } = user;
 
-    // Get plan info
-    const planInfo = await this.getTenantPlanInfo(user.tenantId);
+    // Get plan info (only for tenant users)
+    const planInfo = user.tenantId ? await this.getTenantPlanInfo(user.tenantId) : null;
 
     // Resolve effective scopes
     const scopes = getEffectiveScopes(user.role, permissions);
@@ -176,7 +207,7 @@ export class AuthService {
 
     // For tenant_admin, include all stores
     let stores: any[] | undefined;
-    if (user.role === 'tenant_admin') {
+    if (user.role === 'tenant_admin' && user.tenantId) {
       stores = await this.prisma.store.findMany({
         where: { tenantId: user.tenantId, isActive: true },
         select: { id: true, name: true, slug: true },
@@ -289,6 +320,8 @@ export class AuthService {
         return '/admin';
       case 'tenant_admin':
         return '/tenant';
+      case 'customer':
+        return '/tienda';
       default:
         return '/dashboard';
     }
@@ -325,8 +358,9 @@ export class AuthService {
       },
     });
 
-    // TODO: Send email with reset link
-    // await this.mailer.sendPasswordReset(email, token);
+    const appUrl = this.configService.get<string>('APP_URL') || 'http://localhost:3000';
+    this.email.sendPasswordReset(user.email, token, appUrl)
+      .catch(err => console.error('Password reset email failed:', err.message));
 
     return {
       success: true,

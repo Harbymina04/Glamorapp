@@ -235,7 +235,7 @@ export default function LandingPage() {
               <p className="plan-desc">Ideal para salones independientes y profesionales que recién empiezan a digitalizar su negocio.</p>
               <div className="plan-price"><span className="currency">$</span><span className="amount">{price("inicial")}</span><span className="period">COP /mes</span></div>
               <p className="plan-billed">{billed("inicial")}</p>
-              <button className="plan-cta outline">Empezar 14 días gratis</button>
+              <Link href="/auth/register?plan=inicial" className="plan-cta outline" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>Empezar 14 días gratis</Link>
               <div className="plan-count"><span className="n">5</span><span className="l">módulos esenciales incluidos</span></div>
               <p className="plan-modlabel">Incluye</p>
               <ul className="plan-feats">
@@ -255,7 +255,7 @@ export default function LandingPage() {
               <p className="plan-desc">Para salones en crecimiento que quieren delegar tareas repetitivas a la IA y vender más.</p>
               <div className="plan-price"><span className="currency">$</span><span className="amount">{price("profesional")}</span><span className="period">COP /mes</span></div>
               <p className="plan-billed">{billed("profesional")}</p>
-              <button className="plan-cta">Empezar 14 días gratis</button>
+              <Link href="/auth/register?plan=profesional" className="plan-cta" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>Empezar 14 días gratis</Link>
               <div className="plan-count"><span className="n">10</span><span className="l">módulos + Agente IA Glamy</span></div>
               <p className="plan-modlabel">Todo lo del Inicial, más</p>
               <ul className="plan-feats">
@@ -275,7 +275,7 @@ export default function LandingPage() {
               <p className="plan-desc">Para cadenas y franquicias con varias sucursales, equipos grandes y reportería avanzada.</p>
               <div className="plan-price"><span className="currency">$</span><span className="amount">{price("empresarial")}</span><span className="period">COP /mes</span></div>
               <p className="plan-billed">{billed("empresarial")}</p>
-              <button className="plan-cta outline">Hablar con ventas</button>
+              <a href="mailto:ventas@glamorapp.com" className="plan-cta outline" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>Hablar con ventas</a>
               <div className="plan-count"><span className="n">12+</span><span className="l">módulos · IA · API · Multi‑IA</span></div>
               <p className="plan-modlabel">Todo lo del Profesional, más</p>
               <ul className="plan-feats">

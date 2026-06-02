@@ -187,7 +187,7 @@ export default function AccountingPage() {
     { key: 'transacciones', label: 'Transacciones', icon: <CreditCard className="w-4 h-4" /> },
     { key: 'impuestos', label: 'Impuestos', icon: <Receipt className="w-4 h-4" />, adminOnly: true },
     { key: 'configuracion', label: 'Configuración fiscal', icon: <Settings className="w-4 h-4" />, adminOnly: true },
-  ].filter(t => !t.adminOnly || isTenantAdmin);
+  ].filter(t => !t.adminOnly || isTenantAdmin) as { key: Tab; label: string; icon: React.ReactNode; adminOnly?: boolean }[];
 
   return (
     <div className="space-y-6">
