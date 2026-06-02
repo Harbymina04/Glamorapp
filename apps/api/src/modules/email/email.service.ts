@@ -84,7 +84,7 @@ export class EmailService {
   }
 
   async sendPasswordReset(email: string, token: string, appUrl: string): Promise<void> {
-    const resetUrl = `${appUrl}/reset-password?token=${token}`;
+    const resetUrl = `${appUrl}/auth/reset-password?token=${token}`;
     const subject = '🔐 Restablecer contraseña – Glamorapp';
     const html = this.passwordResetTemplate(resetUrl);
     await this.send(email, subject, html);
