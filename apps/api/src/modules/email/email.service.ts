@@ -27,13 +27,19 @@ export class EmailService {
     this.enabled = !!host;
 
     if (this.enabled) {
+      const port = config.get<number>('SMTP_PORT') || 587;
+      const secure = String(config.get('SMTP_SECURE')).toLowerCase() === 'true';
       this.transporter = nodemailer.createTransport({
         host,
-        port: config.get<number>('SMTP_PORT') || 587,
-        secure: config.get<boolean>('SMTP_SECURE') || false,
+        port,
+        secure,
+        requireTLS: !secure,
         auth: {
           user: config.get<string>('SMTP_USER'),
           pass: config.get<string>('SMTP_PASS'),
+        },
+        tls: {
+          rejectUnauthorized: false,
         },
       });
     }
