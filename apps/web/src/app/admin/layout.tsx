@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Crown, CreditCard, Users, ChevronLeft, MessageCircle, Brain, LayoutDashboard, LogOut } from 'lucide-react';
+import { Crown, CreditCard, Users, ChevronLeft, MessageCircle, Brain, LayoutDashboard, LogOut, Database } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 
 const ADMIN_LINKS = [
@@ -13,21 +13,22 @@ const ADMIN_LINKS = [
   { name: 'Clientes', href: '/admin/clients', icon: Users },
   { name: 'WhatsApp', href: '/admin/whatsapp', icon: MessageCircle },
   { name: 'IA - Consumo', href: '/admin/ai-usage', icon: Brain },
+  { name: 'Datos Maestros', href: '/admin/master-data/categories', icon: Database },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isAuthenticated, isLoading, checkAuth } = useAuthStore();
-  const [mounted, setMounted] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    checkAuth();
-    setMounted(true);
-  }, []);
+    // Await checkAuth so we know the real auth state before rendering
+    checkAuth().finally(() => setReady(true));
+  }, []); // eslint-disable-line
 
-  // Loading state
-  if (!mounted || isLoading) {
+  // Show spinner while checking auth
+  if (!ready || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="w-8 h-8 border-4 border-glamor-primary border-t-transparent rounded-full animate-spin" />
@@ -41,7 +42,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return null;
   }
 
-  // Not superadmin → redirect silently (don't reveal the admin section exists)
+  // Not superadmin → redirect silently
   if (user?.role !== 'superadmin') {
     router.replace('/dashboard');
     return null;

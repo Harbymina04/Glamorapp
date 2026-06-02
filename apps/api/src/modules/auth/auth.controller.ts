@@ -14,6 +14,7 @@ import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { CustomerRegisterDto } from './dto/customer-register.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -33,6 +34,12 @@ export class AuthController {
   @Throttle({ default: { ttl: 3_600_000, limit: 5 } }) // 5 registros por hora
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
+  }
+
+  @Post('customer/register')
+  @Throttle({ default: { ttl: 3_600_000, limit: 10 } }) // 10 registros por hora por IP
+  registerCustomer(@Body() dto: CustomerRegisterDto) {
+    return this.authService.registerCustomer(dto);
   }
 
   @Get('check-slug')

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
+import { PhoneInput } from '@/components/ui/PhoneInput';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { DataTable } from '@/components/shared/data-table';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -329,9 +330,11 @@ export default function CustomersPage() {
                     <Phone className="w-3.5 h-3.5 inline mr-1 text-muted-foreground" />
                     Teléfono
                   </label>
-                  <input type="tel" className={inputClass} value={form.phone}
-                    onChange={e => setForm(prev => ({ ...prev, phone: e.target.value }))}
-                    placeholder="+52 555 111 0001" />
+                  <PhoneInput
+                    value={form.phone}
+                    onChange={v => setForm(prev => ({ ...prev, phone: v }))}
+                    placeholder="3001234567"
+                  />
                 </div>
               </div>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
 import {
@@ -103,6 +103,82 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
       {type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
       <span className="text-sm font-medium">{message}</span>
       <button onClick={onClose} className="ml-2 p-0.5 rounded hover:bg-black/5"><X className="w-4 h-4" /></button>
+    </div>
+  );
+}
+
+// ─── Location Select inline (settings) ──────────────────────────
+
+const MASTER_API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+
+function LocationSelectInline({
+  country, state, city,
+  onChange,
+}: {
+  country: string; state: string; city: string;
+  onChange: (country: string, state: string, city: string) => void;
+}) {
+  const [countries, setCountries]     = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
+  const [cities, setCities]           = useState<any[]>([]);
+  const [countryIso, setCountryIso]   = useState('CO');
+  const [deptId, setDeptId]           = useState('');
+
+  const inputCls = 'w-full h-10 px-3 rounded-lg border border-border-primary text-sm bg-white focus:outline-none focus:ring-2 focus:ring-glamor-primary/20 focus:border-glamor-primary transition';
+
+  useEffect(() => {
+    fetch(`${MASTER_API}/master-data/countries?lang=es`)
+      .then(r => r.json()).then(d => setCountries(Array.isArray(d) ? d : [])).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!countryIso) return;
+    setDeptId('');
+    setCities([]);
+    fetch(`${MASTER_API}/master-data/countries/${countryIso}/departments?lang=es`)
+      .then(r => r.json()).then(d => setDepartments(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [countryIso]);
+
+  useEffect(() => {
+    if (!deptId) return;
+    fetch(`${MASTER_API}/master-data/departments/${deptId}/cities?lang=es`)
+      .then(r => r.json()).then(d => setCities(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [deptId]);
+
+  const handleDept = (id: string) => {
+    setDeptId(id);
+    const deptName = departments.find(d => d.id === id)?.name || '';
+    onChange(countryIso, deptName, '');
+  };
+
+  const handleCity = (id: string) => {
+    const cityName = cities.find(c => c.id === id)?.name || '';
+    const deptName = departments.find(d => d.id === deptId)?.name || state;
+    onChange(countryIso, deptName, cityName);
+  };
+
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      <div>
+        <label className="block text-xs font-medium text-muted-foreground mb-1.5">País</label>
+        <select value={countryIso} onChange={e => { setCountryIso(e.target.value); onChange(e.target.value, '', ''); }} className={inputCls}>
+          {countries.map(c => <option key={c.id} value={c.isoCode}>{c.flag} {c.name}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-muted-foreground mb-1.5">Departamento</label>
+        <select value={deptId} onChange={e => handleDept(e.target.value)} disabled={!countryIso} className={inputCls}>
+          <option value="">{state || 'Seleccionar'}</option>
+          {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-muted-foreground mb-1.5">Ciudad</label>
+        <select onChange={e => handleCity(e.target.value)} disabled={!deptId} className={inputCls}>
+          <option value="">{city || 'Seleccionar'}</option>
+          {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
     </div>
   );
 }
@@ -538,16 +614,16 @@ export default function SettingsPage() {
                 </InputGroup>
               </div>
 
+              <div className="mt-4">
+                <p className="text-sm font-medium text-foreground mb-2">Ubicación</p>
+                <LocationSelectInline
+                  country={settings.country}
+                  state={settings.state}
+                  city={settings.city}
+                  onChange={(c, s, ci) => { update('country', c); update('state', s); update('city', ci); }}
+                />
+              </div>
               <div className="grid grid-cols-2 gap-4 mt-4">
-                <InputGroup label="Ciudad">
-                  <TextInput value={settings.city} onChange={v => update('city', v)} placeholder="Ciudad de México" />
-                </InputGroup>
-                <InputGroup label="Estado / Provincia">
-                  <TextInput value={settings.state} onChange={v => update('state', v)} placeholder="CDMX" />
-                </InputGroup>
-                <InputGroup label="País">
-                  <TextInput value={settings.country} onChange={v => update('country', v)} placeholder="México" />
-                </InputGroup>
                 <InputGroup label="Código postal">
                   <TextInput value={settings.zipCode} onChange={v => update('zipCode', v)} placeholder="06600" />
                 </InputGroup>

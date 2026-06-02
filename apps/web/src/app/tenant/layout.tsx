@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Building2, Users, LayoutDashboard, BarChart3, ChevronLeft, Store, Brain, LogOut, Plug } from 'lucide-react';
+import { Building2, Users, LayoutDashboard, BarChart3, ChevronLeft, Store, Brain, LogOut, Plug, Calculator, FileText, Receipt, Zap, ScrollText, ShoppingBag, Star, Package } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 
 const TENANT_LINKS = [
@@ -14,6 +14,21 @@ const TENANT_LINKS = [
   { name: 'Integraciones', href: '/tenant/marketing', icon: Plug },
 ];
 
+const STOREFRONT_LINKS = [
+  { name: 'Mi Vitrina', href: '/tenant/storefront', icon: Store },
+  { name: 'Pedidos Online', href: '/tenant/storefront/orders', icon: ShoppingBag },
+  { name: 'Reseñas', href: '/tenant/storefront/reviews', icon: Star },
+];
+
+const ACCOUNTING_LINKS = [
+  { name: 'Resumen', href: '/tenant/accounting', icon: Calculator },
+  { name: 'Facturas', href: '/tenant/accounting/invoices', icon: FileText },
+  { name: 'Impuestos', href: '/tenant/accounting/taxes', icon: Receipt },
+  { name: 'Liquidación', href: '/tenant/accounting/liquidacion', icon: ScrollText },
+  { name: 'Config. fiscal', href: '/tenant/accounting/config', icon: Building2 },
+  { name: 'Proveedor FE', href: '/tenant/accounting/fe-provider', icon: Zap },
+];
+
 export default function TenantLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -21,8 +36,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    checkAuth();
-    setMounted(true);
+    checkAuth().finally(() => setMounted(true));
   }, []);
 
   if (!mounted || isLoading) {
@@ -54,9 +68,58 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
           <h2 className="text-lg font-bold text-foreground mt-3">{user?.firstName || 'Admin'}</h2>
           <p className="text-xs text-muted-foreground">Panel de Administración</p>
         </div>
-        <nav className="flex-1 p-3 space-y-1">
+        <nav className="flex-1 p-3 space-y-1 overflow-auto">
+          {/* General */}
           {TENANT_LINKS.map(link => {
             const isActive = pathname === link.href || (link.href !== '/tenant' && pathname.startsWith(link.href));
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
+                  isActive
+                    ? 'bg-glamor-primary/10 text-glamor-primary'
+                    : 'text-muted-foreground hover:bg-surface-hover'
+                }`}
+              >
+                <link.icon className="w-4 h-4" />
+                {link.name}
+              </Link>
+            );
+          })}
+
+          {/* Tienda Digital */}
+          <div className="pt-3 pb-1">
+            <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+              Tienda Digital
+            </p>
+          </div>
+          {STOREFRONT_LINKS.map(link => {
+            const isActive = pathname === link.href || pathname.startsWith(link.href + '/');
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
+                  isActive
+                    ? 'bg-glamor-primary/10 text-glamor-primary'
+                    : 'text-muted-foreground hover:bg-surface-hover'
+                }`}
+              >
+                <link.icon className="w-4 h-4" />
+                {link.name}
+              </Link>
+            );
+          })}
+
+          {/* Contabilidad */}
+          <div className="pt-3 pb-1">
+            <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+              Contabilidad
+            </p>
+          </div>
+          {ACCOUNTING_LINKS.map(link => {
+            const isActive = pathname === link.href || pathname.startsWith(link.href + '/');
             return (
               <Link
                 key={link.href}

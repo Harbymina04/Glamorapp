@@ -18,6 +18,7 @@ enum UserRole {
   professional
   financial
   readonly
+  customer
 }
 
 enum ProductStatus {
@@ -175,6 +176,15 @@ model Tenant {
   users     User[]
   subscriptions Subscription[]
   aiUsages  AiUsage[]
+  fiscalConfigs      FiscalConfig[]
+  commissions        Commission[]
+  taxRates           TaxRate[]
+  invoices           Invoice[]
+  accountingTx       AccountingTransaction[]
+  taxDeclarations    TaxDeclaration[]
+  storefront         Storefront?
+  storefrontOrders   StorefrontOrder[]
+  storefrontReviews  StorefrontReview[]
 
   @@map("tenants")
 }
@@ -211,6 +221,12 @@ model Store {
   sessionDurationMinutes Int       @default(60) @map("session_duration_minutes")
   initialFolioNumber     Int       @default(1) @map("initial_folio_number")
   isActive               Boolean   @default(true) @map("is_active")
+  isStoreVisible            Boolean  @default(false) @map("is_store_visible")
+  latitude                  Decimal? @db.Decimal(10, 7)
+  longitude                 Decimal? @db.Decimal(10, 7)
+  neighborhood              String?  @db.VarChar(100)
+  acceptsPickup             Boolean  @default(true) @map("accepts_pickup")
+  acceptsOnlineAppointments Boolean  @default(true) @map("accepts_online_appointments")
   businessHours          Json      @default("{}") @map("business_hours")
   invoiceTemplate        Json      @default("{}") @map("invoice_template")
   ticketTemplate         Json      @default("{}") @map("ticket_template")
@@ -238,6 +254,12 @@ model Store {
   cashRegisters CashRegister[]
   permissions  Permission[]
   aiUsages     AiUsage[]
+  fiscalConfig       FiscalConfig[]
+  commissions        Commission[]
+  invoices           Invoice[]
+  accountingTx       AccountingTransaction[]
+  storefrontOrders   StorefrontOrder[]
+  storefrontReviews  StorefrontReview[]
 
   @@unique([tenantId, slug])
   @@index([tenantId])
@@ -248,8 +270,8 @@ model Store {
 
 model User {
   id           String    @id @default(uuid()) @db.Uuid
-  tenantId     String    @map("tenant_id") @db.Uuid
-  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  tenantId     String?   @map("tenant_id") @db.Uuid
+  tenant       Tenant?   @relation(fields: [tenantId], references: [id])
   storeId      String?   @map("store_id") @db.Uuid
   store        Store?    @relation(fields: [storeId], references: [id])
   email        String    @db.VarChar(255)
@@ -259,6 +281,7 @@ model User {
   phone        String?   @db.VarChar(50)
   avatarUrl    String?   @map("avatar_url")
   role         UserRole  @default(cashier)
+  commissionRate    Decimal   @default(0) @map("commission_rate") @db.Decimal(5, 2)
   isActive          Boolean   @default(true) @map("is_active")
   lastLoginAt       DateTime? @map("last_login_at")
   failedLoginCount  Int       @default(0) @map("failed_login_count")
@@ -274,6 +297,9 @@ model User {
   professionalAppointments Appointment[] @relation("ProfessionalAppointments")
   sessionsOpened      CashRegisterSession[] @relation("CashRegisterOpenedBy")
   sessionsClosed      CashRegisterSession[] @relation("CashRegisterClosedBy")
+  saleItemsPerformed  SaleItem[]   @relation("PerformedBy")
+  commissions         Commission[]
+  commissionsPaid     Commission[] @relation("PaidBy")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -376,6 +402,9 @@ model Product {
   isFeatured      Boolean       @default(false) @map("is_featured")
   isCatalogVisible Boolean      @default(true) @map("is_catalog_visible")
   catalogViews    Int           @default(0) @map("catalog_views")
+  isStoreVisible   Boolean  @default(false) @map("is_store_visible")
+  storeDescription String?  @map("store_description")
+  storeSortOrder   Int      @default(0) @map("store_sort_order")
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
   deletedAt       DateTime?     @map("deleted_at")
@@ -385,6 +414,7 @@ model Product {
   purchaseItems      PurchaseItem[]
   supplierProducts   SupplierProduct[]
   images             ProductImage[]
+  invoiceItems       InvoiceItem[]
 
   @@unique([tenantId, storeId, sku])
   @@index([tenantId, storeId])
@@ -460,6 +490,11 @@ model Sale {
   items         SaleItem[]
   payments      Payment[]
   appointments  Appointment[] @relation("AppointmentSale")
+  invoices      Invoice[]
+  commissions   Commission[]
+  accountingTx  AccountingTransaction[]
+  requiresInvoice Boolean  @default(false) @map("requires_invoice")
+  invoiceId       String?  @map("invoice_id") @db.Uuid
 
   @@unique([tenantId, storeId, saleNumber])
   @@index([tenantId, storeId])
@@ -483,9 +518,17 @@ model SaleItem {
   unitPrice      Decimal  @map("unit_price") @db.Decimal(12, 2)
   discountAmount Decimal  @default(0) @map("discount_amount") @db.Decimal(12, 2)
   total          Decimal  @db.Decimal(12, 2)
+  // Commission fields (only for services)
+  performedBy    String?  @map("performed_by") @db.Uuid
+  performer      User?    @relation("PerformedBy", fields: [performedBy], references: [id])
+  commissionRate Decimal  @default(0) @map("commission_rate") @db.Decimal(5, 2)
+  commissionAmount Decimal @default(0) @map("commission_amount") @db.Decimal(12, 2)
   createdAt      DateTime @default(now()) @map("created_at")
 
+  commissions    Commission[]
+
   @@index([saleId])
+  @@index([performedBy])
   @@map("sale_items")
 }
 
@@ -517,15 +560,54 @@ model Service {
   price           Decimal  @db.Decimal(12, 2)
   durationMinutes Int      @default(60) @map("duration_minutes")
   color           String   @default("#EF2D8F") @db.VarChar(7)
+  commissionRate  Decimal  @default(0) @map("commission_rate") @db.Decimal(5, 2)
   isActive        Boolean  @default(true) @map("is_active")
+  isStoreVisible      Boolean @default(false) @map("is_store_visible")
+  storeDescription    String? @map("store_description")
+  allowsOnlineBooking Boolean @default(false) @map("allows_online_booking")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   appointments Appointment[]
   saleItems    SaleItem[]
+  invoiceItems InvoiceItem[]
 
   @@index([tenantId, storeId])
   @@map("services")
+}
+
+model Commission {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  tenant         Tenant    @relation(fields: [tenantId], references: [id])
+  storeId        String    @map("store_id") @db.Uuid
+  store          Store     @relation(fields: [storeId], references: [id])
+  userId         String    @map("user_id") @db.Uuid
+  user           User      @relation(fields: [userId], references: [id])
+  saleId         String?   @map("sale_id") @db.Uuid
+  sale           Sale?     @relation(fields: [saleId], references: [id])
+  saleItemId     String?   @map("sale_item_id") @db.Uuid
+  saleItem       SaleItem? @relation(fields: [saleItemId], references: [id])
+  serviceName    String    @map("service_name") @db.VarChar(255)
+  baseAmount     Decimal   @map("base_amount") @db.Decimal(12, 2)
+  commissionRate Decimal   @map("commission_rate") @db.Decimal(5, 2)
+  amount         Decimal   @db.Decimal(12, 2)
+  status         String    @default("pending") @db.VarChar(20)
+  periodStart    DateTime? @map("period_start") @db.Date
+  periodEnd      DateTime? @map("period_end") @db.Date
+  paidAt         DateTime? @map("paid_at")
+  paidById       String?   @map("paid_by") @db.Uuid
+  paidBy         User?     @relation("PaidBy", fields: [paidById], references: [id])
+  paymentNotes   String?   @map("payment_notes")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([storeId])
+  @@index([status])
+  @@index([saleId])
+  @@map("commissions")
 }
 
 model Appointment {
@@ -533,10 +615,10 @@ model Appointment {
   tenantId       String            @map("tenant_id") @db.Uuid
   storeId        String            @map("store_id") @db.Uuid
   store          Store             @relation(fields: [storeId], references: [id])
-  customerId     String            @map("customer_id") @db.Uuid
-  customer       Customer          @relation(fields: [customerId], references: [id])
-  professionalId String            @map("professional_id") @db.Uuid
-  professional   User              @relation("ProfessionalAppointments", fields: [professionalId], references: [id])
+  customerId     String?           @map("customer_id") @db.Uuid
+  customer       Customer?         @relation(fields: [customerId], references: [id])
+  professionalId String?           @map("professional_id") @db.Uuid
+  professional   User?             @relation("ProfessionalAppointments", fields: [professionalId], references: [id])
   serviceId      String            @map("service_id") @db.Uuid
   service        Service           @relation(fields: [serviceId], references: [id])
   nailDesignId   String?           @map("nail_design_id") @db.Uuid
@@ -580,6 +662,7 @@ model NailDesign {
   suggestedPrice            Decimal?          @map("suggested_price") @db.Decimal(12, 2)
   estimatedDurationMinutes  Int?              @map("estimated_duration_minutes")
   isActive                  Boolean           @default(true) @map("is_active")
+  isStoreVisible            Boolean           @default(true) @map("is_store_visible")
   isFavorite                Boolean           @default(false) @map("is_favorite")
   popularityScore           Int               @default(0) @map("popularity_score")
   createdAt                 DateTime          @default(now()) @map("created_at")
@@ -627,13 +710,16 @@ model Customer {
   sales        Sale[]
   appointments Appointment[]
   notes_rel    CustomerNote[]
+  invoices     Invoice[]
 
-  @@unique([tenantId, storeId, phone])
+  // Customer is unique per tenant — storeId = origin store only
+  // Phone uniqueness enforced via partial index in DB (see migration)
+  @@index([tenantId])
   @@index([tenantId, storeId])
-  @@index([tenantId, storeId, segment])
-  @@index([tenantId, storeId, loyaltyTier])
-  @@index([tenantId, storeId, phone])
-  @@index([tenantId, storeId, dateOfBirth])
+  @@index([tenantId, segment])
+  @@index([tenantId, loyaltyTier])
+  @@index([tenantId, phone])
+  @@index([tenantId, dateOfBirth])
   @@map("customers")
 }
 
@@ -683,6 +769,7 @@ model Supplier {
   deletedAt               DateTime?      @map("deleted_at")
 
   purchases Purchase[]
+  invoices  Invoice[]
 
   contacts  SupplierContact[]
   documents SupplierDocument[]
@@ -781,7 +868,9 @@ model Purchase {
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
 
-  items PurchaseItem[]
+  items        PurchaseItem[]
+  invoices     Invoice[]
+  accountingTx AccountingTransaction[]
 
   @@unique([tenantId, storeId, purchaseNumber])
   @@map("purchases")
@@ -842,6 +931,8 @@ model Expense {
   createdBy     String?       @map("created_by") @db.Uuid
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  accountingTx AccountingTransaction[]
 
   @@index([tenantId, storeId])
   @@index([tenantId, storeId, expenseDate])
@@ -1210,4 +1301,512 @@ model AiUsage {
   @@index([storeId, createdAt])
   @@index([agentId, createdAt])
   @@map("ai_usage")
+}
+
+// ─── Accounting Module Enums ────────────────────────────────────
+
+enum InvoiceType {
+  invoice
+  credit_note
+  debit_note
+  support_document
+  pos_invoice
+}
+
+enum InvoiceStatus {
+  draft
+  pending_dian
+  approved
+  rejected
+  cancelled
+}
+
+enum TaxType {
+  iva
+  ica
+  retefuente
+  reteiva
+  reteica
+}
+
+enum PersonType {
+  natural
+  juridica
+}
+
+enum TaxRegime {
+  responsable_iva
+  no_responsable
+  gran_contribuyente
+  regimen_simple
+}
+
+enum IdType {
+  cc
+  nit
+  ce
+  pasaporte
+  ti
+  pep
+}
+
+enum AccountingTransactionType {
+  income
+  expense
+  transfer
+  tax_payment
+  adjustment
+}
+
+enum AccountingTransactionStatus {
+  confirmed
+  pending
+  voided
+}
+
+// ─── Fiscal Config ──────────────────────────────────────────────
+
+model FiscalConfig {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @unique @map("tenant_id") @db.Uuid
+  tenant      Tenant  @relation(fields: [tenantId], references: [id])
+  // storeId is nullable — fiscal config belongs to the tenant, not a specific store
+  storeId     String? @map("store_id") @db.Uuid
+  store       Store?  @relation(fields: [storeId], references: [id])
+
+  businessName           String     @map("business_name") @db.VarChar(255)
+  tradeName              String?    @map("trade_name") @db.VarChar(255)
+  idType                 IdType     @default(nit) @map("id_type")
+  idNumber               String     @map("id_number") @db.VarChar(20)
+  dv                     String?    @db.Char(1)
+  personType             PersonType @default(juridica) @map("person_type")
+  taxRegime              TaxRegime  @default(responsable_iva) @map("tax_regime")
+
+  fiscalAddress          String   @default("") @map("fiscal_address")
+  cityCode               String?  @map("city_code") @db.VarChar(10)
+  departmentCode         String?  @map("department_code") @db.VarChar(10)
+  countryCode            String   @default("CO") @map("country_code") @db.VarChar(3)
+  postalCode             String?  @map("postal_code") @db.VarChar(10)
+
+  fiscalEmail            String   @default("") @map("fiscal_email") @db.VarChar(255)
+  fiscalPhone            String?  @map("fiscal_phone") @db.VarChar(50)
+  taxResponsibilities    Json     @default("[]") @map("tax_responsibilities")
+
+  economicActivityCode   String?  @map("economic_activity_code") @db.VarChar(10)
+  economicActivityDesc   String?  @map("economic_activity_desc") @db.VarChar(255)
+
+  feProvider             String   @default("none") @map("fe_provider") @db.VarChar(50)
+  feProviderApiKey       String?  @map("fe_provider_api_key") @db.VarChar(500)
+  feProviderApiSecret    String?  @map("fe_provider_api_secret") @db.VarChar(500)
+  feEnvironment          String   @default("sandbox") @map("fe_environment") @db.VarChar(20)
+  feProviderConfig       Json     @default("{}") @map("fe_provider_config")
+
+  resolutionNumber       String?  @map("resolution_number") @db.VarChar(50)
+  resolutionDate         DateTime? @map("resolution_date") @db.Date
+  resolutionPrefix       String?  @map("resolution_prefix") @db.VarChar(10)
+  resolutionFrom         Int?     @map("resolution_from")
+  resolutionTo           Int?     @map("resolution_to")
+  resolutionValidFrom    DateTime? @map("resolution_valid_from") @db.Date
+  resolutionValidTo      DateTime? @map("resolution_valid_to") @db.Date
+  currentInvoiceNumber   Int      @default(0) @map("current_invoice_number")
+
+  cnPrefix               String?  @map("cn_prefix") @db.VarChar(10)
+  cnCurrentNumber        Int      @default(0) @map("cn_current_number")
+  dnPrefix               String?  @map("dn_prefix") @db.VarChar(10)
+  dnCurrentNumber        Int      @default(0) @map("dn_current_number")
+
+  isActive               Boolean  @default(true) @map("is_active")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  invoices               Invoice[]
+
+  @@index([tenantId])
+  @@map("fiscal_config")
+}
+
+// ─── Tax Rates ──────────────────────────────────────────────────
+
+model TaxRate {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  name          String   @db.VarChar(100)
+  taxType       TaxType  @map("tax_type")
+  rate          Decimal  @db.Decimal(5, 2)
+  isDefault     Boolean  @default(false) @map("is_default")
+  isActive      Boolean  @default(true) @map("is_active")
+  appliesTo     String   @default("all") @map("applies_to") @db.VarChar(20)
+  minBaseAmount Decimal  @default(0) @map("min_base_amount") @db.Decimal(12, 2)
+  dianTaxCode   String?  @map("dian_tax_code") @db.VarChar(10)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("tax_rates")
+}
+
+// ─── Invoices ───────────────────────────────────────────────────
+
+model Invoice {
+  id             String        @id @default(uuid()) @db.Uuid
+  tenantId       String        @map("tenant_id") @db.Uuid
+  tenant         Tenant        @relation(fields: [tenantId], references: [id])
+  storeId        String        @map("store_id") @db.Uuid
+  store          Store         @relation(fields: [storeId], references: [id])
+  saleId         String?       @map("sale_id") @db.Uuid
+  sale           Sale?         @relation(fields: [saleId], references: [id])
+  purchaseId     String?       @map("purchase_id") @db.Uuid
+  purchase       Purchase?     @relation(fields: [purchaseId], references: [id])
+  fiscalConfigId String?       @map("fiscal_config_id") @db.Uuid
+  fiscalConfig   FiscalConfig? @relation(fields: [fiscalConfigId], references: [id])
+
+  invoiceType    InvoiceType   @default(invoice) @map("invoice_type")
+  invoiceNumber  String        @map("invoice_number") @db.VarChar(30)
+  prefix         String?       @db.VarChar(10)
+  consecutive    Int
+
+  referencedInvoiceId String?   @map("referenced_invoice_id") @db.Uuid
+  referencedInvoice   Invoice?  @relation("InvoiceRef", fields: [referencedInvoiceId], references: [id])
+  creditNotes         Invoice[] @relation("InvoiceRef")
+  correctionReason    String?   @map("correction_reason")
+
+  customerId     String?   @map("customer_id") @db.Uuid
+  customer       Customer? @relation(fields: [customerId], references: [id])
+  supplierId     String?   @map("supplier_id") @db.Uuid
+  supplier       Supplier? @relation(fields: [supplierId], references: [id])
+
+  receiverName       String     @map("receiver_name") @db.VarChar(255)
+  receiverIdType     IdType?    @map("receiver_id_type")
+  receiverIdNumber   String?    @map("receiver_id_number") @db.VarChar(20)
+  receiverEmail      String?    @map("receiver_email") @db.VarChar(255)
+  receiverPhone      String?    @map("receiver_phone") @db.VarChar(50)
+  receiverAddress    String?    @map("receiver_address")
+  receiverCityCode   String?    @map("receiver_city_code") @db.VarChar(10)
+  receiverTaxRegime  TaxRegime? @map("receiver_tax_regime")
+  receiverTaxResp    Json       @default("[]") @map("receiver_tax_resp")
+
+  subtotal           Decimal @default(0) @db.Decimal(12, 2)
+  discountAmount     Decimal @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  taxBase            Decimal @default(0) @map("tax_base") @db.Decimal(12, 2)
+  ivaAmount          Decimal @default(0) @map("iva_amount") @db.Decimal(12, 2)
+  icaAmount          Decimal @default(0) @map("ica_amount") @db.Decimal(12, 2)
+  retefuenteAmount   Decimal @default(0) @map("retefuente_amount") @db.Decimal(12, 2)
+  reteIvaAmount      Decimal @default(0) @map("reteiva_amount") @db.Decimal(12, 2)
+  reteIcaAmount      Decimal @default(0) @map("reteica_amount") @db.Decimal(12, 2)
+  totalTax           Decimal @default(0) @map("total_tax") @db.Decimal(12, 2)
+  total              Decimal @default(0) @db.Decimal(12, 2)
+
+  paymentMethodCode  String?  @map("payment_method_code") @db.VarChar(5)
+  paymentMeansCode   String   @default("1") @map("payment_means_code") @db.VarChar(5)
+  dueDate            DateTime? @map("due_date") @db.Date
+
+  status              InvoiceStatus @default(draft)
+  cufe                String?   @db.VarChar(255)
+  qrCode              String?   @map("qr_code")
+  dianResponse        Json      @default("{}") @map("dian_response")
+  dianValidatedAt     DateTime? @map("dian_validated_at")
+  dianRejectionReason String?   @map("dian_rejection_reason")
+  xmlUrl              String?   @map("xml_url")
+  pdfUrl              String?   @map("pdf_url")
+  sentToEmail         Boolean   @default(false) @map("sent_to_email")
+  sentAt              DateTime? @map("sent_at")
+
+  notes              String?
+  internalNotes      String?   @map("internal_notes")
+  createdBy          String?   @map("created_by") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  items              InvoiceItem[]
+  accountingTx       AccountingTransaction[]
+
+  // Invoice number is unique per tenant (DIAN requirement — consecutive per NIT)
+  @@unique([tenantId, invoiceNumber])
+  @@index([tenantId, storeId])
+  @@index([saleId])
+  @@index([customerId])
+  @@index([tenantId, storeId, status])
+  @@index([tenantId, storeId, createdAt])
+  @@map("invoices")
+}
+
+// ─── Invoice Items ──────────────────────────────────────────────
+
+model InvoiceItem {
+  id               String   @id @default(uuid()) @db.Uuid
+  invoiceId        String   @map("invoice_id") @db.Uuid
+  invoice          Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  productId        String?  @map("product_id") @db.Uuid
+  product          Product? @relation(fields: [productId], references: [id])
+  serviceId        String?  @map("service_id") @db.Uuid
+  service          Service? @relation(fields: [serviceId], references: [id])
+
+  itemType         String   @default("product") @map("item_type") @db.VarChar(20)
+  code             String?  @db.VarChar(50)
+  description      String   @db.VarChar(500)
+  quantity         Decimal  @default(1) @db.Decimal(10, 2)
+  unitMeasure      String   @default("UN") @map("unit_measure") @db.VarChar(10)
+  unitPrice        Decimal  @map("unit_price") @db.Decimal(12, 2)
+  discountRate     Decimal  @default(0) @map("discount_rate") @db.Decimal(5, 2)
+  discountAmount   Decimal  @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  subtotal         Decimal  @db.Decimal(12, 2)
+  ivaRate          Decimal  @default(19) @map("iva_rate") @db.Decimal(5, 2)
+  ivaAmount        Decimal  @default(0) @map("iva_amount") @db.Decimal(12, 2)
+  isIvaExcluded    Boolean  @default(false) @map("is_iva_excluded")
+  isIvaExempt      Boolean  @default(false) @map("is_iva_exempt")
+  retefuenteRate   Decimal  @default(0) @map("retefuente_rate") @db.Decimal(5, 2)
+  retefuenteAmount Decimal  @default(0) @map("retefuente_amount") @db.Decimal(12, 2)
+  total            Decimal  @db.Decimal(12, 2)
+  standardCode     String?  @map("standard_code") @db.VarChar(20)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+// ─── Accounting Transactions ────────────────────────────────────
+
+model AccountingTransaction {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  storeId         String   @map("store_id") @db.Uuid
+  store           Store    @relation(fields: [storeId], references: [id])
+
+  transactionType AccountingTransactionType @map("transaction_type")
+  category        String   @db.VarChar(100)
+  subcategory     String?  @db.VarChar(100)
+
+  saleId          String?  @map("sale_id") @db.Uuid
+  sale            Sale?    @relation(fields: [saleId], references: [id])
+  expenseId       String?  @map("expense_id") @db.Uuid
+  expense         Expense? @relation(fields: [expenseId], references: [id])
+  purchaseId      String?  @map("purchase_id") @db.Uuid
+  purchase        Purchase? @relation(fields: [purchaseId], references: [id])
+  invoiceId       String?  @map("invoice_id") @db.Uuid
+  invoice         Invoice? @relation(fields: [invoiceId], references: [id])
+
+  description     String   @db.VarChar(500)
+  referenceNumber String?  @map("reference_number") @db.VarChar(50)
+
+  grossAmount     Decimal  @map("gross_amount") @db.Decimal(12, 2)
+  taxAmount       Decimal  @default(0) @map("tax_amount") @db.Decimal(12, 2)
+  retentionAmount Decimal  @default(0) @map("retention_amount") @db.Decimal(12, 2)
+  netAmount       Decimal  @map("net_amount") @db.Decimal(12, 2)
+
+  ivaAmount        Decimal @default(0) @map("iva_amount") @db.Decimal(12, 2)
+  retefuenteAmount Decimal @default(0) @map("retefuente_amount") @db.Decimal(12, 2)
+  reteIvaAmount    Decimal @default(0) @map("reteiva_amount") @db.Decimal(12, 2)
+  reteIcaAmount    Decimal @default(0) @map("reteica_amount") @db.Decimal(12, 2)
+  icaAmount        Decimal @default(0) @map("ica_amount") @db.Decimal(12, 2)
+
+  paymentMethod   String?  @map("payment_method") @db.VarChar(30)
+  status          AccountingTransactionStatus @default(confirmed)
+  transactionDate DateTime @map("transaction_date") @db.Date
+
+  isReconciled    Boolean  @default(false) @map("is_reconciled")
+  reconciledAt    DateTime? @map("reconciled_at")
+  reconciledBy    String?  @map("reconciled_by") @db.Uuid
+
+  createdBy       String?  @map("created_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId, storeId])
+  @@index([tenantId, storeId, transactionType])
+  @@index([tenantId, storeId, transactionDate])
+  @@index([tenantId, storeId, category])
+  @@index([saleId])
+  @@index([invoiceId])
+  @@map("accounting_transactions")
+}
+
+// ─── Tax Declarations ───────────────────────────────────────────
+
+model TaxDeclaration {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  taxType          TaxType  @map("tax_type")
+  periodType       String   @map("period_type") @db.VarChar(20)
+  periodYear       Int      @map("period_year")
+  periodMonth      Int?     @map("period_month")
+  taxBase          Decimal  @default(0) @map("tax_base") @db.Decimal(12, 2)
+  taxAmount        Decimal  @default(0) @map("tax_amount") @db.Decimal(12, 2)
+  status           String   @default("pending") @db.VarChar(20)
+  dueDate          DateTime? @map("due_date") @db.Date
+  filedAt          DateTime? @map("filed_at")
+  paidAt           DateTime? @map("paid_at")
+  paymentReference String?  @map("payment_reference") @db.VarChar(100)
+  notes            String?
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, taxType, periodYear, periodMonth])
+  @@map("tax_declarations")
+}
+
+// ─── Storefront ──────────────────────────────────────────────────
+
+model Storefront {
+  id                    String   @id @default(uuid()) @db.Uuid
+  tenantId              String   @unique @map("tenant_id") @db.Uuid
+  tenant                Tenant   @relation(fields: [tenantId], references: [id])
+  displayName           String   @default("") @map("display_name") @db.VarChar(255)
+  slug                  String?  @unique @db.VarChar(100)
+  tagline               String?  @db.VarChar(300)
+  description           String?
+  logoUrl               String?  @map("logo_url")
+  bannerUrl             String?  @map("banner_url")
+  galleryUrls           Json     @default("[]") @map("gallery_urls")
+  businessType          String?  @map("business_type") @db.VarChar(50)
+  tags                  Json     @default("[]")
+  publicEmail           String?  @map("public_email") @db.VarChar(255)
+  publicPhone           String?  @map("public_phone") @db.VarChar(50)
+  whatsapp              String?  @db.VarChar(50)
+  instagram             String?  @db.VarChar(100)
+  facebook              String?  @db.VarChar(255)
+  tiktok                String?  @db.VarChar(100)
+  website               String?  @db.VarChar(255)
+  acceptsOrders         Boolean  @default(true) @map("accepts_orders")
+  acceptsAppointments   Boolean  @default(true) @map("accepts_appointments")
+  acceptsDelivery       Boolean  @default(false) @map("accepts_delivery")
+  deliveryFee           Decimal  @default(0) @map("delivery_fee") @db.Decimal(12, 2)
+  deliveryRadiusKm      Int      @default(10) @map("delivery_radius_km")
+  minOrderAmount        Decimal  @default(0) @map("min_order_amount") @db.Decimal(12, 2)
+  advancePaymentPercent Decimal  @default(0) @map("advance_payment_percent") @db.Decimal(5, 2)
+  averageRating         Decimal  @default(0) @map("average_rating") @db.Decimal(3, 2)
+  totalReviews          Int      @default(0) @map("total_reviews")
+  totalOrdersCompleted  Int      @default(0) @map("total_orders_completed")
+  isActive              Boolean  @default(false) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("storefronts")
+}
+
+model StorefrontReview {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  tenant        Tenant    @relation(fields: [tenantId], references: [id])
+  storeId       String?   @map("store_id") @db.Uuid
+  store         Store?    @relation(fields: [storeId], references: [id])
+  reviewerName  String    @map("reviewer_name") @db.VarChar(255)
+  reviewerEmail String?   @map("reviewer_email") @db.VarChar(255)
+  rating        Int
+  comment       String?
+  reply         String?
+  repliedAt     DateTime? @map("replied_at")
+  isVerified    Boolean   @default(false) @map("is_verified")
+  productId     String?   @map("product_id") @db.Uuid
+  serviceId     String?   @map("service_id") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("storefront_reviews")
+}
+
+model StorefrontOrder {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  storeId       String?  @map("store_id") @db.Uuid
+  store         Store?   @relation(fields: [storeId], references: [id])
+  orderNumber   String   @map("order_number") @db.VarChar(20)
+  buyerName     String   @map("buyer_name") @db.VarChar(255)
+  buyerEmail    String?  @map("buyer_email") @db.VarChar(255)
+  buyerPhone    String?  @map("buyer_phone") @db.VarChar(50)
+  buyerNotes    String?  @map("buyer_notes")
+  items         Json     @default("[]")
+  subtotal      Decimal  @default(0) @db.Decimal(12, 2)
+  deliveryFee   Decimal  @default(0) @map("delivery_fee") @db.Decimal(12, 2)
+  total         Decimal  @default(0) @db.Decimal(12, 2)
+  paymentMethod String   @default("store") @map("payment_method") @db.VarChar(50)
+  status        String   @default("pending") @db.VarChar(30)
+  saleId        String?  @map("sale_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("storefront_orders")
+}
+
+// ─── Master Data (gestionado por superadmin) ─────────────────────
+
+enum MasterCategoryType {
+  product
+  service
+  design
+  general
+}
+
+model MasterCategory {
+  id           String             @id @default(uuid())
+  name         String             @db.VarChar(100)
+  translations Json               @default("{}")
+  type         MasterCategoryType @default(general)
+  icon         String?            @db.VarChar(50)
+  color        String?            @db.VarChar(7)
+  isActive     Boolean            @default(true) @map("is_active")
+  sortOrder    Int                @default(0) @map("sort_order")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  @@index([type, isActive])
+  @@map("master_categories")
+}
+
+model MasterBrand {
+  id           String   @id @default(uuid())
+  name         String   @db.VarChar(100)
+  translations Json     @default("{}")
+  logoUrl      String?  @map("logo_url")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("master_brands")
+}
+
+model Country {
+  id          String       @id @default(uuid())
+  isoCode     String       @unique @map("iso_code") @db.VarChar(2)
+  name        String       @db.VarChar(100)
+  translations Json        @default("{}")
+  dialCode    String       @map("dial_code") @db.VarChar(5)
+  flag        String?      @db.VarChar(10)
+  isActive    Boolean      @default(true) @map("is_active")
+  sortOrder   Int          @default(999) @map("sort_order")
+  departments Department[]
+
+  @@map("countries")
+}
+
+model Department {
+  id           String   @id @default(uuid())
+  countryId    String   @map("country_id")
+  country      Country  @relation(fields: [countryId], references: [id])
+  code         String   @db.VarChar(20)
+  name         String   @db.VarChar(100)
+  translations Json     @default("{}")
+  cities       City[]
+
+  @@unique([countryId, code])
+  @@map("departments")
+}
+
+model City {
+  id           String     @id @default(uuid())
+  departmentId String     @map("department_id")
+  department   Department @relation(fields: [departmentId], references: [id])
+  code         String     @db.VarChar(20)
+  name         String     @db.VarChar(100)
+  translations Json       @default("{}")
+
+  @@unique([departmentId, code])
+  @@index([departmentId])
+  @@map("cities")
 }

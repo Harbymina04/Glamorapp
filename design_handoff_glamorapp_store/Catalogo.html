@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Catálogo · Glamorapp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="store.css">
+</head>
+<body>
+
+<!-- ===================== NAVBAR ===================== -->
+<header id="nav">
+  <div class="nav-main">
+    <a class="nav-logo" href="Tienda.html"><img src="assets/logo.png" alt="Glamorapp" /></a>
+    <label class="search">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" placeholder="¿Qué estás buscando? Productos, servicios, salones…" />
+    </label>
+    <div class="nav-actions">
+      <button class="icon-btn" aria-label="Favoritos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7.5-4.6-10-9.3C.5 8.5 2 5 5.5 5 7.7 5 9 6.3 12 9c3-2.7 4.3-4 6.5-4C22 5 23.5 8.5 22 11.7 19.5 16.4 12 21 12 21z"/></svg>
+        <span class="badge" id="favBadge">0</span>
+      </button>
+      <button class="icon-btn" id="cartBtn" aria-label="Carrito">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
+        <span class="badge" id="cartBadge">0</span>
+      </button>
+      <a class="btn-login" href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>Ingresar</span></a>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== HEAD ===================== -->
+<div class="cat-head">
+  <h1>Catálogo de productos</h1>
+  <p class="cat-sub">Filtra, busca y guarda tus favoritos · belleza de las mejores marcas en Bogotá</p>
+</div>
+
+<!-- search -->
+<div class="cat-search">
+  <label class="search">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    <input type="text" id="catSearch" placeholder="Busca por nombre, marca o categoría…" />
+  </label>
+</div>
+
+<!-- toolbar -->
+<div class="cat-toolbar">
+  <div style="display:flex;align-items:center;gap:14px">
+    <button class="cat-filter-btn" id="catFilterBtn"><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>Filtros</button>
+    <span class="cat-results"><b id="catCount">0</b> resultados</span>
+  </div>
+  <div class="cat-sort-wrap">
+    <label for="catSort">Ordenar:</label>
+    <select id="catSort"></select>
+  </div>
+</div>
+
+<!-- active filter chips -->
+<div class="cat-chips" id="catChips"></div>
+
+<!-- layout -->
+<div class="cat-layout">
+  <aside class="cat-sidebar" id="catSidebar">
+    <div class="fgroup">
+      <h4>Categoría</h4>
+      <div class="fcat-list">
+        <div class="fcat" data-catpick="all"><span class="left"><span class="swatch" style="background:linear-gradient(135deg,#EF2D8F,#8B5CF6)"></span>Todas</span></div>
+        <div class="fcat" data-catpick="nails"><span class="left"><span class="swatch" style="background:#F43F5E"></span>Uñas</span></div>
+        <div class="fcat" data-catpick="hair"><span class="left"><span class="swatch" style="background:#8B5CF6"></span>Cabello</span></div>
+        <div class="fcat" data-catpick="makeup"><span class="left"><span class="swatch" style="background:#EC4899"></span>Maquillaje</span></div>
+        <div class="fcat" data-catpick="skin"><span class="left"><span class="swatch" style="background:#F97316"></span>Piel</span></div>
+        <div class="fcat" data-catpick="spa"><span class="left"><span class="swatch" style="background:#14B8A6"></span>Spa</span></div>
+      </div>
+    </div>
+
+    <div class="fgroup">
+      <h4>Precio</h4>
+      <p class="price-label" id="priceLabel">$0 – $150.000</p>
+      <div class="price-sliders">
+        <input type="range" id="priceMin" min="0" max="150000" step="1000" value="0">
+        <input type="range" id="priceMax" min="0" max="150000" step="1000" value="150000">
+      </div>
+    </div>
+
+    <div class="fgroup">
+      <h4>Calificación</h4>
+      <div class="frating">
+        <div class="frate" data-rating="4.5"><span class="stars"><svg viewBox="0 0 24 24" class="on"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.5 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg><svg viewBox="0 0 24 24" class="on"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.5 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg><svg viewBox="0 0 24 24" class="on"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.5 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg><svg viewBox="0 0 24 24" class="on"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.5 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg><svg viewBox="0 0 24 24" class="off"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.5 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg></span> 4.5 y más</div>
+        <div class="frate" data-rating="4"><span class="stars"><svg viewBox="0 0 24 24" class="on"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.5 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg><svg viewBox="0 0 24 24" class="on"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.5 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg><svg viewBox="0 0 24 24" class="on"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.5 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg><svg viewBox="0 0 24 24" class="on"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.5 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg><svg viewBox="0 0 24 24" class="off"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.5 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg></span> 4.0 y más</div>
+        <div class="frate" data-rating="3.5"><span class="stars"><svg viewBox="0 0 24 24" class="on"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.5 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg><svg viewBox="0 0 24 24" class="on"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.5 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg><svg viewBox="0 0 24 24" class="on"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.5 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg><svg viewBox="0 0 24 24" class="off"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.5 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg><svg viewBox="0 0 24 24" class="off"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.5 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg></span> 3.5 y más</div>
+      </div>
+    </div>
+
+    <div class="fgroup">
+      <h4>Marca</h4>
+      <div class="fbrands" id="catBrands"></div>
+    </div>
+
+    <div class="fgroup">
+      <label class="ftoggle">En oferta <span class="switch"><input type="checkbox" id="catSale"><span class="track"></span></span></label>
+      <label class="ftoggle" style="margin-top:12px">Solo favoritos <span class="switch"><input type="checkbox" id="catFav"><span class="track"></span></span></label>
+    </div>
+  </aside>
+
+  <div class="cat-grid" id="catGrid"></div>
+</div>
+
+<!-- ===================== FOOTER ===================== -->
+<footer>
+  <div class="foot">
+    <div class="foot-brand">
+      <img src="assets/logo.png" alt="Glamorapp" />
+      <p>Tu belleza, a un click. El marketplace de salones, productos y servicios de belleza en Colombia.</p>
+      <div class="socials">
+        <a href="#" aria-label="Instagram"><svg viewBox="0 0 24 24"><path d="M12 2.2c3.2 0 3.6 0 4.9.1 1.2.1 1.8.3 2.2.4.6.2 1 .5 1.4.9.4.4.7.8.9 1.4.2.4.4 1 .4 2.2.1 1.3.1 1.7.1 4.9s0 3.6-.1 4.9c-.1 1.2-.3 1.8-.4 2.2-.2.6-.5 1-.9 1.4-.4.4-.8.7-1.4.9-.4.2-1 .4-2.2.4-1.3.1-1.7.1-4.9.1s-3.6 0-4.9-.1c-1.2-.1-1.8-.3-2.2-.4-.6-.2-1-.5-1.4-.9-.4-.4-.7-.8-.9-1.4-.2-.4-.4-1-.4-2.2C2.2 15.6 2.2 15.2 2.2 12s0-3.6.1-4.9c.1-1.2.3-1.8.4-2.2.2-.6.5-1 .9-1.4.4-.4.8-.7 1.4-.9.4-.2 1-.4 2.2-.4C8.4 2.2 8.8 2.2 12 2.2zm0 1.8c-3.1 0-3.5 0-4.7.1-1.1.1-1.7.2-2.1.4-.5.2-.9.4-1.3.8-.4.4-.6.8-.8 1.3-.2.4-.3 1-.4 2.1-.1 1.2-.1 1.6-.1 4.7s0 3.5.1 4.7c.1 1.1.2 1.7.4 2.1.2.5.4.9.8 1.3.4.4.8.6 1.3.8.4.2 1 .3 2.1.4 1.2.1 1.6.1 4.7.1s3.5 0 4.7-.1c1.1-.1 1.7-.2 2.1-.4.5-.2.9-.4 1.3-.8.4-.4.6-.8.8-1.3.2-.4.3-1 .4-2.1.1-1.2.1-1.6.1-4.7s0-3.5-.1-4.7c-.1-1.1-.2-1.7-.4-2.1-.2-.5-.4-.9-.8-1.3-.4-.4-.8-.6-1.3-.8-.4-.2-1-.3-2.1-.4-1.2-.1-1.6-.1-4.7-.1zm0 3.1a4.9 4.9 0 1 1 0 9.8 4.9 4.9 0 0 1 0-9.8zm0 8.1a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zm6.2-8.3a1.15 1.15 0 1 1-2.3 0 1.15 1.15 0 0 1 2.3 0z"/></svg></a>
+        <a href="#" aria-label="Facebook"><svg viewBox="0 0 24 24"><path d="M22 12a10 10 0 1 0-11.6 9.9v-7H7.9V12h2.5V9.8c0-2.5 1.5-3.9 3.8-3.9 1.1 0 2.2.2 2.2.2v2.5h-1.2c-1.2 0-1.6.8-1.6 1.6V12h2.7l-.4 2.9h-2.3v7A10 10 0 0 0 22 12z"/></svg></a>
+        <a href="#" aria-label="TikTok"><svg viewBox="0 0 24 24"><path d="M16.5 3c.3 2.1 1.5 3.4 3.5 3.5v2.4c-1.2.1-2.3-.3-3.5-1v6.6c0 3.4-2.5 5.5-5.5 5.5-2.8 0-5-2-5-4.8 0-2.9 2.3-4.9 5.3-4.6v2.5c-.4-.1-.9-.2-1.3-.1-1.2.2-2 1-1.9 2.3.1 1.2 1 1.9 2.2 1.8 1.3-.1 2-.9 2-2.3V3h3.7z"/></svg></a>
+      </div>
+    </div>
+    <div class="foot-col">
+      <h5>Descubre</h5>
+      <ul><li><a href="Tienda.html#productos">Productos</a></li><li><a href="Tienda.html#servicios">Servicios</a></li><li><a href="Tienda.html#salones">Salones</a></li><li><a href="Tienda.html#disenos">Diseños de uñas</a></li></ul>
+    </div>
+    <div class="foot-col">
+      <h5>Para tu salón</h5>
+      <ul><li><a href="#">Registra tu salón gratis</a></li><li><a href="#">Planes</a></li><li><a href="#">Vender productos</a></li><li><a href="#">Blog</a></li></ul>
+    </div>
+    <div class="foot-col">
+      <h5>Soporte</h5>
+      <ul><li><a href="#">Centro de ayuda</a></li><li><a href="#">Preguntas frecuentes</a></li><li><a href="#">Contacto</a></li><li><a href="#">Términos y privacidad</a></li></ul>
+    </div>
+  </div>
+  <div class="foot-bottom">
+    <span>© 2026 Glamorapp — Tu belleza, a un click.</span>
+    <span>Hecho con <span style="color: var(--primary);">♥</span> en Colombia</span>
+  </div>
+</footer>
+
+<!-- ===================== CART DRAWER ===================== -->
+<div id="overlay"></div>
+<aside id="cartDrawer" aria-label="Carrito de compras">
+  <div class="cart-head">
+    <h3 id="cartTitle"><svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>Tu carrito (0)</h3>
+    <button id="cartClose" aria-label="Cerrar"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div id="cartItems"></div>
+  <div id="cartFoot" style="display:none">
+    <div class="cart-line"><span>Subtotal</span><span id="cartSubtotal">$0</span></div>
+    <div class="cart-line"><span>Envío</span><span class="free">Gratis</span></div>
+    <div class="cart-line total"><span>Total</span><span id="cartTotal">$0</span></div>
+    <button class="btn-checkout">Ir al checkout <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+  </div>
+</aside>
+
+<script src="store.js"></script>
+<script>
+  renderCatalog();
+  // mobile filter drawer
+  const sb = document.getElementById('catSidebar');
+  const ov = document.getElementById('overlay');
+  document.getElementById('catFilterBtn').addEventListener('click', () => { sb.classList.add('open'); ov.classList.add('show'); document.body.style.overflow = 'hidden'; });
+  ov.addEventListener('click', () => { sb.classList.remove('open'); document.body.style.overflow = ''; });
+</script>
+</body>
+</html>

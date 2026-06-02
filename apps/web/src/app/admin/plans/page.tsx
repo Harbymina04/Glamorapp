@@ -86,7 +86,7 @@ export default function AdminPlansPage() {
       features.limits = { maxBranches: p.maxBranches, maxUsers: p.maxUsers, aiTokensMonthly: 5000, storageGB: 1 };
     }
     setEditing(p);
-    setForm({ ...p, features });
+    setForm({ ...p, description: p.description ?? '', features });
     setError('');
     setShowModal(true);
   };

@@ -1,4 +1,4 @@
-import { IsString, IsEmail, IsOptional, MinLength, IsArray, IsBoolean } from 'class-validator';
+import { IsString, IsEmail, IsOptional, MinLength, IsArray, IsBoolean, IsNumber, Min, Max } from 'class-validator';
 import { UserRole } from '@prisma/client';
 
 export class CreateUserDto {
@@ -24,6 +24,12 @@ export class CreateUserDto {
 
   @IsOptional()
   role?: UserRole;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  commissionRate?: number;
 }
 
 export class UpdateUserDto {
@@ -54,6 +60,12 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  commissionRate?: number;
 }
 
 export class PermissionItemDto {

@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
-import { api } from '@/lib/api-client';
+import { api, API_BASE_URL } from '@/lib/api-client';
+const API_BASE = API_BASE_URL;
 import { formatCurrency } from '@/lib/utils';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';

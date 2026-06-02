@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { EmailService } from '../email/email.service';
 import { PaginatedResponse } from '../../common/dto/response.dto';
 import { getPaginationParams } from '../../common/utils/pagination';
 
@@ -9,6 +10,7 @@ export class AppointmentsService {
   constructor(
     private prisma: PrismaService,
     private whatsapp: WhatsAppService,
+    private email: EmailService,
   ) {}
 
   async findAll(tenantId: string, storeId: string, query: any, user?: any) {
@@ -68,7 +70,7 @@ export class AppointmentsService {
 
     const appointment = await this.prisma.appointment.create({
       data: { tenantId, storeId, ...dto, date: new Date(dto.date) },
-      include: { customer: true, service: true, professional: { select: { id: true, firstName: true } } },
+      include: { customer: { select: { id: true, firstName: true, lastName: true, phone: true, email: true } }, service: true, professional: { select: { id: true, firstName: true } } },
     });
 
     // Send WhatsApp notification
@@ -82,6 +84,19 @@ export class AppointmentsService {
         professionalName: appointment.professional?.firstName || 'Profesional',
         price: Number(appointment.price),
       }).catch(err => console.error('WhatsApp notification failed:', err.message));
+    }
+
+    // Send email notification
+    if ((appointment.customer as any)?.email) {
+      this.email.sendAppointmentCreated({
+        customerName: appointment.customer!.firstName,
+        customerEmail: (appointment.customer as any).email,
+        serviceName: appointment.service?.name || 'Servicio',
+        date: dto.date,
+        time: dto.startTime,
+        professionalName: appointment.professional?.firstName,
+        price: Number(appointment.price),
+      }).catch(err => console.error('Email notification failed:', err.message));
     }
 
     return appointment;
@@ -111,7 +126,7 @@ export class AppointmentsService {
     if (status === 'cancelled') { updates.cancelledAt = new Date(); updates.cancelReason = reason; }
 
     const updated = await this.prisma.appointment.update({ where: { id, tenantId, storeId }, data: updates,
-      include: { customer: true, service: true, professional: { select: { id: true, firstName: true } } },
+      include: { customer: { select: { id: true, firstName: true, lastName: true, phone: true, email: true } }, service: true, professional: { select: { id: true, firstName: true } } },
     });
 
     // Send WhatsApp notification based on status change
@@ -133,6 +148,27 @@ export class AppointmentsService {
           time: updated.startTime,
           reason,
         }).catch(err => console.error('WhatsApp cancel notification failed:', err.message));
+      }
+    }
+
+    // Send email notification based on status change
+    const customerEmail = (updated.customer as any)?.email;
+    if (customerEmail) {
+      const emailData = {
+        customerName: updated.customer!.firstName,
+        customerEmail,
+        serviceName: updated.service?.name || 'Servicio',
+        date: String(updated.date),
+        time: updated.startTime,
+        professionalName: updated.professional?.firstName,
+        reason,
+      };
+      if (status === 'confirmed') {
+        this.email.sendAppointmentConfirmed(emailData)
+          .catch(err => console.error('Email confirm notification failed:', err.message));
+      } else if (status === 'cancelled') {
+        this.email.sendAppointmentCancelled(emailData)
+          .catch(err => console.error('Email cancel notification failed:', err.message));
       }
     }
 
@@ -164,8 +200,8 @@ export class AppointmentsService {
 
     if (conflict) {
       throw new ConflictException(
-        `Conflicto de horario: ${conflict.customer.firstName} ${conflict.customer.lastName} ` +
-        `ya tiene "${conflict.service.name}" agendado de ${conflict.startTime} a ${conflict.endTime} ` +
+        `Conflicto de horario: ${conflict.customer?.firstName ?? 'Cliente'} ${conflict.customer?.lastName ?? ''} ` +
+        `ya tiene "${conflict.service?.name ?? 'servicio'}" agendado de ${conflict.startTime} a ${conflict.endTime} ` +
         `con el mismo profesional.`
       );
     }
@@ -195,5 +231,132 @@ export class AppointmentsService {
     ]);
 
     return { total, confirmed, byStatus: Object.fromEntries(byStatus.map(s => [s.status, s._count])) };
+  }
+
+  // ─── Customer (storefront) booking ─────────────────────────────────────────
+
+  /**
+   * Book an appointment from the storefront.
+   * The customer is a platform user (tenantId = null).
+   * dto must include: storeId, serviceId, date, startTime, endTime,
+   *   and optionally professionalId, notes, nailDesignId.
+   */
+  async customerBook(userCtx: any, dto: any) {
+    // Fetch full user profile (JWT only carries id/email/role)
+    const user = await this.prisma.user.findUnique({
+      where: { id: userCtx.id },
+      select: { id: true, email: true, firstName: true, lastName: true, phone: true },
+    });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    // Resolve store + tenant
+    const store = await this.prisma.store.findUnique({
+      where: { id: dto.storeId },
+      select: { id: true, tenantId: true, isActive: true },
+    });
+    if (!store || !store.isActive) throw new NotFoundException('Tienda no encontrada');
+
+    // Upsert Customer record in this salon for the platform user
+    const existing = await this.prisma.customer.findFirst({
+      where: { tenantId: store.tenantId, email: user.email },
+    });
+
+    let customer: any;
+    if (existing) {
+      customer = existing;
+    } else {
+      // Generate a sequential customer number
+      const count = await this.prisma.customer.count({ where: { tenantId: store.tenantId } });
+      const customerNumber = `C-${String(count + 1).padStart(5, '0')}`;
+      customer = await this.prisma.customer.create({
+        data: {
+          tenantId: store.tenantId,
+          storeId: store.id,
+          customerNumber,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          phone: user.phone ?? null,
+          source: 'storefront',
+        },
+      });
+    }
+
+    // Check overlaps if professional assigned
+    if (dto.professionalId) {
+      await this.checkOverlap(store.tenantId, store.id, dto.professionalId, dto.date, dto.startTime, dto.endTime ?? dto.startTime);
+    }
+
+    const appointment = await this.prisma.appointment.create({
+      data: {
+        tenantId: store.tenantId,
+        storeId: store.id,
+        customerId: customer.id,
+        serviceId: dto.serviceId,
+        professionalId: dto.professionalId ?? null,
+        nailDesignId: dto.nailDesignId ?? null,
+        date: new Date(dto.date),
+        startTime: dto.startTime,
+        endTime: dto.endTime ?? dto.startTime,
+        notes: dto.notes ?? null,
+        status: 'pending',
+        price: dto.price ?? 0,
+        originChannel: 'storefront',
+      },
+      include: {
+        service: { select: { id: true, name: true, price: true, durationMinutes: true } },
+        professional: { select: { id: true, firstName: true, lastName: true } },
+        customer: { select: { id: true, firstName: true, lastName: true, email: true } },
+        store: { select: { id: true, name: true } },
+      },
+    });
+
+    // Send confirmation email for storefront bookings
+    if (user.email) {
+      this.email.sendAppointmentCreated({
+        customerName: user.firstName,
+        customerEmail: user.email,
+        serviceName: appointment.service?.name || 'Servicio',
+        date: dto.date,
+        time: dto.startTime,
+        professionalName: appointment.professional
+          ? `${appointment.professional.firstName} ${appointment.professional.lastName ?? ''}`.trim()
+          : undefined,
+        storeName: appointment.store?.name,
+        price: Number(dto.price ?? 0) || undefined,
+      }).catch(err => console.error('Email storefront booking failed:', err.message));
+    }
+
+    return appointment;
+  }
+
+  /**
+   * Get all appointments booked by a platform customer (by their email across all salons).
+   */
+  async myAppointments(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (!user) return [];
+
+    // Find all Customer records linked to this email (across tenants)
+    const customers = await this.prisma.customer.findMany({
+      where: { email: user.email },
+      select: { id: true },
+    });
+    if (!customers.length) return [];
+
+    const customerIds = customers.map(c => c.id);
+    return this.prisma.appointment.findMany({
+      where: { customerId: { in: customerIds } },
+      include: {
+        service: { select: { id: true, name: true, price: true } },
+        professional: { select: { id: true, firstName: true, lastName: true } },
+        customer: { select: { id: true, firstName: true, lastName: true } },
+        store: { select: { id: true, name: true } },
+      },
+      orderBy: { date: 'asc' },
+    });
   }
 }

@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
 import { formatCurrency } from '@/lib/utils';
 import {
   Loader2, Store, Users, ShoppingCart, Calendar, DollarSign,
-  Contact, Crown, Clock, CheckCircle2, AlertTriangle,
+  Contact, Crown, Clock, CheckCircle2, AlertTriangle, ArrowRight, Sparkles,
 } from 'lucide-react';
 
 interface DashboardData {
@@ -61,6 +62,15 @@ export default function TenantDashboardPage() {
   ];
 
   const planStatus = plan ? statusConfig[plan.status] ?? statusConfig.expired : null;
+  const isNewAccount = plan?.status === 'trial' && (plan.trialDaysLeft ?? 0) >= 13;
+
+  const onboardingSteps = [
+    { label: 'Configura tu primera sucursal', href: '/tenant/stores', done: (data?.totalStores ?? 0) > 0 },
+    { label: 'Agrega usuarios a tu equipo', href: '/tenant/users', done: (data?.totalUsers ?? 0) > 1 },
+    { label: 'Crea tu primer cliente', href: '/dashboard/customers', done: (data?.totalCustomers ?? 0) > 0 },
+    { label: 'Registra tu primer servicio o venta', href: '/dashboard/pos', done: (data?.totalSales ?? 0) > 0 },
+  ];
+  const stepsCompleted = onboardingSteps.filter(s => s.done).length;
 
   return (
     <div className="space-y-6">
@@ -96,6 +106,58 @@ export default function TenantDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Onboarding banner — visible only on new/trial accounts with steps pending */}
+      {isNewAccount && stepsCompleted < onboardingSteps.length && (
+        <div className="bg-gradient-to-r from-pink-50 to-purple-50 border border-pink-200 rounded-2xl p-5">
+          <div className="flex items-start gap-3 mb-4">
+            <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center shadow-sm shrink-0">
+              <Sparkles className="w-5 h-5 text-glamor-primary" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-foreground">
+                ¡Bienvenido! Configura tu salón en minutos
+              </h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Completa estos pasos para sacar el máximo provecho de Glamorapp.{' '}
+                <span className="font-medium text-glamor-primary">{stepsCompleted}/{onboardingSteps.length} completados</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="h-1.5 bg-white/60 rounded-full mb-4 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-pink-400 to-purple-500 rounded-full transition-all"
+              style={{ width: `${(stepsCompleted / onboardingSteps.length) * 100}%` }}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {onboardingSteps.map((step) => (
+              <Link
+                key={step.href}
+                href={step.done ? '#' : step.href}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${
+                  step.done
+                    ? 'bg-white/50 text-muted-foreground cursor-default'
+                    : 'bg-white hover:bg-white/80 text-foreground shadow-sm'
+                }`}
+              >
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+                  step.done ? 'bg-green-100' : 'bg-glamor-primary/10'
+                }`}>
+                  {step.done
+                    ? <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                    : <ArrowRight className="w-3 h-3 text-glamor-primary" />
+                  }
+                </div>
+                <span className={step.done ? 'line-through' : ''}>{step.label}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {kpis.map((kpi) => (

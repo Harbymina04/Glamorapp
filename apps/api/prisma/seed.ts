@@ -6,50 +6,12 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Seeding database...');
 
-  // Clean existing data (respect FK constraints)
-  await prisma.auditLog.deleteMany();
-  await prisma.notification.deleteMany();
-  await prisma.aiRecommendation.deleteMany();
-  await prisma.aiAgentAction.deleteMany();
-  await prisma.aiAgentPermission.deleteMany();
-  await prisma.aiUsage.deleteMany();
-  await prisma.aiAgent.deleteMany();
-  await prisma.passwordReset.deleteMany();
-  await prisma.packageItem.deleteMany();
-  await prisma.package.deleteMany();
-  await prisma.purchaseItem.deleteMany();
-  await prisma.purchase.deleteMany();
-  await prisma.supplierProductPrice.deleteMany();
-  await prisma.supplierProduct.deleteMany();
-  await prisma.supplierContact.deleteMany();
-  await prisma.supplierDocument.deleteMany();
-  await prisma.supplier.deleteMany();
-  await prisma.paymentException.deleteMany();
-  await prisma.subscription.deleteMany();
-  await prisma.plan.deleteMany();
-  await prisma.expense.deleteMany();
-  await prisma.expenseCategory.deleteMany();
-  await prisma.customerNote.deleteMany();
-  await prisma.appointment.deleteMany();
-  await prisma.customer.deleteMany();
-  await prisma.service.deleteMany();
-  await prisma.nailDesign.deleteMany();
-  await prisma.saleItem.deleteMany();
-  await prisma.payment.deleteMany();
-  await prisma.sale.deleteMany();
-  await prisma.inventoryMovement.deleteMany();
-  await prisma.productImage.deleteMany();
-  await prisma.product.deleteMany();
-  await prisma.brand.deleteMany();
-  await prisma.productCategory.deleteMany();
-  await prisma.cashMovement.deleteMany();
-  await prisma.cashRegisterSession.deleteMany();
-  await prisma.cashRegister.deleteMany();
-  await prisma.permission.deleteMany();
-  await prisma.refreshToken.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.store.deleteMany();
-  await prisma.tenant.deleteMany();
+  // Clean existing data (raw SQL truncate to handle all FKs)
+  await prisma.$executeRawUnsafe(`DO $$ DECLARE r RECORD; BEGIN
+    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+      EXECUTE 'TRUNCATE TABLE \"' || r.tablename || '\" CASCADE';
+    END LOOP;
+  END $$;`);
 
   // Create tenant
   const tenant = await prisma.tenant.create({

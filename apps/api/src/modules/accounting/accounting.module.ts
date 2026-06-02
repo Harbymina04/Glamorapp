@@ -3,24 +3,14 @@ import { AccountingController } from './accounting.controller';
 import { AccountingService } from './accounting.service';
 
 /**
- * Accounting Module — SKELETON (Fase 9)
- * 
- * Reservado para implementación futura del módulo de contabilidad.
- * Referencia: /mnt/d/propios/Glamorapp/contabilidad.pdf
- * 
- * Funcionalidades planeadas:
- * - Catálogo de cuentas contables
- * - Pólizas / asientos contables (journal entries)
- * - Libro diario y mayor
- * - Estados financieros (balance, estado de resultados)
- * - Conciliación bancaria
- * - Cuentas por cobrar / pagar
- * - Cálculo de impuestos
- * - Reportes fiscales (SAT México)
- * - Integración con ventas, gastos, compras, nómina
+ * Accounting Module — Módulo de Contabilidad
+ *
+ * Facturación electrónica DIAN (Colombia), impuestos IVA/ICA/ReteFuente/ReteIVA/ReteICA,
+ * transacciones contables, declaraciones de impuestos y reportes financieros.
  */
 @Module({
   controllers: [AccountingController],
   providers: [AccountingService],
+  exports: [AccountingService],
 })
 export class AccountingModule {}

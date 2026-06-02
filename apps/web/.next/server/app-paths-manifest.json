@@ -1,6 +1,7 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
-  "/dashboard/inventory/page": "app/dashboard/inventory/page.js",
   "/dashboard/page": "app/dashboard/page.js",
-  "/dashboard/settings/page": "app/dashboard/settings/page.js"
+  "/dashboard/catalog/nail-designs/page": "app/dashboard/catalog/nail-designs/page.js",
+  "/dashboard/appointments/page": "app/dashboard/appointments/page.js",
+  "/dashboard/commissions/page": "app/dashboard/commissions/page.js",
+  "/dashboard/catalog/products/page": "app/dashboard/catalog/products/page.js"
 }

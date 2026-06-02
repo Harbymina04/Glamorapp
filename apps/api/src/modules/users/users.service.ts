@@ -23,7 +23,7 @@ export class UsersService {
         where,
         skip,
         take,
-        select: { id: true, email: true, firstName: true, lastName: true, phone: true, role: true, isActive: true, avatarUrl: true, lastLoginAt: true, createdAt: true },
+        select: { id: true, email: true, firstName: true, lastName: true, phone: true, role: true, isActive: true, avatarUrl: true, lastLoginAt: true, commissionRate: true, createdAt: true },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.user.count({ where }),
@@ -53,9 +53,10 @@ export class UsersService {
         firstName: dto.firstName,
         lastName: dto.lastName,
         phone: dto.phone,
-        role: dto.role || 'cashier',
+        role:           dto.role || 'cashier',
+        commissionRate: dto.commissionRate ?? 0,
       },
-      select: { id: true, email: true, firstName: true, lastName: true, role: true },
+      select: { id: true, email: true, firstName: true, lastName: true, role: true, commissionRate: true },
     });
   }
 

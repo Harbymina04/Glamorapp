@@ -30,7 +30,10 @@ import { PackagesModule } from './modules/packages/packages.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
+import { CommissionsModule } from './modules/commissions/commissions.module';
 import { PlansModule } from './modules/plans/plans.module';
+import { StorefrontModule } from './modules/storefront/storefront.module';
+import { MasterDataModule } from './modules/master-data/master-data.module';
 
 @Module({
   imports: [
@@ -65,7 +68,10 @@ import { PlansModule } from './modules/plans/plans.module';
     WhatsAppModule,
     TenantModule,
     AccountingModule,
+    CommissionsModule,
     PlansModule,
+    StorefrontModule,
+    MasterDataModule,
   ],
   providers: [
     // Apply rate limiting globally — auth endpoints override with stricter limits
