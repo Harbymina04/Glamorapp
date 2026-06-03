@@ -78,6 +78,18 @@ export const api = {
     return handleResponse(res);
   },
 
+  async postForm(path: string, formData: FormData, options?: FetchOptions) {
+    const res = await fetch(`${API_URL}${path}`, {
+      method: 'POST',
+      headers: {
+        ...(options?.token ? { Authorization: `Bearer ${options.token}` } : {}),
+        // Do NOT set Content-Type — browser sets multipart/form-data with boundary automatically
+      },
+      body: formData,
+    });
+    return handleResponse(res);
+  },
+
   async del(path: string, options?: FetchOptions) {
     const res = await fetch(`${API_URL}${path}`, {
       method: 'DELETE',

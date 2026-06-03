@@ -34,6 +34,7 @@ import { CommissionsModule } from './modules/commissions/commissions.module';
 import { PlansModule } from './modules/plans/plans.module';
 import { StorefrontModule } from './modules/storefront/storefront.module';
 import { MasterDataModule } from './modules/master-data/master-data.module';
+import { ImportModule } from './modules/import/import.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { MasterDataModule } from './modules/master-data/master-data.module';
     PlansModule,
     StorefrontModule,
     MasterDataModule,
+    ImportModule,
   ],
   providers: [
     // Apply rate limiting globally — auth endpoints override with stricter limits
