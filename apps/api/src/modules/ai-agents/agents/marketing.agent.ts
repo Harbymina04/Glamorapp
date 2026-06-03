@@ -2,11 +2,20 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { BaseAgent, AgentContext, AgentTool } from './base.agent';
+import { MarketingService } from '../../marketing/marketing.service';
 
 @Injectable()
 export class MarketingAgent extends BaseAgent {
   slug = 'marketing';
   name = 'Agente de Marketing';
+
+  constructor(
+    prisma: PrismaService,
+    configService: ConfigService,
+    private marketingService: MarketingService,
+  ) {
+    super(prisma, configService);
+  }
 
   // ─── MCP / External API Config ──────────────────────────────
 
@@ -128,6 +137,28 @@ Responde en español, con enfoque práctico y accionable. NO des respuestas gen�
       },
 
       // ── Campaign Strategy ──
+      {
+        name: 'propose_campaign',
+        description: 'Propone una campaña de marketing al usuario para que la revise y apruebe antes de ejecutarla. Úsala cuando identifiques una oportunidad concreta de campaña.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            name:          { type: 'string', description: 'Nombre de la campaña' },
+            description:   { type: 'string', description: 'Descripción breve de la campaña' },
+            type:          { type: 'string', enum: ['promotional', 'loyalty', 'reactivation', 'birthday', 'seasonal', 'awareness'], description: 'Tipo de campaña' },
+            channels:      { type: 'array', items: { type: 'string', enum: ['whatsapp', 'email', 'instagram', 'facebook', 'sms'] }, description: 'Canales a usar' },
+            targetSegment: { type: 'string', enum: ['new', 'frequent', 'inactive', 'vip', 'all'], description: 'Segmento de clientes objetivo' },
+            targetTier:    { type: 'string', enum: ['bronze', 'silver', 'gold', 'platinum', 'all'], description: 'Nivel de fidelidad objetivo' },
+            subject:       { type: 'string', description: 'Asunto (email) o título del mensaje' },
+            message:       { type: 'string', description: 'Mensaje principal de la campaña' },
+            ctaText:       { type: 'string', description: 'Texto del botón de acción (ej: "Reservar ahora")' },
+            ctaUrl:        { type: 'string', description: 'URL de destino del CTA' },
+            scheduledAt:   { type: 'string', description: 'Fecha/hora propuesta de envío (ISO 8601)' },
+            aiReason:      { type: 'string', description: 'Justificación detallada: por qué propones esta campaña, qué datos la respaldan' },
+          },
+          required: ['name', 'type', 'channels', 'message', 'aiReason'],
+        },
+      },
       {
         name: 'design_campaign_strategy',
         description: 'Diseña estrategia COMPLETA de campaña: objetivo, audiencia, canales, presupuesto, timeline, KPIs',
@@ -306,6 +337,33 @@ Responde en español, con enfoque práctico y accionable. NO des respuestas gen�
       }
 
       // ── Campaign ──
+      case 'propose_campaign': {
+        const proposal = await this.marketingService.proposeByAi(
+          ctx.tenantId,
+          ctx.storeId,
+          ctx.agentId,
+          {
+            name:          args.name,
+            description:   args.description,
+            type:          args.type,
+            channels:      args.channels,
+            targetSegment: args.targetSegment,
+            targetTier:    args.targetTier,
+            subject:       args.subject,
+            message:       args.message,
+            ctaText:       args.ctaText,
+            ctaUrl:        args.ctaUrl,
+            scheduledAt:   args.scheduledAt,
+            aiReason:      args.aiReason,
+          },
+        );
+        return {
+          success: true,
+          campaignId: proposal.id,
+          message: `Campaña "${proposal.name}" propuesta correctamente. El usuario la verá en la sección de propuestas de marketing para revisarla y aprobarla.`,
+        };
+      }
+
       case 'design_campaign_strategy': {
         return this.designCampaignStrategy(ctx, args.objective, args.budget_cop || 0, args.target_audience || '', args.duration_days || 30);
       }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
 import { PhoneInput } from '@/components/ui/PhoneInput';
@@ -54,6 +55,7 @@ const emptyForm: CustomerForm = {
 
 // ─── Page ───────────────────────────────────────────────────────────
 export default function CustomersPage() {
+  const router = useRouter();
   const { token } = useAuthStore();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -270,7 +272,7 @@ export default function CustomersPage() {
       <DataTable
         columns={columns}
         data={customers}
-        onRowClick={(c: any) => openEditModal(c)}
+        onRowClick={(c: any) => router.push(`/dashboard/customers/${c.id}`)}
       />
 
       {/* ═══════════════════════════════════════════════════════════

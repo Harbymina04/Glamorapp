@@ -11,9 +11,10 @@ import { MarketingAgent } from './agents/marketing.agent';
 import { FinancialAgent } from './agents/financial.agent';
 import { SuppliersAgent } from './agents/suppliers.agent';
 import { CatalogAgent } from './agents/catalog.agent';
+import { MarketingModule } from '../marketing/marketing.module';
 
 @Module({
-  imports: [],
+  imports: [MarketingModule],
   controllers: [AiAgentsController],
   providers: [
     AiAgentsService,

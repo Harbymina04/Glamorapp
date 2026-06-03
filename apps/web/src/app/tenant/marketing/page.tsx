@@ -10,6 +10,8 @@ export default function MarketingIntegrationsPage() {
   const [config, setConfig] = useState({
     metaAccessToken: '',
     metaAdAccountId: '',
+    metaPageId: '',
+    instagramAccountId: '',
     googleApiKey: '',
     serperApiKey: '',
   });
@@ -112,6 +114,40 @@ export default function MarketingIntegrationsPage() {
               />
               <p className="text-xs text-muted-foreground mt-1">
                 Lo encuentras en <a href="https://business.facebook.com/settings/ad-accounts" target="_blank" className="text-glamor-primary underline">Business Settings</a> → Cuentas Publicitarias
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                ID de Página de Facebook
+                <span className="text-muted-foreground font-normal ml-1">— para publicar posts</span>
+              </label>
+              <input
+                type="text"
+                value={config.metaPageId}
+                onChange={e => setConfig(prev => ({ ...prev, metaPageId: e.target.value }))}
+                placeholder="123456789"
+                className="w-full h-10 px-3 rounded-lg border border-border-primary text-sm bg-white font-mono focus:outline-none focus:ring-2 focus:ring-glamor-primary/20"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                En tu página de Facebook → <strong>Acerca de</strong> → ID de página
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                ID de Cuenta de Instagram
+                <span className="text-muted-foreground font-normal ml-1">— para publicar posts</span>
+              </label>
+              <input
+                type="text"
+                value={config.instagramAccountId}
+                onChange={e => setConfig(prev => ({ ...prev, instagramAccountId: e.target.value }))}
+                placeholder="17841400000000000"
+                className="w-full h-10 px-3 rounded-lg border border-border-primary text-sm bg-white font-mono focus:outline-none focus:ring-2 focus:ring-glamor-primary/20"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                <a href="https://developers.facebook.com/tools/explorer/" target="_blank" className="text-glamor-primary underline">Graph API Explorer</a> → GET /me/accounts → instagram_business_account
               </p>
             </div>
           </div>

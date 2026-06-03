@@ -20,14 +20,21 @@ export class EmailService {
   private transporter: nodemailer.Transporter;
   private readonly from: string;
   private readonly enabled: boolean;
+  private readonly resendApiKey: string | null;
+  private readonly useResendApi: boolean;
 
   constructor(private config: ConfigService) {
-    const host = config.get<string>('SMTP_HOST');
-    this.from = config.get<string>('SMTP_FROM') || 'Glamorapp <no-reply@glamorapp.com>';
-    this.enabled = !!host;
+    const host    = config.get<string>('SMTP_HOST');
+    const apiKey  = config.get<string>('SMTP_PASS') || '';
+    this.from     = config.get<string>('SMTP_FROM') || 'Glamorapp <onboarding@resend.dev>';
+    this.enabled  = !!host || apiKey.startsWith('re_');
 
-    if (this.enabled) {
-      const port = config.get<number>('SMTP_PORT') || 587;
+    // Use Resend HTTP API when key starts with re_ (avoids domain verification issues with SMTP)
+    this.resendApiKey  = apiKey.startsWith('re_') ? apiKey : null;
+    this.useResendApi  = !!this.resendApiKey;
+
+    if (this.enabled && !this.useResendApi) {
+      const port   = config.get<number>('SMTP_PORT') || 587;
       const secure = String(config.get('SMTP_SECURE')).toLowerCase() === 'true';
       this.transporter = nodemailer.createTransport({
         host,
@@ -36,13 +43,24 @@ export class EmailService {
         requireTLS: !secure,
         auth: {
           user: config.get<string>('SMTP_USER'),
-          pass: config.get<string>('SMTP_PASS'),
+          pass: apiKey,
         },
-        tls: {
-          rejectUnauthorized: false,
-        },
+        tls: { rejectUnauthorized: false },
       });
     }
+
+    if (this.useResendApi) {
+      this.logger.log('Email provider: Resend HTTP API');
+    } else if (this.enabled) {
+      this.logger.log(`Email provider: SMTP (${host})`);
+    } else {
+      this.logger.warn('Email disabled — set SMTP_HOST or SMTP_PASS=re_...');
+    }
+  }
+
+  /** Generic send — public so other services (e.g. marketing) can use it */
+  async sendRaw(to: string, subject: string, html: string): Promise<void> {
+    return this.send(to, subject, html);
   }
 
   private async send(to: string, subject: string, html: string): Promise<void> {
@@ -50,11 +68,38 @@ export class EmailService {
       this.logger.debug(`[Email disabled] To: ${to} | Subject: ${subject}`);
       return;
     }
+
+    if (this.useResendApi) {
+      await this.sendViaResendApi(to, subject, html);
+      return;
+    }
+
     try {
       await this.transporter.sendMail({ from: this.from, to, subject, html });
       this.logger.log(`Email sent to ${to}: ${subject}`);
     } catch (err: any) {
       this.logger.error(`Failed to send email to ${to}: ${err.message}`);
+    }
+  }
+
+  private async sendViaResendApi(to: string, subject: string, html: string): Promise<void> {
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ from: this.from, to, subject, html }),
+      });
+      const data = await res.json() as any;
+      if (!res.ok) {
+        this.logger.error(`Resend API error to ${to}: ${JSON.stringify(data)}`);
+      } else {
+        this.logger.log(`Email sent via Resend to ${to}: ${subject} (id: ${data.id})`);
+      }
+    } catch (err: any) {
+      this.logger.error(`Resend API fetch failed to ${to}: ${err.message}`);
     }
   }
 

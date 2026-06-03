@@ -185,6 +185,7 @@ model Tenant {
   storefront         Storefront?
   storefrontOrders   StorefrontOrder[]
   storefrontReviews  StorefrontReview[]
+  marketingCampaigns MarketingCampaign[]
 
   @@map("tenants")
 }
@@ -260,6 +261,7 @@ model Store {
   accountingTx       AccountingTransaction[]
   storefrontOrders   StorefrontOrder[]
   storefrontReviews  StorefrontReview[]
+  marketingCampaigns MarketingCampaign[]
 
   @@unique([tenantId, slug])
   @@index([tenantId])
@@ -1732,6 +1734,83 @@ model StorefrontOrder {
   @@index([tenantId])
   @@index([status])
   @@map("storefront_orders")
+}
+
+// ─── Marketing ───────────────────────────────────────────────────
+
+enum CampaignStatus {
+  draft
+  scheduled
+  active
+  paused
+  completed
+  cancelled
+  proposed
+}
+
+enum CampaignType {
+  promotional
+  loyalty
+  reactivation
+  birthday
+  seasonal
+  awareness
+}
+
+enum CampaignChannel {
+  whatsapp
+  email
+  instagram
+  facebook
+  sms
+}
+
+model MarketingCampaign {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  storeId     String   @map("store_id") @db.Uuid
+  store       Store    @relation(fields: [storeId], references: [id])
+
+  name        String          @db.VarChar(255)
+  description String?
+  type        CampaignType    @default(promotional)
+  status      CampaignStatus  @default(draft)
+  channels    Json            @default("[]")
+
+  targetSegment String? @map("target_segment") @db.VarChar(50)
+  targetTier    String? @map("target_tier") @db.VarChar(50)
+
+  subject  String? @db.VarChar(255)
+  message  String
+  imageUrl String? @map("image_url")
+  ctaText  String? @map("cta_text") @db.VarChar(100)
+  ctaUrl   String? @map("cta_url") @db.VarChar(500)
+
+  scheduledAt  DateTime? @map("scheduled_at")
+  startedAt    DateTime? @map("started_at")
+  completedAt  DateTime? @map("completed_at")
+
+  targetCount     Int @default(0) @map("target_count")
+  sentCount       Int @default(0) @map("sent_count")
+  openCount       Int @default(0) @map("open_count")
+  clickCount      Int @default(0) @map("click_count")
+  conversionCount Int @default(0) @map("conversion_count")
+
+  isAiProposed Boolean   @default(false) @map("is_ai_proposed")
+  aiReason     String?   @map("ai_reason")
+  reviewedBy   String?   @map("reviewed_by") @db.Uuid
+  reviewedAt   DateTime? @map("reviewed_at")
+  reviewNotes  String?   @map("review_notes")
+
+  createdBy String   @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([tenantId, storeId])
+  @@index([tenantId, storeId, status])
+  @@map("marketing_campaigns")
 }
 
 // ─── Master Data (gestionado por superadmin) ─────────────────────
