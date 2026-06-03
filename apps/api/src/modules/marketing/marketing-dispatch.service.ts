@@ -104,53 +104,99 @@ export class MarketingDispatchService {
 
   // ── Email ─────────────────────────────────────────────────────
   private async sendEmailCampaign(campaign: any, customer: any) {
-    const subject = campaign.subject || campaign.name;
-    const html = this.buildEmailHtml(campaign, customer);
+    const subject   = campaign.subject || campaign.name;
+    const store     = await this.getStoreInfo(campaign.storeId);
+    const html      = this.buildEmailHtml(campaign, customer, store);
     await this.email.sendRaw(customer.email, subject, html);
   }
 
-  private buildEmailHtml(campaign: any, customer: any): string {
+  private async getStoreInfo(storeId: string): Promise<{ name: string; slug: string; logoUrl: string | null }> {
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+      select: { name: true, slug: true, logoUrl: true },
+    });
+    return store ?? { name: 'Glamorapp', slug: '', logoUrl: null };
+  }
+
+  private buildEmailHtml(campaign: any, customer: any, store: { name: string; slug: string; logoUrl: string | null }): string {
+    const appUrl   = this.config.get('APP_URL', 'https://glamorapp.co');
+    const apiUrl   = this.config.get('API_URL', 'https://glamorapp.co');
+    const storeUrl = store.slug ? `${appUrl}/tienda/${store.slug}` : appUrl;
+
+    // Resolve image URL to absolute
+    const resolveUrl = (url: string) => {
+      if (!url) return '';
+      if (url.startsWith('http')) return url;
+      return `${apiUrl}${url}`;
+    };
+
     const imageBlock = campaign.imageUrl
-      ? `<img src="${campaign.imageUrl}" alt="${campaign.name}" style="width:100%;max-width:600px;border-radius:8px;margin-bottom:24px;" />`
+      ? `<img src="${resolveUrl(campaign.imageUrl)}" alt="${campaign.name}"
+             style="width:100%;max-width:536px;border-radius:8px;margin-bottom:24px;display:block;" />`
       : '';
 
     const ctaBlock = campaign.ctaText && campaign.ctaUrl
       ? `<div style="text-align:center;margin-top:28px;">
-           <a href="${campaign.ctaUrl}" style="background:#8b5cf6;color:white;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:16px;">
+           <a href="${campaign.ctaUrl}"
+              style="background:#8b5cf6;color:white;padding:14px 32px;border-radius:8px;
+                     text-decoration:none;font-weight:600;font-size:16px;display:inline-block;">
              ${campaign.ctaText}
            </a>
          </div>`
       : '';
 
+    const storeLogoBlock = store.logoUrl
+      ? `<img src="${resolveUrl(store.logoUrl)}" alt="${store.name}"
+               style="height:40px;object-fit:contain;margin-bottom:8px;display:block;margin:0 auto 8px;" />`
+      : '';
+
     return `<!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Segoe UI',sans-serif;">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${campaign.name}</title></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Segoe UI',Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;">
     <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="background:white;border-radius:16px;overflow:hidden;max-width:600px;">
-        <!-- Header -->
+      <table width="600" cellpadding="0" cellspacing="0"
+             style="background:white;border-radius:16px;overflow:hidden;max-width:600px;box-shadow:0 4px 24px rgba(0,0,0,0.07);">
+
+        <!-- Header gradient -->
         <tr><td style="background:linear-gradient(135deg,#8b5cf6,#ec4899);padding:28px 32px;text-align:center;">
-          <h1 style="margin:0;color:white;font-size:24px;font-weight:700;">Glamorapp</h1>
+          ${storeLogoBlock}
+          <h1 style="margin:0;color:white;font-size:22px;font-weight:700;letter-spacing:-0.3px;">${store.name}</h1>
+          <p style="margin:4px 0 0;color:rgba(255,255,255,0.8);font-size:13px;">Impulsado por Glamorapp</p>
         </td></tr>
+
         <!-- Body -->
         <tr><td style="padding:32px;">
           ${imageBlock}
-          <h2 style="margin:0 0 12px;color:#111827;font-size:20px;">${campaign.name}</h2>
-          <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px;">
-            Hola ${customer.firstName},
+          <h2 style="margin:0 0 16px;color:#111827;font-size:20px;font-weight:700;">${campaign.name}</h2>
+          <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 12px;">
+            Hola <strong>${customer.firstName}</strong>,
           </p>
           <p style="color:#374151;font-size:15px;line-height:1.7;margin:0;">
             ${campaign.message.replace(/\n/g, '<br>')}
           </p>
           ${ctaBlock}
+
+          <!-- Visitar tienda -->
+          <div style="margin-top:32px;padding-top:24px;border-top:1px solid #f0f0f0;text-align:center;">
+            <a href="${storeUrl}"
+               style="color:#8b5cf6;font-size:14px;text-decoration:none;font-weight:500;">
+              🛍️ Visitar la tienda en línea →
+            </a>
+          </div>
         </td></tr>
+
         <!-- Footer -->
         <tr><td style="background:#f9fafb;padding:20px 32px;text-align:center;border-top:1px solid #e5e7eb;">
-          <p style="margin:0;color:#9ca3af;font-size:12px;">
-            © ${new Date().getFullYear()} Glamorapp · <a href="#" style="color:#8b5cf6;text-decoration:none;">Cancelar suscripción</a>
+          <p style="margin:0 0 4px;color:#6b7280;font-size:13px;font-weight:500;">${store.name}</p>
+          <p style="margin:0;color:#9ca3af;font-size:11px;">
+            © ${new Date().getFullYear()} ${store.name} · Impulsado por
+            <a href="${appUrl}" style="color:#8b5cf6;text-decoration:none;">Glamorapp</a>
           </p>
         </td></tr>
+
       </table>
     </td></tr>
   </table>
