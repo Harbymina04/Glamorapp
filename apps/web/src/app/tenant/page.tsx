@@ -67,8 +67,8 @@ export default function TenantDashboardPage() {
   const onboardingSteps = [
     { label: 'Configura tu primera sucursal', href: '/tenant/stores', done: (data?.totalStores ?? 0) > 0 },
     { label: 'Agrega usuarios a tu equipo', href: '/tenant/users', done: (data?.totalUsers ?? 0) > 1 },
-    { label: 'Crea tu primer cliente', href: '/dashboard/customers', done: (data?.totalCustomers ?? 0) > 0 },
-    { label: 'Registra tu primer servicio o venta', href: '/dashboard/pos', done: (data?.totalSales ?? 0) > 0 },
+    { label: 'Crea tu catálogo de productos y servicios', href: '/dashboard/inventory/services/new', done: (data?.totalSales ?? 0) > 0 || (data?.totalCustomers ?? 0) > 0 },
+    { label: 'Registra tu primer cliente', href: '/dashboard/customers', done: (data?.totalCustomers ?? 0) > 0 },
   ];
   const stepsCompleted = onboardingSteps.filter(s => s.done).length;
 

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
-import { Loader2, Plus, Store, Users, ShoppingCart, Pencil, Power, PowerOff, ChevronRight, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { Loader2, Plus, Store, Users, ShoppingCart, Pencil, Power, PowerOff, ChevronRight, CheckCircle2, XCircle, AlertCircle, ExternalLink } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface StoreData {
@@ -129,8 +129,7 @@ export default function TenantStoresPage() {
         {stores.map(s => (
           <div
             key={s.id}
-            onClick={() => router.push(`/tenant/stores/${s.id}`)}
-            className={`bg-white rounded-xl border shadow-sm p-5 cursor-pointer hover:shadow-md hover:border-glamor-primary/30 transition ${!s.isActive ? 'opacity-60' : ''}`}
+            className={`bg-white rounded-xl border shadow-sm p-5 transition ${!s.isActive ? 'opacity-60' : ''}`}
           >
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
@@ -143,16 +142,29 @@ export default function TenantStoresPage() {
                 </div>
               </div>
               <div className="flex gap-1 items-center">
-                <button onClick={(e) => { e.stopPropagation(); openEdit(s); }} className="p-1.5 rounded hover:bg-surface-hover"><Pencil className="w-4 h-4 text-muted-foreground" /></button>
-                <button onClick={(e) => { e.stopPropagation(); toggleActive(s); }} className="p-1.5 rounded hover:bg-surface-hover">
+                <button onClick={() => openEdit(s)} className="p-1.5 rounded hover:bg-surface-hover" title="Editar"><Pencil className="w-4 h-4 text-muted-foreground" /></button>
+                <button onClick={() => toggleActive(s)} className="p-1.5 rounded hover:bg-surface-hover" title={s.isActive ? 'Desactivar' : 'Activar'}>
                   {s.isActive ? <PowerOff className="w-4 h-4 text-red-500" /> : <Power className="w-4 h-4 text-green-500" />}
                 </button>
-                <ChevronRight className="w-4 h-4 text-muted-foreground/40" />
+                <button onClick={() => router.push(`/tenant/stores/${s.id}`)} className="p-1.5 rounded hover:bg-surface-hover" title="Ver detalle">
+                  <ChevronRight className="w-4 h-4 text-muted-foreground/40" />
+                </button>
               </div>
             </div>
-            <div className="flex gap-6 mt-4 text-sm">
-              <span className="flex items-center gap-1 text-muted-foreground"><Users className="w-3.5 h-3.5" /> {s._count.users}</span>
-              <span className="flex items-center gap-1 text-muted-foreground"><ShoppingCart className="w-3.5 h-3.5" /> {s._count.sales}</span>
+            <div className="flex items-center justify-between mt-4">
+              <div className="flex gap-6 text-sm">
+                <span className="flex items-center gap-1 text-muted-foreground"><Users className="w-3.5 h-3.5" /> {s._count.users}</span>
+                <span className="flex items-center gap-1 text-muted-foreground"><ShoppingCart className="w-3.5 h-3.5" /> {s._count.sales}</span>
+              </div>
+              {s.isActive && (
+                <button
+                  onClick={() => router.push(`/dashboard?storeId=${s.id}`)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-glamor-primary bg-glamor-primary/10 hover:bg-glamor-primary/20 rounded-lg transition"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Ingresar a sucursal
+                </button>
+              )}
             </div>
           </div>
         ))}

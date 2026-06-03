@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
-import { Search, Bell, Calendar, Settings, LogOut, Menu } from 'lucide-react';
+import { Search, Bell, Calendar, Settings, LogOut, Menu, LayoutDashboard } from 'lucide-react';
 import { useUIStore } from '@/stores/ui-store';
 
 const pageTitles: Record<string, string> = {
@@ -65,6 +65,18 @@ export function Header() {
             className="w-full h-9 pl-9 pr-3 rounded-lg border border-border-primary text-sm bg-surface-primary focus:outline-none focus:ring-2 focus:ring-glamor-primary/20 focus:border-glamor-primary transition"
           />
         </form>
+
+        {/* Volver al panel tenant — solo para tenant_admin */}
+        {user?.role === 'tenant_admin' && (
+          <button
+            onClick={() => router.push('/tenant')}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-glamor-primary bg-glamor-primary/10 hover:bg-glamor-primary/20 rounded-lg transition"
+            title="Volver al panel administrador"
+          >
+            <LayoutDashboard className="w-3.5 h-3.5" />
+            Panel admin
+          </button>
+        )}
 
         {/* Notifications */}
         <button
