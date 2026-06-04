@@ -28,8 +28,13 @@ const MASTER_BRANDS = [
 
 // ─── Colombia locations ────────────────────────────────────────────
 
+// Cities stored as { name, code } — code = slug of name
+function cityEntry(name: string) {
+  return { name, code: name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 20) };
+}
+
 const COLOMBIA_DEPARTMENTS = [
-  { name: 'Bogotá D.C.',      code: 'DC', cities: ['Bogotá'] },
+  { name: 'Bogotá D.C.',      code: 'DC',  cities: ['Bogotá'] },
   { name: 'Antioquia',        code: 'ANT', cities: ['Medellín', 'Bello', 'Envigado', 'Itagüí', 'Rionegro'] },
   { name: 'Valle del Cauca',  code: 'VAC', cities: ['Cali', 'Palmira', 'Buenaventura', 'Tuluá', 'Cartago'] },
   { name: 'Atlántico',        code: 'ATL', cities: ['Barranquilla', 'Soledad', 'Malambo', 'Sabanalarga'] },
@@ -60,10 +65,10 @@ async function seedMasterData() {
 
     for (const dep of COLOMBIA_DEPARTMENTS) {
       const dept = await prisma.department.create({
-        data: { countryId: colombia.id, name: dep.name, code: dep.code, isActive: true },
+        data: { countryId: colombia.id, name: dep.name, code: dep.code },
       });
       await prisma.city.createMany({
-        data: dep.cities.map(city => ({ departmentId: dept.id, name: city, isActive: true })),
+        data: dep.cities.map(city => ({ departmentId: dept.id, ...cityEntry(city), name: city })),
         skipDuplicates: true,
       });
     }
