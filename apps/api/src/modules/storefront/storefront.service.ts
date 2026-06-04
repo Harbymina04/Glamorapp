@@ -170,7 +170,11 @@ export class StorefrontService {
   async getOrders(tenantId: string, query: any) {
     const where: any = { tenantId };
     if (query.status && query.status !== 'all') where.status = query.status;
-    if (query.storeId) where.storeId = query.storeId;
+    // Include orders with storeId = null (came through storefront without explicit store)
+    // alongside orders explicitly assigned to the requested store
+    if (query.storeId) {
+      where.OR = [{ storeId: query.storeId }, { storeId: null }];
+    }
     if (query.from) where.createdAt = { ...(where.createdAt || {}), gte: new Date(query.from) };
     if (query.to)
       where.createdAt = {
@@ -288,7 +292,21 @@ export class StorefrontService {
 
   async createOrder(dto: any) {
     const orderNumber = `GA-${Date.now().toString().slice(-6)}`;
-    return this.prisma.storefrontOrder.create({ data: { ...dto, orderNumber } });
+
+    // Auto-assign storeId if not provided: use the tenant's first active store
+    let storeId = dto.storeId ?? null;
+    if (!storeId && dto.tenantId) {
+      const store = await this.prisma.store.findFirst({
+        where: { tenantId: dto.tenantId, isActive: true },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+      storeId = store?.id ?? null;
+    }
+
+    return this.prisma.storefrontOrder.create({
+      data: { ...dto, storeId, orderNumber },
+    });
   }
 
   // ── Reviews ───────────────────────────────────────────────
