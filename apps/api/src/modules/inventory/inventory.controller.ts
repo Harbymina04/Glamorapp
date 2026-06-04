@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Param, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { InventoryService } from './inventory.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -6,10 +6,13 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 import { TenantId, StoreId } from '../../common/decorators/tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
+import { Audit } from '../audit/audit.decorator';
+import { AuditInterceptor } from '../audit/audit.interceptor';
 
 @ApiTags('Inventory')
 @Controller('inventory')
 @UseGuards(JwtAuthGuard, TenantGuard)
+@UseInterceptors(AuditInterceptor)
 @ApiBearerAuth()
 export class InventoryController {
   constructor(private inventoryService: InventoryService) {}
@@ -24,6 +27,7 @@ export class InventoryController {
   }
 
   @Post('movements')
+  @Audit('inventory', 'inventory_change', 'Movimiento de inventario: {movementType} x{quantity}')
   createMovement(
     @TenantId() tenantId: string,
     @StoreId() storeId: string,

@@ -38,6 +38,7 @@ import { ImportModule } from './modules/import/import.module';
 import { MarketingModule } from './modules/marketing/marketing.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
+import { AuditModule } from './modules/audit/audit.module';
 
 @Module({
   imports: [
@@ -80,6 +81,7 @@ import { PayoutsModule } from './modules/payouts/payouts.module';
     MarketingModule,
     PaymentsModule,
     PayoutsModule,
+    AuditModule,
   ],
   providers: [
     // Apply rate limiting globally — auth endpoints override with stricter limits

@@ -1089,23 +1089,29 @@ model Notification {
 }
 
 model AuditLog {
-  id         String     @id @default(uuid()) @db.Uuid
-  tenantId   String     @map("tenant_id") @db.Uuid
-  storeId    String?    @map("store_id") @db.Uuid
-  userId     String?    @map("user_id") @db.Uuid
-  agentId    String?    @map("agent_id") @db.Uuid
-  action     AuditAction
-  entityType String     @map("entity_type") @db.VarChar(50)
-  entityId   String?    @map("entity_id") @db.Uuid
-  oldData    Json?      @map("old_data")
-  newData    Json?      @map("new_data")
-  ipAddress  String?    @map("ip_address") @db.VarChar(50)
-  userAgent  String?    @map("user_agent")
-  createdAt  DateTime   @default(now()) @map("created_at")
+  id          String      @id @default(uuid()) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  storeId     String?     @map("store_id") @db.Uuid
+  userId      String?     @map("user_id") @db.Uuid
+  userEmail   String?     @map("user_email") @db.VarChar(255)
+  userName    String?     @map("user_name") @db.VarChar(255)
+  agentId     String?     @map("agent_id") @db.Uuid
+  action      AuditAction
+  module      String      @db.VarChar(50)
+  entityType  String      @map("entity_type") @db.VarChar(50)
+  entityId    String?     @map("entity_id") @db.VarChar(100)
+  description String?     @db.VarChar(500)
+  oldData     Json?       @map("old_data")
+  newData     Json?       @map("new_data")
+  ipAddress   String?     @map("ip_address") @db.VarChar(50)
+  userAgent   String?     @map("user_agent")
+  createdAt   DateTime    @default(now()) @map("created_at")
 
   @@index([tenantId, createdAt])
+  @@index([storeId, createdAt])
   @@index([entityType, entityId])
   @@index([userId])
+  @@index([module])
   @@map("audit_logs")
 }
 

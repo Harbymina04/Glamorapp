@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { SalesService } from './sales.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -6,10 +6,13 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 import { TenantId, StoreId } from '../../common/decorators/tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
+import { Audit } from '../audit/audit.decorator';
+import { AuditInterceptor } from '../audit/audit.interceptor';
 
 @ApiTags('Sales')
 @Controller('sales')
 @UseGuards(JwtAuthGuard, TenantGuard)
+@UseInterceptors(AuditInterceptor)
 @ApiBearerAuth()
 export class SalesController {
   constructor(private salesService: SalesService) {}
@@ -34,6 +37,7 @@ export class SalesController {
   }
 
   @Post()
+  @Audit('sales', 'create', 'Venta #{folio} creada', { entityIdFrom: 'result' })
   create(
     @TenantId() tenantId: string,
     @StoreId() storeId: string,
@@ -44,6 +48,7 @@ export class SalesController {
   }
 
   @Post(':id/complete')
+  @Audit('sales', 'sale', 'Venta #{folio} completada por ${total}', { entityIdFrom: 'param' })
   complete(
     @TenantId() tenantId: string,
     @StoreId() storeId: string,
@@ -54,6 +59,7 @@ export class SalesController {
   }
 
   @Post(':id/cancel')
+  @Audit('sales', 'void_sale', 'Venta #{folio} cancelada', { entityIdFrom: 'param' })
   cancel(
     @TenantId() tenantId: string,
     @StoreId() storeId: string,
@@ -64,6 +70,7 @@ export class SalesController {
   }
 
   @Post(':id/refund')
+  @Audit('sales', 'void_sale', 'Devolución parcial en venta #{folio}', { entityIdFrom: 'param' })
   refund(
     @TenantId() tenantId: string,
     @StoreId() storeId: string,

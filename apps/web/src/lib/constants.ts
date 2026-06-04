@@ -19,7 +19,8 @@ export const ADMIN_MODULES = [
   { name: 'Marketing', href: '/dashboard/marketing', icon: 'Megaphone', feature: 'ai_agents' },
   { name: 'Agentes IA', href: '/dashboard/ai-agents', icon: 'Bot', feature: 'ai_agents' },
   { name: 'Importar datos', href: '/dashboard/import', icon: 'Upload', feature: 'settings' },
-  { name: 'Configuración', href: '/dashboard/settings', icon: 'Settings', feature: 'settings' },
+  { name: 'Configuración', href: '/dashboard/settings',    icon: 'Settings', feature: 'settings' },
+  { name: 'Audit Logs',   href: '/dashboard/audit-logs',  icon: 'Shield',   feature: 'settings' },
   { name: 'Contabilidad', href: '/dashboard/accounting', icon: 'Wallet', feature: 'accounting' },
 ] as const;
 

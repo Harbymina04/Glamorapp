@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto, UpdateUserDto, UpdatePermissionsDto } from './dto/user.dto';
@@ -9,10 +9,13 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantId } from '../../common/decorators/tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
+import { Audit } from '../audit/audit.decorator';
+import { AuditInterceptor } from '../audit/audit.interceptor';
 
 @ApiTags('Users')
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
+@UseInterceptors(AuditInterceptor)
 @ApiBearerAuth()
 export class UsersController {
   constructor(private usersService: UsersService) {}
@@ -24,7 +27,6 @@ export class UsersController {
     @Query() query: PaginationDto & { role?: string; isActive?: boolean },
     @Request() req: any,
   ) {
-    // store_admin only sees users in their own store
     const storeId = req.user.role === 'store_admin' ? req.user.storeId : null;
     return this.usersService.findAll(tenantId, query, storeId);
   }
@@ -37,8 +39,8 @@ export class UsersController {
 
   @Post()
   @Roles('store_admin', 'tenant_admin')
+  @Audit('users', 'create', 'Usuario {email} creado con rol {role}')
   create(@TenantId() tenantId: string, @Body() dto: CreateUserDto, @Request() req: any) {
-    // store_admin can only create users in their own store
     if (req.user.role === 'store_admin') {
       dto.storeId = req.user.storeId;
     }
@@ -47,18 +49,21 @@ export class UsersController {
 
   @Put(':id')
   @Roles('store_admin', 'tenant_admin')
+  @Audit('users', 'update', 'Usuario actualizado', { entityIdFrom: 'param' })
   update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateUserDto) {
     return this.usersService.update(tenantId, id, dto);
   }
 
   @Delete(':id')
   @Roles('store_admin', 'tenant_admin')
+  @Audit('users', 'delete', 'Usuario eliminado', { entityIdFrom: 'param' })
   remove(@TenantId() tenantId: string, @Param('id') id: string) {
     return this.usersService.remove(tenantId, id);
   }
 
   @Put(':id/permissions')
   @Roles('store_admin', 'tenant_admin')
+  @Audit('users', 'update', 'Permisos actualizados para usuario', { entityIdFrom: 'param' })
   updatePermissions(
     @TenantId() tenantId: string,
     @Param('id') id: string,
