@@ -296,9 +296,9 @@ async function seedDemoTenant(freePlanId: string) {
     });
   }
 
-  // Expense categories
+  // Expense categories (tenant-level, no storeId)
   await prisma.expenseCategory.createMany({
-    data: DEFAULT_EXPENSE_CATEGORIES.map(name => ({ tenantId: tenant.id, storeId: store.id, name })),
+    data: DEFAULT_EXPENSE_CATEGORIES.map(name => ({ tenantId: tenant.id, name })),
     skipDuplicates: true,
   });
 

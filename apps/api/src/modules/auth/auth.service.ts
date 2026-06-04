@@ -169,11 +169,10 @@ export class AuthService {
         });
       }
 
-      // 3. Default expense categories
+      // 3. Default expense categories (tenant-level, no storeId)
       await tx.expenseCategory.createMany({
         data: DEFAULT_EXPENSE_CATEGORIES.map(name => ({
           tenantId: tenant.id,
-          storeId: store.id,
           name,
         })),
         skipDuplicates: true,
