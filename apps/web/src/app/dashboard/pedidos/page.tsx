@@ -46,8 +46,11 @@ function OrderRow({
 
   // "Cobrar en POS" — store-payment orders without a linked sale
   const isStorePayment = order.paymentMethod === 'store' || !order.paymentMethod;
-  const isOpenStatus   = ['pending', 'confirmed', 'preparing', 'ready', 'delivered'].includes(order.status);
-  const canChargeInPos = isStorePayment && isOpenStatus && !order.saleId;
+  const isOpenStatus   = ['pending', 'confirmed', 'preparing', 'ready'].includes(order.status);
+  // For delivered orders: only show button if delivered very recently (within 2h) — avoids showing on old test orders
+  const isRecentlyDelivered = order.status === 'delivered'
+    && (Date.now() - new Date(order.updatedAt || order.createdAt).getTime()) < 2 * 60 * 60 * 1000;
+  const canChargeInPos = isStorePayment && (isOpenStatus || isRecentlyDelivered) && !order.saleId;
   // On 'ready' with store payment, hide the "Marcar entregado" button — cashier must charge via POS first
   const hideProgressBtn = order.status === 'ready' && isStorePayment && !order.saleId;
   const items: any[] = Array.isArray(order.items) ? order.items : (typeof order.items === 'string' ? JSON.parse(order.items) : []);
