@@ -12,6 +12,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { StorefrontService } from './storefront.service';
 import { StorefrontChatService } from './storefront-chat.service';
@@ -31,6 +32,7 @@ export class StorefrontController {
 
   @Post('public/chat')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 20 } }) // 20 msgs/min por IP
   @ApiOperation({ summary: 'Storefront chatbot — public, no auth required' })
   chat(@Body() body: { tenantId?: string; slug?: string; message: string; history?: any[] }) {
     return this.chatService.chat({
