@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Search, Heart, ShoppingBag, User, LogOut } from 'lucide-react';
 import { useStoreCart } from '@/stores/store-cart';
 import { CartDrawer } from '@/components/store/CartDrawer';
+import { StoreChatbot } from '@/components/store/StoreChatbot';
 import { useAuthStore } from '@/stores/auth-store';
 
 const CATEGORIES = [
@@ -184,6 +185,9 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
 
       {/* Cart Drawer */}
       <CartDrawer isOpen={cartOpen} onClose={() => setCartOpen(false)} />
+
+      {/* AI Chatbot */}
+      <StoreChatbot storeName="Glamorapp" />
     </div>
   );
 }

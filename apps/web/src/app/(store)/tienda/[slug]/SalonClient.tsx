@@ -14,6 +14,7 @@ import { StarRating } from '@/components/store/StarRating';
 import { ReviewCard } from '@/components/store/ReviewCard';
 import { formatCOP } from '@/lib/store-utils';
 import { useStoreCart } from '@/stores/store-cart';
+import { StoreChatbot } from '@/components/store/StoreChatbot';
 
 type Tab = 'productos' | 'servicios' | 'diseños' | 'reseñas' | 'ubicaciones';
 
@@ -337,6 +338,12 @@ export function SalonClient({ storefront, products, services, designs, reviews, 
       {selectedDesign && (
         <NailDesignModal design={selectedDesign} onClose={() => setSelectedDesign(null)} />
       )}
+
+      {/* Chatbot con contexto del salón */}
+      <StoreChatbot
+        tenantId={storefront.tenantId}
+        storeName={storefront.displayName}
+      />
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { StorefrontService } from './storefront.service';
+import { StorefrontChatService } from './storefront-chat.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -21,9 +22,25 @@ import { Roles } from '../../common/decorators/roles.decorator';
 @ApiTags('Storefront')
 @Controller('storefront')
 export class StorefrontController {
-  constructor(private service: StorefrontService) {}
+  constructor(
+    private service: StorefrontService,
+    private chatService: StorefrontChatService,
+  ) {}
 
   // ── Public (no auth) ─────────────────────────────────────
+
+  @Post('public/chat')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Storefront chatbot — public, no auth required' })
+  chat(@Body() body: { tenantId?: string; slug?: string; message: string; history?: any[] }) {
+    return this.chatService.chat({
+      tenantId: body.tenantId,
+      slug: body.slug,
+      message: body.message,
+      history: body.history || [],
+    });
+  }
+
   @Get('public')
   @ApiOperation({ summary: 'List active storefronts (public)' })
   getPublic(@Query() query: any) {
