@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '@/lib/api-client';
 import { formatDate } from '@/lib/utils';
 import { Loader2, Search, Filter, ChevronLeft, ChevronRight, Shield } from 'lucide-react';
@@ -96,37 +96,44 @@ export function AuditLogTable({
   const [appliedFilters, setAppliedFilters] = useState(filters);
   const LIMIT = 50;
 
-  // Serialize extraParams to avoid infinite loop from new object reference on each render
+  // Serialize objects → stable primitive deps (no infinite loop from new references)
+  const filtersStr     = JSON.stringify(appliedFilters);
   const extraParamsStr = JSON.stringify(extraParams);
 
-  const fetchLogs = useCallback(async () => {
+  // Fetch logs — pure useEffect, no useCallback, deps are all primitives
+  useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: String(page),
-        limit: String(LIMIT),
-        ...JSON.parse(extraParamsStr),
-      });
-      if (appliedFilters.search) params.set('search', appliedFilters.search);
-      if (appliedFilters.module) params.set('module', appliedFilters.module);
-      if (appliedFilters.action) params.set('action', appliedFilters.action);
-      if (appliedFilters.from)   params.set('from',   appliedFilters.from);
-      if (appliedFilters.to)     params.set('to',     appliedFilters.to);
 
-      const res: AuditLogResponse = await api.get(`${endpoint}?${params}`, { token });
-      setData(res.data || []);
-      setTotal(res.total || 0);
-    } catch { setData([]); }
-    finally  { setLoading(false); }
-  }, [endpoint, token, page, appliedFilters, extraParamsStr]);
+    const af = JSON.parse(filtersStr);
+    const ep = JSON.parse(extraParamsStr);
 
-  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+    const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
+    Object.entries(ep).forEach(([k, v]) => params.set(k, String(v)));
+    if (af.search) params.set('search', af.search);
+    if (af.module) params.set('module', af.module);
+    if (af.action) params.set('action', af.action);
+    if (af.from)   params.set('from',   af.from);
+    if (af.to)     params.set('to',     af.to);
 
+    api.get(`${endpoint}?${params}`, { token })
+      .then((res: AuditLogResponse) => {
+        if (!cancelled) { setData(res.data || []); setTotal(res.total || 0); }
+      })
+      .catch(() => { if (!cancelled) setData([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endpoint, token, page, filtersStr, extraParamsStr]);
+
+  // Load module list once
   useEffect(() => {
     if (!modulesEndpoint) return;
     api.get(modulesEndpoint, { token })
-      .then((mods: string[]) => setModules(mods))
+      .then((mods: string[]) => setModules(Array.isArray(mods) ? mods : []))
       .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modulesEndpoint, token]);
 
   const applyFilters = () => { setPage(1); setAppliedFilters({ ...filters }); };
