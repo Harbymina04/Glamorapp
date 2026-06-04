@@ -14,6 +14,7 @@ import { RegisterDto } from './dto/register.dto';
 import { CustomerRegisterDto } from './dto/customer-register.dto';
 import { v4 as uuidv4 } from 'uuid';
 import { getEffectiveScopes } from '../../common/constants/role-scopes';
+import { DEFAULT_AGENTS, DEFAULT_EXPENSE_CATEGORIES } from '../../common/constants/default-agents';
 
 @Injectable()
 export class AuthService {
@@ -135,6 +136,66 @@ export class AuthService {
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 14 * 86_400_000),
         },
+      });
+
+      // ── Auto-seed from global master data ─────────────────────
+
+      // 1. Product categories from global MasterCategories
+      const masterCats = await tx.masterCategory.findMany({ where: { isActive: true }, orderBy: { sortOrder: 'asc' } });
+      if (masterCats.length > 0) {
+        await tx.productCategory.createMany({
+          data: masterCats.map((mc: any) => ({
+            tenantId: tenant.id,
+            storeId: store.id,
+            name: mc.name,
+            color: mc.color ?? '#EF2D8F',
+            icon: mc.icon ?? 'Package',
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      // 2. Brands from global MasterBrands
+      const masterBrands = await tx.masterBrand.findMany({ where: { isActive: true }, orderBy: { name: 'asc' } });
+      if (masterBrands.length > 0) {
+        await tx.brand.createMany({
+          data: masterBrands.map((mb: any) => ({
+            tenantId: tenant.id,
+            storeId: store.id,
+            name: mb.name,
+            logoUrl: mb.logoUrl ?? null,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      // 3. Default expense categories
+      await tx.expenseCategory.createMany({
+        data: DEFAULT_EXPENSE_CATEGORIES.map(name => ({
+          tenantId: tenant.id,
+          storeId: store.id,
+          name,
+        })),
+        skipDuplicates: true,
+      });
+
+      // 4. Default AI agents
+      await tx.aiAgent.createMany({
+        data: DEFAULT_AGENTS.map(agent => ({
+          tenantId: tenant.id,
+          storeId: store.id,
+          slug: agent.slug,
+          name: agent.name,
+          description: agent.description,
+          icon: agent.icon,
+          category: agent.category,
+          autonomyLevel: agent.autonomyLevel as any,
+          aiProvider: agent.aiProvider,
+          schedule: agent.schedule,
+          isActive: agent.isActive,
+          status: agent.status as any,
+        })),
+        skipDuplicates: true,
       });
 
       return user;
