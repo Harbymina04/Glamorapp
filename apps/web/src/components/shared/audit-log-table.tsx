@@ -96,13 +96,16 @@ export function AuditLogTable({
   const [appliedFilters, setAppliedFilters] = useState(filters);
   const LIMIT = 50;
 
+  // Serialize extraParams to avoid infinite loop from new object reference on each render
+  const extraParamsStr = JSON.stringify(extraParams);
+
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
         page: String(page),
         limit: String(LIMIT),
-        ...extraParams,
+        ...JSON.parse(extraParamsStr),
       });
       if (appliedFilters.search) params.set('search', appliedFilters.search);
       if (appliedFilters.module) params.set('module', appliedFilters.module);
@@ -115,7 +118,7 @@ export function AuditLogTable({
       setTotal(res.total || 0);
     } catch { setData([]); }
     finally  { setLoading(false); }
-  }, [endpoint, token, page, appliedFilters, extraParams]);
+  }, [endpoint, token, page, appliedFilters, extraParamsStr]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
