@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
@@ -9,11 +9,12 @@ import { getPaginationParams } from '../../common/utils/pagination';
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(tenantId: string, query: any) {
+  async findAll(tenantId: string, query: any, storeId?: string | null) {
     const { skip, take } = getPaginationParams(query.page || 1, query.limit || 10);
     const where: any = {
       tenantId,
       deletedAt: null,
+      ...(storeId ? { storeId } : {}),
       ...(query.role ? { role: query.role } : {}),
       ...(query.isActive !== undefined ? { isActive: query.isActive } : {}),
     };
@@ -43,6 +44,20 @@ export class UsersService {
   }
 
   async create(tenantId: string, dto: CreateUserDto) {
+    // Validate plan user limit
+    const sub = await this.prisma.subscription.findFirst({
+      where: { tenantId, status: { in: ['active', 'trial'] } },
+      include: { plan: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (sub) {
+      const maxUsers = (sub.plan.features as any)?.limits?.maxUsers ?? sub.plan.maxUsers;
+      const currentCount = await this.prisma.user.count({ where: { tenantId, deletedAt: null } });
+      if (currentCount >= maxUsers) {
+        throw new BadRequestException(`Límite de usuarios alcanzado (${maxUsers}). Actualiza tu plan.`);
+      }
+    }
+
     const passwordHash = await bcrypt.hash(dto.password, 10);
     return this.prisma.user.create({
       data: {

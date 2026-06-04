@@ -5,3 +5,14 @@ dist/
 .DS_Store
 .turbo/
 coverage/
+
+# Next.js build cache
+.next/
+out/
+
+# Local uploads (use S3/MinIO in production)
+apps/api/uploads/
+
+# TypeScript build info
+*.tsbuildinfo
+

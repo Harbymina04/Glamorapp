@@ -14,6 +14,7 @@ import {
   FileText, FilePlus, Send, FileCheck, Mail,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ScopeGate } from '@/hooks/use-plan-gate';
 
 type PaymentMethod = 'cash' | 'card' | 'transfer';
 type ViewMode = 'pos' | 'history' | 'register';
@@ -756,7 +757,9 @@ export default function POSPage() {
           <div className="flex justify-between text-lg font-bold pt-2 border-t border-border-primary"><span>Total</span><span className="text-glamor-primary">{formatCurrency(total)}</span></div>
           {/* Notes */}
           <input value={saleNotes} onChange={e => setSaleNotes(e.target.value)} placeholder="Notas de venta (opcional)" className="w-full h-8 px-2 rounded-lg border border-border-primary text-xs bg-white focus:outline-none focus:ring-2 focus:ring-glamor-primary/20" />
-          <button onClick={registerSession ? handleCobrar : () => { setViewMode('register'); setTimeout(() => setShowOpenRegister(true), 100); }} disabled={cart.items.length === 0} className={cn('w-full h-12 rounded-lg font-semibold text-sm transition flex items-center justify-center gap-2', registerSession ? 'bg-glamor-primary hover:bg-glamor-primary-hover text-white disabled:opacity-50' : 'bg-amber-50 border-2 border-amber-300 text-amber-700 hover:bg-amber-100')}><CreditCard className="w-5 h-5" /> {registerSession ? `Cobrar ${formatCurrency(total)}` : 'Abre la caja para cobrar'}</button>
+          <ScopeGate module="pos" action="create">
+            <button onClick={registerSession ? handleCobrar : () => { setViewMode('register'); setTimeout(() => setShowOpenRegister(true), 100); }} disabled={cart.items.length === 0} className={cn('w-full h-12 rounded-lg font-semibold text-sm transition flex items-center justify-center gap-2', registerSession ? 'bg-glamor-primary hover:bg-glamor-primary-hover text-white disabled:opacity-50' : 'bg-amber-50 border-2 border-amber-300 text-amber-700 hover:bg-amber-100')}><CreditCard className="w-5 h-5" /> {registerSession ? `Cobrar ${formatCurrency(total)}` : 'Abre la caja para cobrar'}</button>
+          </ScopeGate>
           {/* Hold sale */}
           {cart.items.length > 0 && (
             <div className="flex gap-2">

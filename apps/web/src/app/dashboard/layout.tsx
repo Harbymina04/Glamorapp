@@ -9,7 +9,7 @@ import { Header } from '@/components/layout/header';
 import { TrialBanner } from '@/components/layout/trial-banner';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
+  const { isAuthenticated, isLoading, checkAuth, user } = useAuthStore();
   const sidebarOpen = useUIStore(s => s.sidebarOpen);
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -20,10 +20,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, []);
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    if (isLoading) return;
+    if (!isAuthenticated) {
       router.push('/auth/login');
+      return;
     }
-  }, [isAuthenticated, isLoading, router]);
+    // Role-based redirect: only store-level roles belong in /dashboard
+    if (user?.role === 'superadmin') {
+      router.replace('/admin');
+    } else if (user?.role === 'tenant_admin') {
+      router.replace('/tenant');
+    }
+  }, [isAuthenticated, isLoading, user, router]);
 
   if (!mounted) return null;
 

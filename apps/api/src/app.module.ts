@@ -36,8 +36,8 @@ import { StorefrontModule } from './modules/storefront/storefront.module';
 import { MasterDataModule } from './modules/master-data/master-data.module';
 import { ImportModule } from './modules/import/import.module';
 import { MarketingModule } from './modules/marketing/marketing.module';
-// import { PaymentsModule } from './modules/payments/payments.module'; // TODO: pending schema models
-// import { PayoutsModule } from './modules/payouts/payouts.module'; // TODO: requires platformConfig & platformPayout schema models
+import { PaymentsModule } from './modules/payments/payments.module';
+import { PayoutsModule } from './modules/payouts/payouts.module';
 
 @Module({
   imports: [
@@ -78,8 +78,8 @@ import { MarketingModule } from './modules/marketing/marketing.module';
     MasterDataModule,
     ImportModule,
     MarketingModule,
-    // PaymentsModule, // TODO: pending schema models
-    // PayoutsModule,  // TODO: requires platformConfig & platformPayout schema models
+    PaymentsModule,
+    PayoutsModule,
   ],
   providers: [
     // Apply rate limiting globally — auth endpoints override with stricter limits

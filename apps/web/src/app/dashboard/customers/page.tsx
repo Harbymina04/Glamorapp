@@ -10,6 +10,7 @@ import { DataTable } from '@/components/shared/data-table';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { StatCard } from '@/components/shared/stat-card';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
+import { ScopeGate } from '@/hooks/use-plan-gate';
 import { LOYALTY_TIER_COLORS } from '@/lib/constants';
 import {
   Users, Star, UserPlus, TrendingUp, Plus, Search, Phone,
@@ -217,16 +218,20 @@ export default function CustomersPage() {
     {
       key: 'actions', header: '', render: (c: any) => (
         <div className="flex items-center gap-1 justify-end">
-          <button onClick={(e) => { e.stopPropagation(); openEditModal(c); }}
-            title="Editar"
-            className="p-1.5 rounded-lg hover:bg-surface-hover text-muted-foreground hover:text-glamor-primary transition">
-            <Pencil className="w-4 h-4" />
-          </button>
-          <button onClick={(e) => { e.stopPropagation(); openDeleteConfirm(c); }}
-            title="Eliminar"
-            className="p-1.5 rounded-lg hover:bg-red-50 text-muted-foreground hover:text-red-500 transition">
-            <Trash2 className="w-4 h-4" />
-          </button>
+          <ScopeGate module="customers" action="edit">
+            <button onClick={(e) => { e.stopPropagation(); openEditModal(c); }}
+              title="Editar"
+              className="p-1.5 rounded-lg hover:bg-surface-hover text-muted-foreground hover:text-glamor-primary transition">
+              <Pencil className="w-4 h-4" />
+            </button>
+          </ScopeGate>
+          <ScopeGate module="customers" action="delete">
+            <button onClick={(e) => { e.stopPropagation(); openDeleteConfirm(c); }}
+              title="Eliminar"
+              className="p-1.5 rounded-lg hover:bg-red-50 text-muted-foreground hover:text-red-500 transition">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </ScopeGate>
         </div>
       ),
       className: 'w-20',
@@ -241,10 +246,12 @@ export default function CustomersPage() {
           <h1 className="text-2xl font-bold text-foreground">Clientes</h1>
           <p className="text-muted-foreground text-sm mt-1">Gestiona tu cartera de clientes</p>
         </div>
-        <button onClick={openNewModal}
-          className="flex items-center gap-2 h-10 px-4 bg-glamor-primary text-white rounded-lg text-sm font-medium hover:bg-glamor-primary-hover transition">
-          <Plus className="w-4 h-4" /> Nuevo cliente
-        </button>
+        <ScopeGate module="customers" action="create">
+          <button onClick={openNewModal}
+            className="flex items-center gap-2 h-10 px-4 bg-glamor-primary text-white rounded-lg text-sm font-medium hover:bg-glamor-primary-hover transition">
+            <Plus className="w-4 h-4" /> Nuevo cliente
+          </button>
+        </ScopeGate>
       </div>
 
       {/* ─── KPI Cards ──────────────────────────────────────────── */}

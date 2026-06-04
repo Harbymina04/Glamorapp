@@ -186,6 +186,7 @@ model Tenant {
   storefrontOrders   StorefrontOrder[]
   storefrontReviews  StorefrontReview[]
   marketingCampaigns MarketingCampaign[]
+  platformPayouts    PlatformPayout[]
 
   @@map("tenants")
 }
@@ -1711,30 +1712,74 @@ model StorefrontReview {
 }
 
 model StorefrontOrder {
-  id            String   @id @default(uuid()) @db.Uuid
-  tenantId      String   @map("tenant_id") @db.Uuid
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  storeId       String?  @map("store_id") @db.Uuid
-  store         Store?   @relation(fields: [storeId], references: [id])
-  orderNumber   String   @map("order_number") @db.VarChar(20)
-  buyerName     String   @map("buyer_name") @db.VarChar(255)
-  buyerEmail    String?  @map("buyer_email") @db.VarChar(255)
-  buyerPhone    String?  @map("buyer_phone") @db.VarChar(50)
-  buyerNotes    String?  @map("buyer_notes")
-  items         Json     @default("[]")
-  subtotal      Decimal  @default(0) @db.Decimal(12, 2)
-  deliveryFee   Decimal  @default(0) @map("delivery_fee") @db.Decimal(12, 2)
-  total         Decimal  @default(0) @db.Decimal(12, 2)
-  paymentMethod String   @default("store") @map("payment_method") @db.VarChar(50)
-  status        String   @default("pending") @db.VarChar(30)
-  saleId        String?  @map("sale_id") @db.Uuid
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id                    String    @id @default(uuid()) @db.Uuid
+  tenantId              String    @map("tenant_id") @db.Uuid
+  tenant                Tenant    @relation(fields: [tenantId], references: [id])
+  storeId               String?   @map("store_id") @db.Uuid
+  store                 Store?    @relation(fields: [storeId], references: [id])
+  orderNumber           String    @map("order_number") @db.VarChar(20)
+  buyerName             String    @map("buyer_name") @db.VarChar(255)
+  buyerEmail            String?   @map("buyer_email") @db.VarChar(255)
+  buyerPhone            String?   @map("buyer_phone") @db.VarChar(50)
+  buyerNotes            String?   @map("buyer_notes")
+  items                 Json      @default("[]")
+  subtotal              Decimal   @default(0) @db.Decimal(12, 2)
+  deliveryFee           Decimal   @default(0) @map("delivery_fee") @db.Decimal(12, 2)
+  total                 Decimal   @default(0) @db.Decimal(12, 2)
+  paymentMethod         String    @default("store") @map("payment_method") @db.VarChar(50)
+  status                String    @default("pending") @db.VarChar(30)
+  saleId                String?   @map("sale_id") @db.Uuid
+  // ── Payment tracking ──────────────────────────────────────
+  paymentTransactionId  String?   @map("payment_transaction_id") @db.VarChar(100)
+  paymentStatus         String?   @map("payment_status") @db.VarChar(30)
+  platformFee           Decimal   @default(0) @map("platform_fee") @db.Decimal(12, 2)
+  tenantPayout          Decimal   @default(0) @map("tenant_payout") @db.Decimal(12, 2)
+  payoutId              String?   @map("payout_id") @db.Uuid
+  payout                PlatformPayout? @relation(fields: [payoutId], references: [id])
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
   @@index([tenantId])
   @@index([status])
+  @@index([paymentTransactionId])
   @@map("storefront_orders")
 }
+
+model PlatformConfig {
+  id                String   @id @db.Uuid
+  commissionRate    Decimal  @default(0.03) @map("commission_rate") @db.Decimal(5, 4)
+  minPayoutAmount   Decimal  @default(50000) @map("min_payout_amount") @db.Decimal(12, 2)
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  updatedBy         String?  @map("updated_by") @db.Uuid
+
+  @@map("platform_config")
+}
+
+model PlatformPayout {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  grossAmount Decimal   @default(0) @map("gross_amount") @db.Decimal(12, 2)
+  platformFee Decimal   @default(0) @map("platform_fee") @db.Decimal(12, 2)
+  netAmount   Decimal   @default(0) @map("net_amount") @db.Decimal(12, 2)
+  currency    String    @default("COP") @db.VarChar(10)
+  orderCount  Int       @default(0) @map("order_count")
+  periodFrom  DateTime  @map("period_from")
+  periodTo    DateTime  @map("period_to")
+  status      String    @default("pending") @db.VarChar(20)
+  paidAt      DateTime? @map("paid_at")
+  paidBy      String?   @map("paid_by") @db.Uuid
+  reference   String?   @db.VarChar(100)
+  notes       String?
+  orders      StorefrontOrder[]
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("platform_payouts")
+}
+
 
 // ─── Marketing ───────────────────────────────────────────────────
 

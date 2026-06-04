@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaginatedResponse } from '../../common/dto/response.dto';
 import { getPaginationParams } from '../../common/utils/pagination';
@@ -116,6 +116,31 @@ export class AiAgentsService {
     const agentImpl = this.agents.get(agent.slug);
     if (!agentImpl) {
       throw new NotFoundException(`No implementation for agent type: ${agent.slug}`);
+    }
+
+    // Check monthly AI token limit before running
+    const sub = await this.prisma.subscription.findFirst({
+      where: { tenantId, status: { in: ['active', 'trial'] } },
+      include: { plan: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (sub) {
+      const maxTokens: number = (sub.plan.features as any)?.limits?.aiTokensMonthly ?? 0;
+      if (maxTokens > 0) {
+        const monthStart = new Date();
+        monthStart.setDate(1);
+        monthStart.setHours(0, 0, 0, 0);
+        const usage = await this.prisma.aiUsage.aggregate({
+          where: { tenantId, createdAt: { gte: monthStart } },
+          _sum: { tokensIn: true, tokensOut: true },
+        });
+        const usedTokens = (usage._sum.tokensIn ?? 0) + (usage._sum.tokensOut ?? 0);
+        if (usedTokens >= maxTokens) {
+          throw new BadRequestException(
+            `Límite mensual de tokens IA alcanzado (${maxTokens.toLocaleString()}). Actualiza tu plan o espera al próximo mes.`,
+          );
+        }
+      }
     }
 
     // Create the execution record NOW so the frontend can poll its ID immediately

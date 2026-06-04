@@ -6,6 +6,7 @@ import { api } from '@/lib/api-client';
 import { formatCurrency } from '@/lib/utils';
 import { StatCard } from '@/components/shared/stat-card';
 import { StatusBadge } from '@/components/shared/status-badge';
+import { ScopeGate } from '@/hooks/use-plan-gate';
 import { APPOINTMENT_STATUS_COLORS } from '@/lib/constants';
 import {
   CalendarCheck, Clock, CheckCircle, DollarSign, Plus, ChevronLeft, ChevronRight,
@@ -573,9 +574,11 @@ export default function AppointmentsPage() {
           <button onClick={() => navigate(1)} className="p-2 rounded-lg border border-border-primary hover:bg-surface-hover">
             <ChevronRight className="w-5 h-5" />
           </button>
-          <button onClick={() => openNewModal()} className="flex items-center gap-2 h-10 px-4 bg-glamor-primary text-white rounded-lg text-sm font-medium ml-4">
-            <Plus className="w-4 h-4" /> Nueva cita
-          </button>
+          <ScopeGate module="appointments" action="create">
+            <button onClick={() => openNewModal()} className="flex items-center gap-2 h-10 px-4 bg-glamor-primary text-white rounded-lg text-sm font-medium ml-4">
+              <Plus className="w-4 h-4" /> Nueva cita
+            </button>
+          </ScopeGate>
         </div>
       </div>
 
@@ -1074,13 +1077,15 @@ function MonthView({
                   >
                     {day.getDate()}
                   </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onNewAppt(day); }}
-                    className="opacity-0 hover:opacity-100 group-hover:opacity-100 p-0.5 rounded hover:bg-glamor-primary/10 text-muted-foreground hover:text-glamor-primary transition"
-                    title="Nueva cita"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
+                  <ScopeGate module="appointments" action="create">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onNewAppt(day); }}
+                      className="opacity-0 hover:opacity-100 group-hover:opacity-100 p-0.5 rounded hover:bg-glamor-primary/10 text-muted-foreground hover:text-glamor-primary transition"
+                      title="Nueva cita"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </ScopeGate>
                 </div>
 
                 {/* Appointments */}

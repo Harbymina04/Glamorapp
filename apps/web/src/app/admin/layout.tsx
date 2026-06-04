@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Crown, CreditCard, Users, ChevronLeft, MessageCircle, Brain, LayoutDashboard, LogOut, Database } from 'lucide-react';
+import { Crown, CreditCard, Users, ChevronLeft, MessageCircle, Brain, LayoutDashboard, LogOut, Database, Banknote } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 
 const ADMIN_LINKS = [
   { name: 'Overview', href: '/admin/overview', icon: LayoutDashboard },
   { name: 'Planes', href: '/admin/plans', icon: Crown },
   { name: 'Suscripciones', href: '/admin/subscriptions', icon: CreditCard },
+  { name: 'Liquidaciones', href: '/admin/payouts', icon: Banknote },
   { name: 'Clientes', href: '/admin/clients', icon: Users },
   { name: 'WhatsApp', href: '/admin/whatsapp', icon: MessageCircle },
   { name: 'IA - Consumo', href: '/admin/ai-usage', icon: Brain },

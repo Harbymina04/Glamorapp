@@ -8,6 +8,7 @@ import { formatCurrency } from '@/lib/utils';
 import { StatCard } from '@/components/shared/stat-card';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
+import { ScopeGate } from '@/hooks/use-plan-gate';
 import { Package, AlertTriangle, TrendingUp, DollarSign, Plus, Search, Pencil, Trash2, Loader2, ShoppingCart, Truck } from 'lucide-react';
 
 export default function InventoryPage() {
@@ -97,12 +98,14 @@ export default function InventoryPage() {
           <h1 className="text-2xl font-bold text-foreground">Inventario</h1>
           <p className="text-muted-foreground text-sm mt-1">Gestiona tus productos y existencias</p>
         </div>
-        <button
-          onClick={() => router.push('/dashboard/inventory/products/new')}
-          className="flex items-center gap-2 h-10 px-4 bg-glamor-primary text-white rounded-lg text-sm font-medium hover:bg-glamor-primary-hover transition"
-        >
-          <Plus className="w-4 h-4" /> Nuevo producto
-        </button>
+        <ScopeGate module="inventory" action="create">
+          <button
+            onClick={() => router.push('/dashboard/inventory/products/new')}
+            className="flex items-center gap-2 h-10 px-4 bg-glamor-primary text-white rounded-lg text-sm font-medium hover:bg-glamor-primary-hover transition"
+          >
+            <Plus className="w-4 h-4" /> Nuevo producto
+          </button>
+        </ScopeGate>
       </div>
 
       {/* KPI Cards */}
@@ -232,21 +235,25 @@ export default function InventoryPage() {
                   </td>
                   <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
-                      <button
-                        onClick={() => router.push(`/dashboard/inventory/products/${p.id}`)}
-                        className="p-1.5 rounded-lg hover:bg-surface-hover text-muted-foreground hover:text-glamor-primary transition"
-                        title="Editar"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(p.id, p.name)}
-                        disabled={deletingId === p.id}
-                        className="p-1.5 rounded-lg hover:bg-red-50 text-muted-foreground hover:text-red-600 transition disabled:opacity-50"
-                        title="Eliminar"
-                      >
-                        {deletingId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                      </button>
+                      <ScopeGate module="inventory" action="edit">
+                        <button
+                          onClick={() => router.push(`/dashboard/inventory/products/${p.id}`)}
+                          className="p-1.5 rounded-lg hover:bg-surface-hover text-muted-foreground hover:text-glamor-primary transition"
+                          title="Editar"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                      </ScopeGate>
+                      <ScopeGate module="inventory" action="delete">
+                        <button
+                          onClick={() => handleDelete(p.id, p.name)}
+                          disabled={deletingId === p.id}
+                          className="p-1.5 rounded-lg hover:bg-red-50 text-muted-foreground hover:text-red-600 transition disabled:opacity-50"
+                          title="Eliminar"
+                        >
+                          {deletingId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                        </button>
+                      </ScopeGate>
                     </div>
                   </td>
                 </tr>

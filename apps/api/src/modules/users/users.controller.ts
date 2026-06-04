@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto, UpdateUserDto, UpdatePermissionsDto } from './dto/user.dto';
@@ -19,8 +19,14 @@ export class UsersController {
 
   @Get()
   @Roles('store_admin', 'tenant_admin')
-  findAll(@TenantId() tenantId: string, @Query() query: PaginationDto & { role?: string; isActive?: boolean }) {
-    return this.usersService.findAll(tenantId, query);
+  findAll(
+    @TenantId() tenantId: string,
+    @Query() query: PaginationDto & { role?: string; isActive?: boolean },
+    @Request() req: any,
+  ) {
+    // store_admin only sees users in their own store
+    const storeId = req.user.role === 'store_admin' ? req.user.storeId : null;
+    return this.usersService.findAll(tenantId, query, storeId);
   }
 
   @Get(':id')
@@ -31,7 +37,11 @@ export class UsersController {
 
   @Post()
   @Roles('store_admin', 'tenant_admin')
-  create(@TenantId() tenantId: string, @Body() dto: CreateUserDto) {
+  create(@TenantId() tenantId: string, @Body() dto: CreateUserDto, @Request() req: any) {
+    // store_admin can only create users in their own store
+    if (req.user.role === 'store_admin') {
+      dto.storeId = req.user.storeId;
+    }
     return this.usersService.create(tenantId, dto);
   }
 

@@ -202,8 +202,88 @@ export class StorefrontService {
   }
 
   async updateOrderStatus(tenantId: string, orderId: string, status: string) {
-    await this.getOrder(tenantId, orderId);
-    return this.prisma.storefrontOrder.update({ where: { id: orderId }, data: { status } });
+    const order = await this.getOrder(tenantId, orderId);
+    const previousStatus = order.status;
+
+    // Calculate commission on first confirmation (if not already set by webhook)
+    const feeUpdate: any = {};
+    if (status === 'confirmed' && previousStatus !== 'confirmed' && Number(order.platformFee) === 0) {
+      const cfg = await this.prisma.platformConfig
+        .findUnique({ where: { id: '00000000-0000-0000-0000-000000000001' } })
+        .catch(() => null);
+      const rate       = Number(cfg?.commissionRate ?? 0.03);
+      const total      = Number(order.total);
+      feeUpdate.platformFee  = Math.round(total * rate * 100) / 100;
+      feeUpdate.tenantPayout = Math.round((total - feeUpdate.platformFee) * 100) / 100;
+    }
+
+    const updated = await this.prisma.storefrontOrder.update({
+      where: { id: orderId },
+      data: { status, ...feeUpdate },
+    });
+
+    const items = Array.isArray(order.items) ? order.items as any[] : [];
+
+    // ── Deduct stock when order is confirmed ──────────────────
+    if (status === 'confirmed' && previousStatus !== 'confirmed') {
+      await this.adjustStock(tenantId, order.storeId, orderId, items, 'deduct');
+    }
+
+    // ── Restore stock when order is cancelled after being confirmed ──
+    if (status === 'cancelled' && previousStatus === 'confirmed') {
+      await this.adjustStock(tenantId, order.storeId, orderId, items, 'restore');
+    }
+
+    return updated;
+  }
+
+  /**
+   * Deduct or restore stock for storefront order items.
+   * Items must contain { productId, qty } to affect inventory.
+   * Non-product items (services, designs) are silently skipped.
+   */
+  private async adjustStock(
+    tenantId: string,
+    storeId: string | null,
+    orderId: string,
+    items: any[],
+    direction: 'deduct' | 'restore',
+  ) {
+    for (const item of items) {
+      if (!item.productId || !item.qty) continue;
+
+      const product = await this.prisma.product.findFirst({
+        where: { id: item.productId, tenantId },
+      });
+      if (!product) continue;
+
+      const qty = Math.abs(Number(item.qty));
+      const delta = direction === 'deduct' ? -qty : qty;
+      const newStock = product.currentStock + delta;
+
+      await this.prisma.$transaction([
+        this.prisma.product.update({
+          where: { id: item.productId },
+          data: { currentStock: { increment: delta } },
+        }),
+        this.prisma.inventoryMovement.create({
+          data: {
+            tenantId,
+            storeId: storeId ?? product.storeId,
+            productId: item.productId,
+            movementType: direction === 'deduct' ? 'exit' : 'entry',
+            quantity: qty,
+            previousStock: product.currentStock,
+            newStock,
+            referenceType: 'storefront_order',
+            referenceId: orderId,
+            notes: direction === 'deduct'
+              ? `Venta online — pedido ${orderId.slice(-6).toUpperCase()}`
+              : `Cancelación pedido online — ${orderId.slice(-6).toUpperCase()}`,
+          },
+        }),
+      ]);
+    }
   }
 
   async createOrder(dto: any) {

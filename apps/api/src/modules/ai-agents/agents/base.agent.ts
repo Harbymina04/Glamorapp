@@ -47,6 +47,8 @@ type LLMMessage = { role: 'user' | 'assistant'; content: string };
 interface LLMResponse {
   text: string;
   toolCalls: { id: string; name: string; input: Record<string, any> }[];
+  tokensIn: number;
+  tokensOut: number;
 }
 
 // ─── Base Agent ───────────────────────────────────────────────────
@@ -266,10 +268,26 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
   private async callLLM(
     ctx: AgentContext, systemPrompt: string, messages: LLMMessage[], tools: any[],
   ): Promise<LLMResponse> {
-    if (ctx.provider === 'claude' && this.anthropic) {
-      return this.callClaude(systemPrompt, messages, tools);
+    const response = ctx.provider === 'claude' && this.anthropic
+      ? await this.callClaude(systemPrompt, messages, tools)
+      : await this.callDeepSeek(systemPrompt, messages, tools);
+
+    // Register token usage (fire-and-forget — never blocks agent execution)
+    if (response.tokensIn > 0 || response.tokensOut > 0) {
+      this.prisma.aiUsage.create({
+        data: {
+          tenantId: ctx.tenantId,
+          storeId: ctx.storeId || null,
+          agentId: ctx.agentId,
+          actionType: 'agent_run',
+          modelName: ctx.provider === 'claude' ? this.claudeModel : this.deepseekModel,
+          tokensIn: response.tokensIn,
+          tokensOut: response.tokensOut,
+        },
+      }).catch(err => console.warn('[AiUsage] Failed to record usage:', err.message));
     }
-    return this.callDeepSeek(systemPrompt, messages, tools);
+
+    return response;
   }
 
   // ─── Claude (Anthropic) ─────────────────────────────────────
@@ -301,7 +319,12 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
       }
     }
 
-    return { text, toolCalls };
+    return {
+      text,
+      toolCalls,
+      tokensIn: response.usage?.input_tokens ?? 0,
+      tokensOut: response.usage?.output_tokens ?? 0,
+    };
   }
 
   // ─── DeepSeek (OpenAI-compatible) ───────────────────────────
@@ -369,7 +392,12 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
       text = choice.message.content;
     }
 
-    return { text, toolCalls };
+    return {
+      text,
+      toolCalls,
+      tokensIn: data.usage?.prompt_tokens ?? 0,
+      tokensOut: data.usage?.completion_tokens ?? 0,
+    };
   }
 
   // ─── Execution logging ──────────────────────────────────────
@@ -409,7 +437,11 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
 
   // ─── Helpers ─────────────────────────────────────────────────
 
-  protected async callClaudeRaw(systemPrompt: string, userMessage: string): Promise<string> {
+  protected async callClaudeRaw(
+    systemPrompt: string,
+    userMessage: string,
+    ctx?: { tenantId: string; storeId: string; agentId: string },
+  ): Promise<string> {
     if (!this.anthropic) return '';
     try {
       const response = await this.anthropic.messages.create({
@@ -418,6 +450,22 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
       });
+
+      // Track token usage if context provided
+      if (ctx && (response.usage?.input_tokens || response.usage?.output_tokens)) {
+        this.prisma.aiUsage.create({
+          data: {
+            tenantId: ctx.tenantId,
+            storeId: ctx.storeId || null,
+            agentId: ctx.agentId,
+            actionType: 'agent_run',
+            modelName: this.claudeModel,
+            tokensIn: response.usage.input_tokens ?? 0,
+            tokensOut: response.usage.output_tokens ?? 0,
+          },
+        }).catch(err => console.warn('[AiUsage] Failed to record usage:', err.message));
+      }
+
       const content = response.content[0];
       if (content.type === 'text') return content.text;
       return JSON.stringify(content);

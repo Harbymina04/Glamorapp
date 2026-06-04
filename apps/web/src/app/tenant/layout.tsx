@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Building2, Users, LayoutDashboard, BarChart3, ChevronLeft, Store, Brain, LogOut, Plug, Calculator, FileText, Receipt, Zap, ScrollText, ShoppingBag, Star, Package } from 'lucide-react';
+import { Building2, Users, LayoutDashboard, BarChart3, ChevronLeft, Store, Brain, LogOut, Plug, Calculator, FileText, Receipt, Zap, ScrollText, ShoppingBag, Star, Package, CreditCard } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 
 const TENANT_LINKS = [
@@ -11,6 +11,7 @@ const TENANT_LINKS = [
   { name: 'Sucursales', href: '/tenant/stores', icon: Store },
   { name: 'Usuarios', href: '/tenant/users', icon: Users },
   { name: 'IA - Consumo', href: '/tenant/ai-usage', icon: Brain },
+  { name: 'Plan y Facturación', href: '/tenant/billing', icon: CreditCard },
   { name: 'Integraciones', href: '/tenant/marketing', icon: Plug },
 ];
 
