@@ -9,6 +9,7 @@ import { formatCOP, categoryColors } from '@/lib/store-utils';
 import { useStoreCart } from '@/stores/store-cart';
 import { useAuthStore } from '@/stores/auth-store';
 import { getToken } from '@/lib/auth';
+import { StoreChatbot } from '@/components/store/StoreChatbot';
 
 const CATEGORIES = ['Todos', 'Uñas', 'Cabello', 'Maquillaje', 'Piel', 'Spa'];
 
@@ -205,6 +206,8 @@ export function StoreHomeClient({ shops, products, designs }: Props) {
       </div>
 
       {selectedDesign && <NailDesignModal design={selectedDesign} onClose={() => setSelectedDesign(null)} />}
+
+      <StoreChatbot storeName="Glamorapp" />
     </div>
   );
 }

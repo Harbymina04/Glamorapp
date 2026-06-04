@@ -25,16 +25,39 @@ const INJECTION_PATTERNS = [
 // ─── Security: off-topic detection ────────────────────────────────────────────
 // Keywords that are RELEVANT to a beauty salon chatbot
 const BEAUTY_KEYWORDS = [
-  'salón', 'salon', 'uña', 'nail', 'cabello', 'hair', 'maquillaje', 'makeup',
-  'servicio', 'servicos', 'producto', 'precio', 'cita', 'agendar', 'agenda',
-  'spa', 'piel', 'skin', 'manicure', 'pedicure', 'tinte', 'corte', 'tratamiento',
-  'esmalte', 'acrílico', 'acrilico', 'gel', 'diseño', 'estética', 'estetica',
-  'masaje', 'depilación', 'depilacion', 'cejas', 'pestañas', 'glamorapp', 'glamy',
-  'horario', 'dirección', 'direccion', 'ubicación', 'ubicacion', 'teléfono', 'telefono',
-  'pago', 'costo', 'cuánto', 'cuanto', 'disponible', 'reserva', 'turno',
+  // Saludos y conversación general
   'hola', 'holi', 'buenos', 'buenas', 'gracias', 'ok', 'sí', 'si', 'no',
   'ayuda', 'help', 'información', 'informacion', 'dónde', 'donde', 'cuándo', 'cuando',
   'qué', 'que', 'cómo', 'como', 'quién', 'quien', 'tienen', 'hay', 'ofrecen',
+  'quiero', 'busco', 'necesito', 'me gustaría', 'quisiera', 'puedo', 'pueden',
+  // Negocio
+  'salón', 'salon', 'glamorapp', 'glamy', 'tienda', 'negocio',
+  'horario', 'dirección', 'direccion', 'ubicación', 'ubicacion',
+  'teléfono', 'telefono', 'contacto', 'whatsapp',
+  'pago', 'costo', 'cuánto', 'cuanto', 'precio', 'vale', 'cobran',
+  'disponible', 'disponibilidad', 'reserva', 'turno', 'agendar', 'agenda', 'cita',
+  // Uñas
+  'uña', 'nail', 'manicure', 'manicura', 'pedicure', 'pedicura',
+  'esmalte', 'esmaltado', 'acrílico', 'acrilico', 'gel', 'semipermanente',
+  'diseño', 'decoración', 'french', 'chrome', 'glitter',
+  // Cabello
+  'cabello', 'pelo', 'hair', 'tinte', 'coloración', 'coloracion', 'mechas',
+  'corte', 'peinado', 'alisado', 'keratina', 'shampoo', 'acondicionador',
+  'tratamiento capilar', 'hidratación capilar',
+  // Maquillaje
+  'maquillaje', 'makeup', 'labial', 'base', 'sombra', 'rubor', 'delineador',
+  'maquillado', 'maquilladora',
+  // Piel y facial
+  'piel', 'skin', 'facial', 'limpieza facial', 'hidratación', 'hidratante',
+  'crema', 'sérum', 'serum', 'cuidado', 'antiedad', 'acné', 'acne',
+  'exfoliante', 'mascarilla', 'contorno', 'tonificante',
+  // Spa y corporal
+  'spa', 'masaje', 'relaj', 'aromaterapia', 'corporal', 'envolvimiento',
+  // Depilación y cejas
+  'depilación', 'depilacion', 'cera', 'laser', 'cejas', 'pestañas',
+  'lifting', 'laminado',
+  // Productos
+  'producto', 'servicio', 'catalogo', 'catálogo',
 ];
 
 function isOffTopic(message: string): boolean {
@@ -137,7 +160,7 @@ export class StorefrontChatService {
     try {
       const [products, services, designs] = await Promise.all([
         this.prisma.product.findMany({
-          where: { tenantId, deletedAt: null, isStoreVisible: true },
+          where: { tenantId, deletedAt: null, status: { not: 'inactive' } },
           select: { name: true, salePrice: true, category: { select: { name: true } }, description: true },
           take: 20,
           orderBy: { currentStock: 'desc' },
