@@ -44,10 +44,12 @@ function OrderRow({
   const router = useRouter();
   const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
 
-  // "Cobrar en POS" — only for store-payment pending/confirmed orders not yet linked to a sale
-  const canChargeInPos = (order.paymentMethod === 'store' || !order.paymentMethod)
-    && (order.status === 'pending' || order.status === 'confirmed' || order.status === 'preparing' || order.status === 'ready')
-    && !order.saleId;
+  // "Cobrar en POS" — store-payment orders without a linked sale
+  const isStorePayment = order.paymentMethod === 'store' || !order.paymentMethod;
+  const isOpenStatus   = ['pending', 'confirmed', 'preparing', 'ready', 'delivered'].includes(order.status);
+  const canChargeInPos = isStorePayment && isOpenStatus && !order.saleId;
+  // On 'ready' with store payment, hide the "Marcar entregado" button — cashier must charge via POS first
+  const hideProgressBtn = order.status === 'ready' && isStorePayment && !order.saleId;
   const items: any[] = Array.isArray(order.items) ? order.items : (typeof order.items === 'string' ? JSON.parse(order.items) : []);
 
   return (
@@ -98,7 +100,8 @@ function OrderRow({
 
         {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
-          {cfg.next && order.status !== 'delivered' && order.status !== 'cancelled' && (
+          {/* Progress button — hidden on 'ready' when cashier must charge via POS first */}
+          {cfg.next && order.status !== 'delivered' && order.status !== 'cancelled' && !hideProgressBtn && (
             <button
               onClick={() => onStatusChange(order.id, cfg.next!)}
               disabled={loading}
@@ -108,14 +111,14 @@ function OrderRow({
               {cfg.nextLabel}
             </button>
           )}
-          {/* Cobrar en POS — pago en tienda */}
+          {/* Cobrar en POS — pago en tienda, mostrar siempre que no haya venta vinculada */}
           {canChargeInPos && (
             <button
               onClick={() => router.push(`/dashboard/pos?orderId=${order.id}`)}
-              title="Cobrar en POS"
               className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap"
             >
-              <ShoppingCart className="w-3 h-3" /> Cobrar en POS
+              <ShoppingCart className="w-3 h-3" />
+              {order.status === 'ready' ? 'Cobrar y entregar' : 'Cobrar en POS'}
             </button>
           )}
           {order.status === 'pending' && (
