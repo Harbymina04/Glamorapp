@@ -307,10 +307,11 @@ async function seedDemoTenant(freePlanId: string) {
     data: DEFAULT_AGENTS.map(agent => ({
       tenantId: tenant.id, storeId: store.id,
       slug: agent.slug, name: agent.name, description: agent.description,
-      icon: agent.icon, category: agent.category,
+      objective: agent.objective, icon: agent.icon,
       autonomyLevel: agent.autonomyLevel as any,
-      aiProvider: agent.aiProvider, schedule: agent.schedule,
-      isActive: true, status: 'active' as any,
+      aiProvider: agent.aiProvider,
+      analysisFrequency: agent.analysisFrequency,
+      status: 'active' as any,
     })),
     skipDuplicates: true,
   });
