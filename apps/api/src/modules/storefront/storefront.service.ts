@@ -197,6 +197,39 @@ export class StorefrontService {
     return { data, total };
   }
 
+  /**
+   * Returns order items formatted for POS cart pre-loading.
+   */
+  async getOrderForPos(tenantId: string, orderId: string) {
+    const order = await this.getOrder(tenantId, orderId);
+    const items = Array.isArray(order.items) ? order.items as any[] : [];
+
+    // Load product details for each item
+    const cartItems = await Promise.all(
+      items.filter((i: any) => i.productId).map(async (i: any) => {
+        const product = await this.prisma.product.findFirst({
+          where: { id: i.productId, tenantId },
+          select: { id: true, name: true, salePrice: true, images: { take: 1 } },
+        });
+        return {
+          productId: i.productId,
+          name: i.name || product?.name,
+          unitPrice: i.price,
+          quantity: i.qty,
+          imageUrl: product?.images?.[0]?.url ?? null,
+        };
+      }),
+    );
+
+    return {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      buyerName: order.buyerName,
+      buyerPhone: order.buyerPhone,
+      cartItems: cartItems.filter(Boolean),
+    };
+  }
+
   async getOrder(tenantId: string, orderId: string) {
     const o = await this.prisma.storefrontOrder.findFirst({
       where: { id: orderId, tenantId },
@@ -231,6 +264,15 @@ export class StorefrontService {
     // ── Deduct stock when order is confirmed ──────────────────
     if (status === 'confirmed' && previousStatus !== 'confirmed') {
       await this.adjustStock(tenantId, order.storeId, orderId, items, 'deduct');
+
+      // ── Create Sale record for non-store-payment orders ──────
+      // PSE / card / nequi = already paid → auto-create completed sale
+      // store = cashier will process manually via POS
+      if (order.paymentMethod !== 'store') {
+        await this.createOnlineSale(order, items).catch(err =>
+          console.warn(`[Storefront] Could not create online sale for order ${orderId}: ${err.message}`),
+        );
+      }
     }
 
     // ── Restore stock when order is cancelled after being confirmed ──
@@ -239,6 +281,83 @@ export class StorefrontService {
     }
 
     return updated;
+  }
+
+  /**
+   * Creates a completed Sale record from an online storefront order.
+   * Used when payment is confirmed (PSE, card, etc.) — bypasses cash register.
+   */
+  private async createOnlineSale(order: any, items: any[]) {
+    if (!order.storeId) return;
+
+    // Find a store_admin or tenant_admin to assign as the sale's user
+    const systemUser = await this.prisma.user.findFirst({
+      where: {
+        storeId: order.storeId,
+        role: { in: ['store_admin', 'tenant_admin'] as any },
+        deletedAt: null,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    if (!systemUser) return;
+
+    // Build sale items from storefront order items
+    const saleItems = items
+      .filter(i => i.productId && i.qty > 0)
+      .map((i: any) => ({
+        productId: i.productId,
+        itemType: 'product',
+        name: i.name,
+        quantity: i.qty,
+        unitPrice: i.price,
+        discountAmount: 0,
+        total: i.price * i.qty,
+        commissionRate: 0,
+        commissionAmount: 0,
+      }));
+
+    if (saleItems.length === 0) return;
+
+    const subtotal = saleItems.reduce((s: number, i: any) => s + i.total, 0);
+
+    // Generate sale number
+    const count = await this.prisma.sale.count({ where: { tenantId: order.tenantId, storeId: order.storeId } });
+    const saleNumber = `ON-${String(count + 1).padStart(5, '0')}`;
+
+    const sale = await this.prisma.sale.create({
+      data: {
+        tenantId: order.tenantId,
+        storeId: order.storeId,
+        userId: systemUser.id,
+        saleNumber,
+        source: 'online',
+        storefrontOrderId: order.id,
+        status: 'completed',
+        subtotal,
+        discountPercent: 0,
+        discountAmount: 0,
+        taxPercent: 0,
+        taxAmount: 0,
+        total: subtotal,
+        notes: `Pedido online ${order.orderNumber} — ${order.paymentMethod?.toUpperCase()}`,
+        completedAt: new Date(),
+        items: { create: saleItems },
+        payments: {
+          create: [{
+            method: order.paymentMethod === 'pse' ? 'transfer' : 'other',
+            amount: subtotal,
+            reference: order.paymentTransactionId || order.orderNumber,
+          }],
+        },
+      } as any,
+    });
+
+    // Link the sale back to the storefront order
+    await this.prisma.storefrontOrder.update({
+      where: { id: order.id },
+      data: { saleId: sale.id } as any,
+    });
   }
 
   /**

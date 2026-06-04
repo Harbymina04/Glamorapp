@@ -496,8 +496,11 @@ model Sale {
   invoices      Invoice[]
   commissions   Commission[]
   accountingTx  AccountingTransaction[]
-  requiresInvoice Boolean  @default(false) @map("requires_invoice")
-  invoiceId       String?  @map("invoice_id") @db.Uuid
+  requiresInvoice     Boolean  @default(false) @map("requires_invoice")
+  invoiceId           String?  @map("invoice_id") @db.Uuid
+  // ── Online order tracking ──────────────────────────────
+  source              String   @default("pos") @db.VarChar(20)   // pos | online
+  storefrontOrderId   String?  @map("storefront_order_id") @db.Uuid
 
   @@unique([tenantId, storeId, saleNumber])
   @@index([tenantId, storeId])

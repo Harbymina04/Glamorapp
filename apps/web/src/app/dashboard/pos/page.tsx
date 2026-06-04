@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
 import { useCartStore } from '@/stores/cart-store';
 import { api } from '@/lib/api-client';
@@ -24,9 +25,33 @@ interface HeldSale { id: string; cart: any; customerId: string; customerName: st
 // performedBy: map from cart item id → { userId, userName }
 type PerformerMap = Record<string, { userId: string; userName: string }>;
 
-export default function POSPage() {
+function POSContent() {
   const { token, user } = useAuthStore();
   const cart = useCartStore();
+  const searchParams = useSearchParams();
+  const preloadOrderId = searchParams.get('orderId');
+
+  // Pre-load cart from a storefront order (Cobrar en POS)
+  useEffect(() => {
+    if (!preloadOrderId || !token) return;
+    api.get(`/storefront/orders/${preloadOrderId}/pos-cart`, { token })
+      .then((data: any) => {
+        if (!data?.cartItems?.length) return;
+        cart.clearCart();
+        data.cartItems.forEach((item: any) => {
+          cart.addItem({
+            productId: item.productId,
+            itemType: 'product' as const,
+            name: item.name,
+            unitPrice: item.unitPrice,
+            quantity: item.quantity,
+            discountAmount: 0,
+          });
+        });
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preloadOrderId, token]);
   const [products, setProducts] = useState<any[]>([]);
   const [filter, setFilter] = useState('');
   const [skuSearch, setSkuSearch] = useState('');
@@ -860,6 +885,14 @@ export default function POSPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function POSPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center py-20"><div className="w-8 h-8 border-4 border-glamor-primary border-t-transparent rounded-full animate-spin" /></div>}>
+      <POSContent />
+    </Suspense>
   );
 }
 

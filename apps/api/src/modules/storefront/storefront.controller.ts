@@ -233,6 +233,18 @@ export class StorefrontController {
     return this.service.getOrder(req.user.tenantId, id);
   }
 
+  /**
+   * GET /storefront/orders/:id/pos-cart
+   * Returns the order items formatted for the POS cart (pre-load).
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('superadmin', 'tenant_admin', 'store_admin', 'cashier')
+  @ApiBearerAuth()
+  @Get('orders/:id/pos-cart')
+  getPosCart(@Request() req: any, @Param('id') id: string) {
+    return this.service.getOrderForPos(req.user.tenantId, id);
+  }
+
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('superadmin', 'tenant_admin', 'store_admin')
   @ApiBearerAuth()

@@ -106,12 +106,14 @@ export class SalesService {
     const sale = await this.findOne(tenantId, storeId, id);
     if (sale.status !== 'pending') throw new BadRequestException('Sale is not pending');
 
-    // Require open cash register session to complete a sale
+    // Online sales (already paid) bypass the cash register requirement
+    const isOnline = (sale as any).source === 'online';
+
     const activeSession = await this.prisma.cashRegisterSession.findFirst({
       where: { tenantId, storeId, status: 'open' },
       orderBy: { openedAt: 'desc' },
     });
-    if (!activeSession) {
+    if (!activeSession && !isOnline) {
       throw new BadRequestException('Debe abrir la caja antes de realizar ventas');
     }
 
@@ -153,7 +155,7 @@ export class SalesService {
 
     // Auto-register cash payments in the active cash register session
     const cashPayments = payments?.filter((p: any) => p.paymentMethod === 'cash') || [];
-    if (cashPayments.length > 0) {
+    if (cashPayments.length > 0 && activeSession) {
       const totalCash = cashPayments.reduce((s: number, p: any) => s + Number(p.amount), 0);
       await this.prisma.cashMovement.create({
         data: {
@@ -187,6 +189,15 @@ export class SalesService {
     // Auto-register commissions for service items with a performer (fire-and-forget)
     this.commissions.registerSaleCommissions(tenantId, storeId, id)
       .catch(err => this.logger.warn(`Commissions auto-register failed for sale ${id}: ${err.message}`));
+
+    // If this sale came from a storefront order → mark the order as delivered
+    const storefrontOrderId = (sale as any).storefrontOrderId;
+    if (storefrontOrderId) {
+      this.prisma.storefrontOrder.update({
+        where: { id: storefrontOrderId },
+        data: { status: 'delivered', saleId: id } as any,
+      }).catch(err => this.logger.warn(`Could not mark storefront order as delivered: ${err.message}`));
+    }
 
     return completed;
   }

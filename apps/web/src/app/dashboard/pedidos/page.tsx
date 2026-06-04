@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   ShoppingBag, Loader2, CheckCircle2, Clock, AlertCircle,
   ChevronDown, ChevronUp, Package, Phone, Mail, MessageSquare,
-  RefreshCw, XCircle, Truck,
+  RefreshCw, XCircle, Truck, ShoppingCart,
 } from 'lucide-react';
 
 // ─── Types & helpers ─────────────────────────────────────────────
@@ -40,7 +41,13 @@ function OrderRow({
   order, onStatusChange, loading,
 }: { order: any; onStatusChange: (id: string, status: string) => void; loading: boolean }) {
   const [expanded, setExpanded] = useState(false);
+  const router = useRouter();
   const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
+
+  // "Cobrar en POS" — only for store-payment pending/confirmed orders not yet linked to a sale
+  const canChargeInPos = (order.paymentMethod === 'store' || !order.paymentMethod)
+    && (order.status === 'pending' || order.status === 'confirmed' || order.status === 'preparing' || order.status === 'ready')
+    && !order.saleId;
   const items: any[] = Array.isArray(order.items) ? order.items : (typeof order.items === 'string' ? JSON.parse(order.items) : []);
 
   return (
@@ -99,6 +106,16 @@ function OrderRow({
             >
               {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
               {cfg.nextLabel}
+            </button>
+          )}
+          {/* Cobrar en POS — pago en tienda */}
+          {canChargeInPos && (
+            <button
+              onClick={() => router.push(`/dashboard/pos?orderId=${order.id}`)}
+              title="Cobrar en POS"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap"
+            >
+              <ShoppingCart className="w-3 h-3" /> Cobrar en POS
             </button>
           )}
           {order.status === 'pending' && (
