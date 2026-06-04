@@ -256,6 +256,12 @@ function POSContent() {
       }, { token: token! });
       const payments = getPaymentAmounts();
       await api.post(`/sales/${sale.id}/complete`, { payments }, { token: token! });
+
+      // If sale came from a storefront order, link them
+      if (preloadOrderId) {
+        await api.post(`/storefront/orders/${preloadOrderId}/link-sale`, { saleId: sale.id }, { token: token! }).catch(() => {});
+      }
+
       const completedSale = await api.get(`/sales/${sale.id}`, { token: token! });
       setLastSale(completedSale);
       cart.clearCart(); setDiscountInput(''); setSaleNotes(''); setPerformers({}); setShowPaymentModal(false);

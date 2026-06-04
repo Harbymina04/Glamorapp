@@ -198,6 +198,27 @@ export class StorefrontService {
   }
 
   /**
+   * Links a completed POS sale to a storefront order and marks it as delivered.
+   * Called after the cashier processes "Cobrar en POS".
+   */
+  async linkSaleToOrder(tenantId: string, orderId: string, saleId: string) {
+    const order = await this.getOrder(tenantId, orderId);
+
+    await this.prisma.storefrontOrder.update({
+      where: { id: orderId },
+      data: { saleId, status: 'delivered' } as any,
+    });
+
+    // Also set storefrontOrderId on the sale for bidirectional link
+    await this.prisma.sale.update({
+      where: { id: saleId },
+      data: { storefrontOrderId: orderId } as any,
+    }).catch(() => {}); // non-fatal
+
+    return { success: true, orderId, saleId };
+  }
+
+  /**
    * Returns order items formatted for POS cart pre-loading.
    */
   async getOrderForPos(tenantId: string, orderId: string) {

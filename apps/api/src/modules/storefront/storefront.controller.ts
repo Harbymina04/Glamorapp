@@ -4,6 +4,7 @@ import {
   Post,
   Put,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -243,6 +244,23 @@ export class StorefrontController {
   @Get('orders/:id/pos-cart')
   getPosCart(@Request() req: any, @Param('id') id: string) {
     return this.service.getOrderForPos(req.user.tenantId, id);
+  }
+
+  /**
+   * POST /storefront/orders/:id/link-sale
+   * Links a completed POS sale to this storefront order and marks it delivered.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('superadmin', 'tenant_admin', 'store_admin', 'cashier')
+  @ApiBearerAuth()
+  @Post('orders/:id/link-sale')
+  @HttpCode(HttpStatus.OK)
+  linkSale(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body('saleId') saleId: string,
+  ) {
+    return this.service.linkSaleToOrder(req.user.tenantId, id, saleId);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
