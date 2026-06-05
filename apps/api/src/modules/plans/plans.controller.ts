@@ -1,11 +1,32 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus, Request } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { PlansService } from './plans.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { SkipSubscriptionCheck } from '../../common/decorators/skip-subscription.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 
+// ─── Public plans endpoint (no auth) ────────────────────────────────────────
+@ApiTags('Plans')
+@SkipSubscriptionCheck()
+@Controller('plans')
+export class PublicPlansController {
+  constructor(private service: PlansService) {}
+
+  @Get('public')
+  getPublicPlans() { return this.service.findAll(); }
+
+  @Post('subscribe')
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(JwtAuthGuard)
+  subscribe(@Request() req: any, @Body() dto: any) {
+    return this.service.initiateSubscriptionPayment(req.user.tenantId, dto);
+  }
+}
+
+// ─── Admin plans controller ──────────────────────────────────────────────────
 @ApiTags('Admin - Plans')
+@SkipSubscriptionCheck()
 @Controller('admin/plans')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('superadmin')

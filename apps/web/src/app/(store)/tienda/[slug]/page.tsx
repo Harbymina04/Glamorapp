@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 3600;
 import { notFound } from 'next/navigation';
 import Script from 'next/script';
 import { getStorefront, getStorefrontData } from '@/lib/store-server';

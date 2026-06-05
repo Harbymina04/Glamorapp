@@ -8,10 +8,11 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { Audit } from '../audit/audit.decorator';
 import { AuditInterceptor } from '../audit/audit.interceptor';
+import { SubscriptionGuard } from '../../common/guards/subscription.guard';
 
 @ApiTags('Sales')
 @Controller('sales')
-@UseGuards(JwtAuthGuard, TenantGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
 @UseInterceptors(AuditInterceptor)
 @ApiBearerAuth()
 export class SalesController {

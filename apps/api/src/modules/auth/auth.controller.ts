@@ -17,8 +17,10 @@ import { RegisterDto } from './dto/register.dto';
 import { CustomerRegisterDto } from './dto/customer-register.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { SkipSubscriptionCheck } from '../../common/decorators/skip-subscription.decorator';
 
 @ApiTags('Auth')
+@SkipSubscriptionCheck()
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}

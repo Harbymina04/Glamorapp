@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Building2, Users, LayoutDashboard, BarChart3, ChevronLeft, Store, Brain, LogOut, Plug, Calculator, FileText, Receipt, Zap, ScrollText, ShoppingBag, Star, Package, CreditCard, Shield } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
+import { TrialExpiredGate } from '@/components/layout/trial-expired-gate';
 
 const TENANT_LINKS = [
   { name: 'Dashboard', href: '/tenant', icon: LayoutDashboard },
@@ -60,6 +61,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
   }
 
   return (
+    <TrialExpiredGate>
     <div className="flex min-h-screen bg-surface-primary">
       <aside className="w-56 bg-white border-r border-border-primary flex flex-col">
         <div className="p-4 border-b border-border-primary">
@@ -163,5 +165,6 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
         {children}
       </main>
     </div>
+    </TrialExpiredGate>
   );
 }

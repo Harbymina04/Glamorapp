@@ -20,8 +20,10 @@ import { StorefrontChatService } from './storefront-chat.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { SkipSubscriptionCheck } from '../../common/decorators/skip-subscription.decorator';
 
 @ApiTags('Storefront')
+@SkipSubscriptionCheck()
 @Controller('storefront')
 export class StorefrontController {
   constructor(
@@ -35,12 +37,13 @@ export class StorefrontController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 20 } }) // 20 msgs/min por IP
   @ApiOperation({ summary: 'Storefront chatbot — public, no auth required' })
-  chat(@Body() body: { tenantId?: string; slug?: string; message: string; history?: any[] }) {
+  chat(@Body() body: { tenantId?: string; slug?: string; message: string; history?: any[]; cart?: any[] }) {
     return this.chatService.chat({
       tenantId: body.tenantId,
       slug: body.slug,
       message: body.message,
       history: body.history || [],
+      cart: body.cart || [],
     });
   }
 

@@ -7,10 +7,11 @@ import { TenantId, StoreId } from '../../common/decorators/tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Audit } from '../audit/audit.decorator';
 import { AuditInterceptor } from '../audit/audit.interceptor';
+import { SubscriptionGuard } from '../../common/guards/subscription.guard';
 
 @ApiTags('Cash Register')
 @Controller('cash-register')
-@UseGuards(JwtAuthGuard, TenantGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
 @UseInterceptors(AuditInterceptor)
 @ApiBearerAuth()
 export class CashRegisterController {

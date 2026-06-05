@@ -7,6 +7,7 @@ import { useUIStore } from '@/stores/ui-store';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { TrialBanner } from '@/components/layout/trial-banner';
+import { TrialExpiredGate } from '@/components/layout/trial-expired-gate';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, checkAuth, user } = useAuthStore();
@@ -44,17 +45,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-surface-primary">
-      <div className={`h-full transition-all duration-300 ease-in-out overflow-hidden ${sidebarOpen ? 'w-60' : 'w-0'}`}>
-        <div className="w-60 h-full">
-          <Sidebar />
+    <TrialExpiredGate>
+      <div className="flex h-screen overflow-hidden bg-surface-primary">
+        <div className={`h-full transition-all duration-300 ease-in-out overflow-hidden ${sidebarOpen ? 'w-60' : 'w-0'}`}>
+          <div className="w-60 h-full">
+            <Sidebar />
+          </div>
+        </div>
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <Header />
+          <TrialBanner />
+          <main className="flex-1 overflow-auto p-6">{children}</main>
         </div>
       </div>
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Header />
-        <TrialBanner />
-        <main className="flex-1 overflow-auto p-6">{children}</main>
-      </div>
-    </div>
+    </TrialExpiredGate>
   );
 }

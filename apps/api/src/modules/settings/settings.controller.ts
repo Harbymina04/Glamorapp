@@ -8,6 +8,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Audit } from '../audit/audit.decorator';
 import { AuditInterceptor } from '../audit/audit.interceptor';
+import { SubscriptionGuard } from '../../common/guards/subscription.guard';
 
 @ApiTags('Settings')
 @Controller('settings')

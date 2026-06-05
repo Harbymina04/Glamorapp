@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { CreateProductDto, UpdateProductDto } from './dto/product.dto';
@@ -7,10 +8,114 @@ import { getPaginationParams } from '../../common/utils/pagination';
 
 @Injectable()
 export class ProductsService {
+  private readonly deepseekKey: string;
+  private readonly deepseekModel: string;
+
   constructor(
     private prisma: PrismaService,
     private storage: StorageService,
-  ) {}
+    private config: ConfigService,
+  ) {
+    this.deepseekKey = config.get<string>('DEEPSEEK_API_KEY', '');
+    this.deepseekModel = config.get<string>('DEEPSEEK_MODEL', 'deepseek-chat');
+  }
+
+  // ── AI: generate description for a single product ──────────────────────────
+  async generateDescription(name: string, category?: string, brand?: string): Promise<{ description: string }> {
+    const context = [
+      category ? `Categoría: ${category}` : '',
+      brand ? `Marca: ${brand}` : '',
+    ].filter(Boolean).join(', ');
+
+    const prompt = `Eres un experto en productos de belleza y cuidado personal para salones profesionales en Latinoamérica.
+
+Genera una descripción de producto corta (máximo 2 oraciones, 60-100 palabras) para uso en una tienda online de salón de belleza.
+
+Producto: ${name}${context ? `\n${context}` : ''}
+
+La descripción debe:
+- Destacar los beneficios principales del producto
+- Mencionar para qué tipo de cliente o uso es ideal
+- Tener tono profesional pero accesible
+- Estar en español
+
+Responde SOLO con la descripción, sin comillas, sin prefijos, sin explicaciones adicionales.`;
+
+    if (!this.deepseekKey) {
+      return { description: '' };
+    }
+
+    try {
+      const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.deepseekKey}`,
+        },
+        body: JSON.stringify({
+          model: this.deepseekModel,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 200,
+          temperature: 0.7,
+        }),
+      });
+
+      if (!res.ok) throw new Error(`DeepSeek ${res.status}`);
+      const data = await res.json();
+      const description = data.choices?.[0]?.message?.content?.trim() ?? '';
+      return { description };
+    } catch (err: any) {
+      console.error('[AI] generateDescription error:', err.message);
+      return { description: '' };
+    }
+  }
+
+  // ── AI: bulk generate descriptions for products without one ────────────────
+  async bulkGenerateDescriptions(
+    tenantId: string,
+    storeId: string,
+    overwrite: boolean,
+  ): Promise<{ updated: number; skipped: number; failed: number }> {
+    const where: any = { tenantId, storeId, deletedAt: null };
+    if (!overwrite) {
+      where.OR = [{ description: null }, { description: '' }];
+    }
+
+    const products = await this.prisma.product.findMany({
+      where,
+      select: { id: true, name: true, category: { select: { name: true } }, brand: { select: { name: true } } },
+      take: 100,
+    });
+
+    let updated = 0;
+    let failed = 0;
+
+    // Process sequentially to avoid rate limits
+    for (const product of products) {
+      try {
+        const { description } = await this.generateDescription(
+          product.name,
+          (product as any).category?.name,
+          (product as any).brand?.name,
+        );
+        if (description) {
+          await this.prisma.product.update({
+            where: { id: product.id },
+            data: { description },
+          });
+          updated++;
+        } else {
+          failed++;
+        }
+        // Small delay to respect rate limits
+        await new Promise(r => setTimeout(r, 300));
+      } catch {
+        failed++;
+      }
+    }
+
+    return { updated, skipped: 0, failed };
+  }
 
   async findAll(tenantId: string, storeId: string, query: any) {
     const { skip, take } = getPaginationParams(query.page || 1, query.limit || 10);

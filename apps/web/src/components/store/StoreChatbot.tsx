@@ -1,12 +1,41 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { X, Send, Loader2, MessageCircle, Minimize2, Sparkles } from 'lucide-react';
+import { X, Send, Loader2, MessageCircle, Minimize2, Sparkles, ShoppingCart, CheckCircle2, Package } from 'lucide-react';
+import { useStoreCart } from '@/stores/store-cart';
+
+// ─── Types (mirror backend GlamyAction) ───────────────────────────────────────
+
+interface GlamyProduct {
+  id: string;
+  name: string;
+  price: number;
+  imageUrl: string | null;
+  category: string | null;
+  stock: number;
+  tenantId: string;
+  storeName: string;
+}
+
+interface GlamyService {
+  id: string;
+  name: string;
+  price: number;
+  duration: number | null;
+  category: string | null;
+}
+
+type GlamyAction =
+  | { type: 'show_products'; products: GlamyProduct[] }
+  | { type: 'show_services'; services: GlamyService[] }
+  | { type: 'add_to_cart'; items: GlamyProduct[] }
+  | { type: 'order_created'; order: { id: string; orderNumber: string; total: number; buyerName: string } };
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
   ts: number;
+  actions?: GlamyAction[];
 }
 
 interface Props {
@@ -18,11 +47,13 @@ interface Props {
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
 const SUGGESTED = [
-  '¿Qué servicios tienen?',
+  '¿Qué productos tienen?',
   '¿Cuánto cuesta una manicure?',
+  'Quiero comprar un esmalte',
   '¿Cómo agendo una cita?',
-  '¿Tienen diseños de uñas?',
 ];
+
+// ─── Sub-components ────────────────────────────────────────────────────────────
 
 function TypingDots() {
   return (
@@ -34,6 +65,108 @@ function TypingDots() {
   );
 }
 
+function ProductCards({ products, onAddToCart }: { products: GlamyProduct[]; onAddToCart: (p: GlamyProduct) => void }) {
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      {products.map(p => (
+        <div key={p.id} className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm flex gap-3 p-2">
+          {p.imageUrl ? (
+            <img src={p.imageUrl} alt={p.name} className="w-14 h-14 rounded-lg object-cover shrink-0" />
+          ) : (
+            <div className="w-14 h-14 rounded-lg bg-pink-50 flex items-center justify-center shrink-0">
+              <Package className="w-6 h-6 text-pink-300" />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-900 truncate">{p.name}</p>
+            {p.category && <p className="text-xs text-gray-400">{p.category}</p>}
+            <p className="text-sm font-bold text-[#EF2D8F] mt-0.5">${p.price.toLocaleString('es-CO')}</p>
+          </div>
+          <button
+            onClick={() => onAddToCart(p)}
+            disabled={p.stock === 0}
+            className="self-center shrink-0 p-1.5 rounded-lg transition disabled:opacity-40 hover:scale-105 active:scale-95"
+            style={{ background: 'linear-gradient(135deg, #EF2D8F, #8B5CF6)' }}
+            title={p.stock === 0 ? 'Sin stock' : 'Agregar al carrito'}
+          >
+            <ShoppingCart className="w-4 h-4 text-white" />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ServiceCards({ services }: { services: GlamyService[] }) {
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      {services.map(s => (
+        <div key={s.id} className="bg-white border border-gray-100 rounded-xl p-2.5 shadow-sm">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-900 truncate">{s.name}</p>
+              {s.category && <p className="text-xs text-gray-400">{s.category}</p>}
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-sm font-bold text-[#EF2D8F]">${s.price.toLocaleString('es-CO')}</p>
+              {s.duration && <p className="text-xs text-gray-400">{s.duration} min</p>}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OrderConfirmation({ order }: { order: { id: string; orderNumber: string; total: number; buyerName: string } }) {
+  return (
+    <div className="mt-2 bg-green-50 border border-green-200 rounded-xl p-3">
+      <div className="flex items-center gap-2 mb-1.5">
+        <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+        <p className="text-sm font-bold text-green-800">¡Pedido creado!</p>
+      </div>
+      <p className="text-xs text-green-700">
+        <span className="font-semibold">{order.buyerName}</span> · Orden <span className="font-mono font-semibold">{order.orderNumber}</span>
+      </p>
+      <p className="text-xs text-green-700 mt-0.5">
+        Total: <span className="font-bold">${order.total.toLocaleString('es-CO')} COP</span>
+      </p>
+      <p className="text-xs text-green-600 mt-1">El salón confirmará tu pedido pronto 💅</p>
+    </div>
+  );
+}
+
+function AddedToCart({ items }: { items: GlamyProduct[] }) {
+  return (
+    <div className="mt-2 bg-purple-50 border border-purple-200 rounded-xl p-2.5">
+      <div className="flex items-center gap-2">
+        <ShoppingCart className="w-4 h-4 text-purple-600 shrink-0" />
+        <p className="text-xs text-purple-800">
+          <span className="font-semibold">{items.map(i => i.name).join(', ')}</span>
+          {items.length === 1 ? ' agregado' : ' agregados'} al carrito
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ActionBlock({ action, onAddToCart }: { action: GlamyAction; onAddToCart: (p: GlamyProduct) => void }) {
+  switch (action.type) {
+    case 'show_products':
+      return <ProductCards products={action.products} onAddToCart={onAddToCart} />;
+    case 'show_services':
+      return <ServiceCards services={action.services} />;
+    case 'add_to_cart':
+      return <AddedToCart items={action.items} />;
+    case 'order_created':
+      return <OrderConfirmation order={action.order} />;
+    default:
+      return null;
+  }
+}
+
+// ─── Main component ────────────────────────────────────────────────────────────
+
 export function StoreChatbot({ tenantId, slug, storeName = 'Glamorapp' }: Props) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -43,12 +176,13 @@ export function StoreChatbot({ tenantId, slug, storeName = 'Glamorapp' }: Props)
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Welcome message on first open
+  const { addItem, items: cartItems } = useStoreCart();
+
   useEffect(() => {
     if (open && messages.length === 0) {
       setMessages([{
         role: 'assistant',
-        content: `¡Hola! 💅 Soy Glamy, tu asistente virtual de **${storeName}**. Puedo ayudarte a encontrar productos, servicios, precios y agendar citas. ¿En qué te puedo ayudar?`,
+        content: `¡Hola! 💅 Soy Glamy, tu asistente de **${storeName}**. Puedo ayudarte a encontrar productos, ver servicios, agregar al carrito y hasta crear tu pedido. ¿En qué te ayudo?`,
         ts: Date.now(),
       }]);
       setTimeout(() => inputRef.current?.focus(), 100);
@@ -56,10 +190,20 @@ export function StoreChatbot({ tenantId, slug, storeName = 'Glamorapp' }: Props)
     if (open) setUnread(0);
   }, [open]);
 
-  // Auto-scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
+
+  const handleAddToCart = (product: GlamyProduct) => {
+    addItem({
+      productId: product.id,
+      name: product.name,
+      price: product.price,
+      shopName: product.storeName,
+      tenantId: product.tenantId,
+      imageUrl: product.imageUrl ?? undefined,
+    });
+  };
 
   const send = async (text?: string) => {
     const msg = (text || input).trim();
@@ -72,15 +216,40 @@ export function StoreChatbot({ tenantId, slug, storeName = 'Glamorapp' }: Props)
     setLoading(true);
 
     try {
-      const history = newMessages.slice(-8).map(m => ({ role: m.role, content: m.content }));
+      const history = newMessages
+        .filter(m => m.role === 'user' || m.role === 'assistant')
+        .slice(-6)
+        .map(m => ({ role: m.role, content: m.content }));
+
       const res = await fetch(`${API}/storefront/public/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenantId, slug, message: msg, history }),
+        body: JSON.stringify({
+          tenantId,
+          slug,
+          message: msg,
+          history,
+          cart: cartItems.map(i => ({
+            productId: i.productId,
+            name: i.name,
+            price: i.price,
+            qty: i.qty,
+          })),
+        }),
       });
+
       const data = await res.json();
-      const reply = data.reply || 'Lo siento, no pude procesar tu mensaje. Intenta de nuevo.';
-      setMessages(prev => [...prev, { role: 'assistant', content: reply, ts: Date.now() }]);
+      const reply: string = data.reply || 'Lo siento, no pude procesar tu mensaje. Intenta de nuevo.';
+      const actions: GlamyAction[] = data.actions ?? [];
+
+      // Auto-execute add_to_cart actions
+      for (const action of actions) {
+        if (action.type === 'add_to_cart') {
+          for (const item of action.items) handleAddToCart(item);
+        }
+      }
+
+      setMessages(prev => [...prev, { role: 'assistant', content: reply, ts: Date.now(), actions }]);
       if (!open) setUnread(n => n + 1);
     } catch {
       setMessages(prev => [...prev, {
@@ -98,7 +267,6 @@ export function StoreChatbot({ tenantId, slug, storeName = 'Glamorapp' }: Props)
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   };
 
-  // Render markdown-ish: **bold** and newlines
   const renderContent = (text: string) => {
     const parts = text.split(/(\*\*[^*]+\*\*)/g);
     return parts.map((part, i) => {
@@ -131,12 +299,15 @@ export function StoreChatbot({ tenantId, slug, storeName = 'Glamorapp' }: Props)
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed bottom-24 right-6 z-50 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-100"
-          style={{ maxHeight: '75vh', height: '520px' }}>
-
+        <div
+          className="fixed bottom-24 right-6 z-50 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-100"
+          style={{ maxHeight: '80vh', height: '580px' }}
+        >
           {/* Header */}
-          <div className="flex items-center gap-3 px-4 py-3 shrink-0"
-            style={{ background: 'linear-gradient(135deg, #EF2D8F, #8B5CF6)' }}>
+          <div
+            className="flex items-center gap-3 px-4 py-3 shrink-0"
+            style={{ background: 'linear-gradient(135deg, #EF2D8F, #8B5CF6)' }}
+          >
             <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">
               <Sparkles className="w-5 h-5 text-white" />
             </div>
@@ -154,25 +325,40 @@ export function StoreChatbot({ tenantId, slug, storeName = 'Glamorapp' }: Props)
             {messages.map((m, i) => (
               <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {m.role === 'assistant' && (
-                  <div className="w-7 h-7 rounded-full shrink-0 mr-2 flex items-center justify-center text-sm"
-                    style={{ background: 'linear-gradient(135deg, #EF2D8F, #8B5CF6)' }}>
+                  <div
+                    className="w-7 h-7 rounded-full shrink-0 mr-2 flex items-center justify-center text-sm mt-1"
+                    style={{ background: 'linear-gradient(135deg, #EF2D8F, #8B5CF6)' }}
+                  >
                     💅
                   </div>
                 )}
-                <div className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm leading-relaxed ${
-                  m.role === 'user'
-                    ? 'bg-[#EF2D8F] text-white rounded-br-md'
-                    : 'bg-white text-gray-800 shadow-sm rounded-bl-md'
-                }`}>
-                  {renderContent(m.content)}
+                <div className="max-w-[85%] flex flex-col">
+                  <div className={`px-3 py-2 rounded-2xl text-sm leading-relaxed ${
+                    m.role === 'user'
+                      ? 'bg-[#EF2D8F] text-white rounded-br-md'
+                      : 'bg-white text-gray-800 shadow-sm rounded-bl-md'
+                  }`}>
+                    {renderContent(m.content)}
+                  </div>
+
+                  {/* Action cards below assistant bubble */}
+                  {m.role === 'assistant' && m.actions && m.actions.length > 0 && (
+                    <div className="mt-1 space-y-1">
+                      {m.actions.map((action, ai) => (
+                        <ActionBlock key={ai} action={action} onAddToCart={handleAddToCart} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
 
             {loading && (
               <div className="flex justify-start">
-                <div className="w-7 h-7 rounded-full shrink-0 mr-2 flex items-center justify-center text-sm"
-                  style={{ background: 'linear-gradient(135deg, #EF2D8F, #8B5CF6)' }}>
+                <div
+                  className="w-7 h-7 rounded-full shrink-0 mr-2 flex items-center justify-center text-sm"
+                  style={{ background: 'linear-gradient(135deg, #EF2D8F, #8B5CF6)' }}
+                >
                   💅
                 </div>
                 <div className="bg-white rounded-2xl rounded-bl-md shadow-sm">
@@ -181,12 +367,15 @@ export function StoreChatbot({ tenantId, slug, storeName = 'Glamorapp' }: Props)
               </div>
             )}
 
-            {/* Suggestions — show only after first assistant message, no user messages yet */}
+            {/* Suggestions */}
             {messages.length === 1 && !loading && (
               <div className="flex flex-wrap gap-2 pt-1">
                 {SUGGESTED.map(s => (
-                  <button key={s} onClick={() => send(s)}
-                    className="px-3 py-1.5 bg-white border border-gray-200 rounded-full text-xs text-gray-700 hover:border-[#EF2D8F] hover:text-[#EF2D8F] transition shadow-sm">
+                  <button
+                    key={s}
+                    onClick={() => send(s)}
+                    className="px-3 py-1.5 bg-white border border-gray-200 rounded-full text-xs text-gray-700 hover:border-[#EF2D8F] hover:text-[#EF2D8F] transition shadow-sm"
+                  >
                     {s}
                   </button>
                 ))}
@@ -204,7 +393,7 @@ export function StoreChatbot({ tenantId, slug, storeName = 'Glamorapp' }: Props)
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKey}
-                placeholder="Escribe tu pregunta..."
+                placeholder="Escribe tu mensaje..."
                 disabled={loading}
                 className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30 focus:border-[#EF2D8F] disabled:opacity-50"
               />

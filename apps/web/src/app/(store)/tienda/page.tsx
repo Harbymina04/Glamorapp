@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 3600;
 import { getPublicStores, getPublicProducts, getPublicDesigns } from '@/lib/store-server';
 import { StoreHomeClient } from './StoreHomeClient';
 

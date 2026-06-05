@@ -7,10 +7,11 @@ import { TenantId, StoreId } from '../../common/decorators/tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { CreateCampaignDto, UpdateCampaignDto, ReviewCampaignDto, ProposeAiCampaignDto } from './dto/marketing.dto';
+import { SubscriptionGuard } from '../../common/guards/subscription.guard';
 
 @ApiTags('Marketing')
 @Controller('marketing')
-@UseGuards(JwtAuthGuard, TenantGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
 @ApiBearerAuth()
 export class MarketingController {
   constructor(private service: MarketingService) {}

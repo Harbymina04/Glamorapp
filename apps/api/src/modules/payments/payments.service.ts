@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorefrontService } from '../storefront/storefront.service';
+import { PlansService } from '../plans/plans.service';
 
 const PLATFORM_CONFIG_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -46,6 +47,7 @@ export class PaymentsService {
     private config: ConfigService,
     private prisma: PrismaService,
     private storefront: StorefrontService,
+    private plans: PlansService,
   ) {
     const env = this.config.get('WOMPI_ENV', 'sandbox');
     this.baseUrl    = env === 'production' ? WOMPI_PROD : WOMPI_SANDBOX;
@@ -202,9 +204,16 @@ export class PaymentsService {
     this.logger.log(`Webhook: transaction ${tx.id} → ${status} (order: ${reference})`);
 
     if (status === 'APPROVED') {
-      await this.handleApprovedTransaction(reference);
+      if (reference.startsWith('SUB|')) {
+        await this.plans.activateSubscriptionFromPayment(reference);
+        this.logger.log(`Subscription activated via payment: ${reference}`);
+      } else {
+        await this.handleApprovedTransaction(reference);
+      }
     } else if (status === 'DECLINED' || status === 'VOIDED' || status === 'ERROR') {
-      await this.handleFailedTransaction(reference, status);
+      if (!reference.startsWith('SUB|')) {
+        await this.handleFailedTransaction(reference, status);
+      }
     }
 
     return { received: true };

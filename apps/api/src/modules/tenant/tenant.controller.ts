@@ -3,9 +3,11 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { TenantService } from './tenant.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { SkipSubscriptionCheck } from '../../common/decorators/skip-subscription.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 
 @ApiTags('Tenant Admin')
+@SkipSubscriptionCheck()
 @Controller('tenant')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('tenant_admin')

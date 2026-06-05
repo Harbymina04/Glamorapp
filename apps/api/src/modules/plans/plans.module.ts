@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { PlansService } from './plans.service';
-import { PlansController } from './plans.controller';
+import { PlansController, PublicPlansController } from './plans.controller';
 import { AdminAiController } from './admin-ai.controller';
 
 @Module({
-  controllers: [PlansController, AdminAiController],
+  imports: [ConfigModule],
+  controllers: [PublicPlansController, PlansController, AdminAiController],
   providers: [PlansService],
   exports: [PlansService],
 })

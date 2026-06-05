@@ -19,5 +19,10 @@ export const metadata: Metadata = {
 };
 
 export default function CatalogoPage() {
-  return <CatalogoClient />;
+  return (
+    <>
+      <h1 className="sr-only">Catálogo de Productos de Belleza</h1>
+      <CatalogoClient />
+    </>
+  );
 }

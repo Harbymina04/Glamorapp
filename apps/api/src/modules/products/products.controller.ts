@@ -13,10 +13,11 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 import { TenantId, StoreId } from '../../common/decorators/tenant.decorator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { StorageService } from '../../storage/storage.service';
+import { SubscriptionGuard } from '../../common/guards/subscription.guard';
 
 @ApiTags('Products')
 @Controller('products')
-@UseGuards(JwtAuthGuard, TenantGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
 @UseInterceptors(AuditInterceptor)
 @ApiBearerAuth()
 export class ProductsController {
@@ -24,6 +25,25 @@ export class ProductsController {
     private productsService: ProductsService,
     private storage: StorageService,
   ) {}
+
+  // ── AI description generation ───────────────────────────────────────────
+  @Post('ai/describe')
+  @HttpCode(HttpStatus.OK)
+  generateDescription(
+    @Body() body: { name: string; category?: string; brand?: string },
+  ) {
+    return this.productsService.generateDescription(body.name, body.category, body.brand);
+  }
+
+  @Post('ai/bulk-describe')
+  @HttpCode(HttpStatus.OK)
+  bulkGenerateDescriptions(
+    @TenantId() tenantId: string,
+    @StoreId() storeId: string,
+    @Body() body: { overwrite?: boolean },
+  ) {
+    return this.productsService.bulkGenerateDescriptions(tenantId, storeId, body.overwrite ?? false);
+  }
 
   @Get('categories/list')
   getCategories(@TenantId() tenantId: string, @StoreId() storeId: string) {

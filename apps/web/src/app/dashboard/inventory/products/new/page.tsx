@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
 import { api, API_BASE_URL } from '@/lib/api-client';
-import { ArrowLeft, Save, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Sparkles } from 'lucide-react';
 import { ImageUploader, ProductImage } from '@/components/shared/image-uploader';
 
 const API_BASE = API_BASE_URL;
@@ -15,6 +15,7 @@ export default function NewProductPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
+  const [generatingDesc, setGeneratingDesc] = useState(false);
   const [error, setError] = useState('');
   const [pendingImages, setPendingImages] = useState<File[]>([]);
   const [uploadedImages, setUploadedImages] = useState<ProductImage[]>([]);
@@ -55,6 +56,20 @@ export default function NewProductPage() {
 
   const handleChange = (field: string, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const generateDesc = async () => {
+    if (!form.name.trim()) return;
+    setGeneratingDesc(true);
+    try {
+      const res = await api.post('/products/ai/describe', {
+        name: form.name,
+        category: categories.find((c: any) => c.id === form.categoryId)?.name,
+        brand: brands.find((b: any) => b.id === form.brandId)?.name,
+      }, { token });
+      if (res.description) handleChange('description', res.description);
+    } catch {}
+    finally { setGeneratingDesc(false); }
   };
 
   // Upload images using the /upload/images endpoint (saves to disk, returns URLs)
@@ -201,7 +216,18 @@ export default function NewProductPage() {
         </div>
 
         <div>
-          <label className={labelClass}>Descripción</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className={labelClass}>Descripción</label>
+            <button
+              type="button"
+              onClick={generateDesc}
+              disabled={!form.name.trim() || generatingDesc}
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 transition disabled:opacity-40"
+            >
+              {generatingDesc ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+              {generatingDesc ? 'Generando...' : 'Generar con IA'}
+            </button>
+          </div>
           <textarea className={`${inputClass} h-20 py-2 resize-none`} value={form.description} onChange={e => handleChange('description', e.target.value)} placeholder="Descripción opcional del producto..." />
         </div>
 

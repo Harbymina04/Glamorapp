@@ -6,10 +6,11 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 import { TenantId, StoreId } from '../../common/decorators/tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
+import { SubscriptionGuard } from '../../common/guards/subscription.guard';
 
 @ApiTags('AI Agents')
 @Controller('ai-agents')
-@UseGuards(JwtAuthGuard, TenantGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
 @ApiBearerAuth()
 export class AiAgentsController {
   constructor(private service: AiAgentsService) {}

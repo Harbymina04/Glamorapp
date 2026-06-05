@@ -9,7 +9,7 @@ import { StatCard } from '@/components/shared/stat-card';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { ScopeGate } from '@/hooks/use-plan-gate';
-import { Package, AlertTriangle, TrendingUp, DollarSign, Plus, Search, Pencil, Trash2, Loader2, ShoppingCart, Truck } from 'lucide-react';
+import { Package, AlertTriangle, TrendingUp, DollarSign, Plus, Search, Pencil, Trash2, Loader2, ShoppingCart, Truck, Sparkles, CheckCircle2 } from 'lucide-react';
 
 export default function InventoryPage() {
   const router = useRouter();
@@ -21,6 +21,9 @@ export default function InventoryPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [lowStockSuppliers, setLowStockSuppliers] = useState<Record<string, any>>({});
+  const [bulkGenerating, setBulkGenerating] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ updated: number; failed: number } | null>(null);
+  const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
 
   const fetchProducts = useCallback(async () => {
     if (!token) return;
@@ -65,6 +68,24 @@ export default function InventoryPage() {
 
   const lowStockProducts = products.filter((p: any) => p.currentStock <= p.minStock);
 
+  const bulkGenerate = async (overwrite = false) => {
+    if (!confirm(overwrite
+      ? `¿Generar descripciones con IA para TODOS los productos (${products.length})? Esto sobreescribirá las existentes.`
+      : `¿Generar descripciones con IA para los ${products.filter((p: any) => !p.description).length} productos sin descripción?`
+    )) return;
+    setBulkGenerating(true);
+    setBulkResult(null);
+    try {
+      const res = await api.post('/products/ai/bulk-describe', { overwrite }, { token });
+      setBulkResult({ updated: res.updated, failed: res.failed });
+      fetchProducts();
+    } catch {
+      setBulkResult({ updated: 0, failed: 1 });
+    } finally {
+      setBulkGenerating(false);
+    }
+  };
+
   // Load preferred suppliers for low-stock products
   useEffect(() => {
     if (!token || lowStockProducts.length === 0) return;
@@ -98,14 +119,52 @@ export default function InventoryPage() {
           <h1 className="text-2xl font-bold text-foreground">Inventario</h1>
           <p className="text-muted-foreground text-sm mt-1">Gestiona tus productos y existencias</p>
         </div>
-        <ScopeGate module="inventory" action="create">
-          <button
-            onClick={() => router.push('/dashboard/inventory/products/new')}
-            className="flex items-center gap-2 h-10 px-4 bg-glamor-primary text-white rounded-lg text-sm font-medium hover:bg-glamor-primary-hover transition"
-          >
-            <Plus className="w-4 h-4" /> Nuevo producto
-          </button>
-        </ScopeGate>
+        <div className="flex items-center gap-2">
+          {bulkResult && (
+            <span className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              {bulkResult.updated} descripciones generadas
+              {bulkResult.failed > 0 && `, ${bulkResult.failed} fallaron`}
+            </span>
+          )}
+          <div className="relative">
+            <button
+              disabled={bulkGenerating}
+              onClick={() => setBulkMenuOpen(v => !v)}
+              className="flex items-center gap-2 h-10 px-4 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition disabled:opacity-50"
+            >
+              {bulkGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              {bulkGenerating ? 'Generando...' : 'Descripciones IA'}
+            </button>
+            {bulkMenuOpen && !bulkGenerating && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setBulkMenuOpen(false)} />
+                <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-xl shadow-lg z-20">
+                  <button
+                    onClick={() => { setBulkMenuOpen(false); bulkGenerate(false); }}
+                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 rounded-t-xl"
+                  >
+                    Solo sin descripción
+                  </button>
+                  <button
+                    onClick={() => { setBulkMenuOpen(false); bulkGenerate(true); }}
+                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 rounded-b-xl border-t"
+                  >
+                    Todos (sobreescribir)
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <ScopeGate module="inventory" action="create">
+            <button
+              onClick={() => router.push('/dashboard/inventory/products/new')}
+              className="flex items-center gap-2 h-10 px-4 bg-glamor-primary text-white rounded-lg text-sm font-medium hover:bg-glamor-primary-hover transition"
+            >
+              <Plus className="w-4 h-4" /> Nuevo producto
+            </button>
+          </ScopeGate>
+        </div>
       </div>
 
       {/* KPI Cards */}

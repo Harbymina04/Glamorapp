@@ -3,9 +3,11 @@ import {
   Headers, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { SkipSubscriptionCheck } from '../../common/decorators/skip-subscription.decorator';
 import { PaymentsService, CreatePseTransactionDto } from './payments.service';
 
 @ApiTags('Payments')
+@SkipSubscriptionCheck()
 @Controller('payments')
 export class PaymentsController {
   constructor(private service: PaymentsService) {}

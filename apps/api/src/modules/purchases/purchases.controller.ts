@@ -20,10 +20,11 @@ import {
   UpdatePurchaseDto,
   ReceivePurchaseDto,
 } from './dto/purchase.dto';
+import { SubscriptionGuard } from '../../common/guards/subscription.guard';
 
 @ApiTags('Purchases')
 @Controller('purchases')
-@UseGuards(JwtAuthGuard, TenantGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
 @ApiBearerAuth()
 export class PurchasesController {
   constructor(private service: PurchasesService) {}

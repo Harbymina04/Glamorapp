@@ -4,23 +4,75 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import "./landing.css";
 
-const monthlyPrices = { inicial: "49.900", profesional: "99.900", empresarial: "199.900" };
-const yearlyPrices = { inicial: "39.900", profesional: "79.900", empresarial: "159.900" };
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1";
 
-const monthlyBilled = {
-  inicial: "Facturado mensualmente · IVA incluido",
-  profesional: "Facturado mensualmente · IVA incluido",
-  empresarial: "Facturado mensualmente · IVA incluido",
-};
-const yearlyBilled = {
-  inicial: "Facturado anualmente · $478.800/año",
-  profesional: "Facturado anualmente · $958.800/año",
-  empresarial: "Facturado anualmente · $1.918.800/año",
-};
+interface ApiPlan {
+  id: string; name: string; slug: string; description: string;
+  monthlyPrice: string; yearlyPrice: string;
+  maxUsers: number; maxBranches: number; isPopular: boolean;
+  features?: { limits?: { maxUsers: number; maxBranches: number; aiTokensMonthly: number } };
+}
+
+function formatPrice(value: string | number) {
+  return Number(value).toLocaleString("es-CO");
+}
+
+// Static feature lists per plan position (marketing copy)
+const PLAN_FEATURES = [
+  { // plan 0 — starter
+    tag: "Para empezar",
+    moduleCount: "5",
+    moduleLabel: "módulos esenciales incluidos",
+    prevLabel: "Incluye",
+    items: [
+      { ok: true, text: "Inicio + Resumen del negocio" },
+      { ok: true, text: "Ventas POS" },
+      { ok: true, text: "Agendamiento de citas" },
+      { ok: true, text: "Catálogo de productos" },
+      { ok: true, text: (m: number, b: number) => `Hasta ${m} usuarios · ${b} sucursal` },
+      { ok: false, text: "Agentes IA" },
+      { ok: false, text: "Reportes avanzados" },
+    ],
+  },
+  { // plan 1 — profesional
+    tag: "★ Más popular",
+    moduleCount: "10",
+    moduleLabel: "módulos + Agente IA Glamy",
+    prevLabel: "Todo lo del Inicial, más",
+    items: [
+      { ok: true, text: "Agente IA Glamy en WhatsApp", bold: true },
+      { ok: true, text: "Inventario + alertas de stock" },
+      { ok: true, text: "Catálogo de diseño de uñas" },
+      { ok: true, text: "Clientes + segmentos + puntos" },
+      { ok: true, text: "Reportes y comisiones" },
+      { ok: true, text: (m: number, b: number) => `Hasta ${m} usuarios · ${b} sucursales` },
+      { ok: true, text: "Soporte prioritario" },
+    ],
+  },
+  { // plan 2 — enterprise
+    tag: "Multi‑sucursal",
+    moduleCount: "12+",
+    moduleLabel: "módulos · IA · API · Multi‑IA",
+    prevLabel: "Todo lo del Profesional, más",
+    items: [
+      { ok: true, text: "Múltiples agentes IA personalizados", bold: true },
+      { ok: true, text: "Sucursales ilimitadas" },
+      { ok: true, text: "Usuarios ilimitados con roles" },
+      { ok: true, text: "Proveedores + cuentas por pagar" },
+      { ok: true, text: "API y webhooks" },
+      { ok: true, text: "Account manager dedicado" },
+      { ok: true, text: "SLA 99.9% y onboarding 1:1" },
+    ],
+  },
+];
+
+const CHECK = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
+const CROSS = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
 
 export default function LandingPage() {
   const [billingMode, setBillingMode] = useState<"m" | "y">("m");
   const [scrolled, setScrolled] = useState(false);
+  const [plans, setPlans] = useState<ApiPlan[]>([]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -28,10 +80,15 @@ export default function LandingPage() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  const price = (plan: "inicial" | "profesional" | "empresarial") =>
-    billingMode === "m" ? monthlyPrices[plan] : yearlyPrices[plan];
-  const billed = (plan: "inicial" | "profesional" | "empresarial") =>
-    billingMode === "m" ? monthlyBilled[plan] : yearlyBilled[plan];
+  useEffect(() => {
+    fetch(`${API}/plans/public`)
+      .then(r => r.json())
+      .then((data: ApiPlan[]) => {
+        // Show all active plans, up to 3
+        setPlans(data.slice(0, 3));
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <>
@@ -46,6 +103,7 @@ export default function LandingPage() {
             <a href="#ia">IA Glamy</a>
             <a href="#planes">Planes</a>
             <a href="#recursos">Recursos</a>
+            <Link href="/tienda" style={{ color: "var(--primary, #EF2D8F)", fontWeight: 600 }}>Tienda</Link>
           </div>
           <div className="nav-cta">
             <Link className="btn btn-ghost" href="/auth/login">Iniciar sesión</Link>
@@ -228,66 +286,63 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="plans">
-            {/* INICIAL */}
-            <div className="plan">
-              <span className="plan-tag">Para empezar</span>
-              <h3>Inicial</h3>
-              <p className="plan-desc">Ideal para salones independientes y profesionales que recién empiezan a digitalizar su negocio.</p>
-              <div className="plan-price"><span className="currency">$</span><span className="amount">{price("inicial")}</span><span className="period">COP /mes</span></div>
-              <p className="plan-billed">{billed("inicial")}</p>
-              <Link href="/auth/register?plan=inicial" className="plan-cta outline" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>Empezar 14 días gratis</Link>
-              <div className="plan-count"><span className="n">5</span><span className="l">módulos esenciales incluidos</span></div>
-              <p className="plan-modlabel">Incluye</p>
-              <ul className="plan-feats">
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Inicio + Resumen del negocio</li>
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Ventas POS</li>
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Agendamiento de citas</li>
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Catálogo de productos</li>
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Hasta 2 usuarios · 1 sucursal</li>
-                <li className="dim"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Agentes IA</li>
-                <li className="dim"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Reportes avanzados</li>
-              </ul>
-            </div>
-            {/* PROFESIONAL */}
-            <div className="plan featured">
-              <span className="plan-tag">★ Más popular</span>
-              <h3>Profesional</h3>
-              <p className="plan-desc">Para salones en crecimiento que quieren delegar tareas repetitivas a la IA y vender más.</p>
-              <div className="plan-price"><span className="currency">$</span><span className="amount">{price("profesional")}</span><span className="period">COP /mes</span></div>
-              <p className="plan-billed">{billed("profesional")}</p>
-              <Link href="/auth/register?plan=profesional" className="plan-cta" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>Empezar 14 días gratis</Link>
-              <div className="plan-count"><span className="n">10</span><span className="l">módulos + Agente IA Glamy</span></div>
-              <p className="plan-modlabel">Todo lo del Inicial, más</p>
-              <ul className="plan-feats">
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> <strong>Agente IA Glamy en WhatsApp</strong></li>
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Inventario + alertas de stock</li>
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Catálogo de diseño de uñas</li>
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Clientes + segmentos + puntos</li>
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Reportes y comisiones</li>
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Hasta 8 usuarios · 2 sucursales</li>
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Soporte prioritario</li>
-              </ul>
-            </div>
-            {/* EMPRESARIAL */}
-            <div className="plan">
-              <span className="plan-tag">Multi‑sucursal</span>
-              <h3>Empresarial</h3>
-              <p className="plan-desc">Para cadenas y franquicias con varias sucursales, equipos grandes y reportería avanzada.</p>
-              <div className="plan-price"><span className="currency">$</span><span className="amount">{price("empresarial")}</span><span className="period">COP /mes</span></div>
-              <p className="plan-billed">{billed("empresarial")}</p>
-              <a href="mailto:ventas@glamorapp.com" className="plan-cta outline" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>Hablar con ventas</a>
-              <div className="plan-count"><span className="n">12+</span><span className="l">módulos · IA · API · Multi‑IA</span></div>
-              <p className="plan-modlabel">Todo lo del Profesional, más</p>
-              <ul className="plan-feats">
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> <strong>Múltiples agentes IA personalizados</strong></li>
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Sucursales ilimitadas</li>
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Usuarios ilimitados con roles</li>
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Proveedores + cuentas por pagar</li>
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> API y webhooks</li>
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Account manager dedicado</li>
-                <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg> SLA 99.9% y onboarding 1:1</li>
-              </ul>
-            </div>
+            {plans.map((plan, i) => {
+              const feat = PLAN_FEATURES[i] ?? PLAN_FEATURES[2];
+              const monthlyAmt = formatPrice(plan.monthlyPrice);
+              const yearlyAmt  = formatPrice(plan.yearlyPrice);
+              const yearlyTotal = (Number(plan.yearlyPrice)).toLocaleString("es-CO");
+              const currentAmt = billingMode === "m" ? monthlyAmt : yearlyAmt;
+              const billedText = billingMode === "m"
+                ? "Facturado mensualmente · IVA incluido"
+                : `Facturado anualmente · $${yearlyTotal}/año`;
+              const isEnterprise = i === plans.length - 1;
+              const maxU = plan.features?.limits?.maxUsers ?? plan.maxUsers;
+              const maxB = plan.features?.limits?.maxBranches ?? plan.maxBranches;
+
+              return (
+                <div key={plan.id} className={plan.isPopular ? "plan featured" : "plan"}>
+                  <span className="plan-tag">{feat.tag}</span>
+                  <h3>{plan.name}</h3>
+                  <p className="plan-desc">{plan.description}</p>
+                  <div className="plan-price">
+                    <span className="currency">$</span>
+                    <span className="amount">{currentAmt}</span>
+                    <span className="period">COP /mes</span>
+                  </div>
+                  <p className="plan-billed">{billedText}</p>
+                  {isEnterprise ? (
+                    <a href="mailto:ventas@glamorapp.com" className="plan-cta outline" style={{ display: "block", textAlign: "center", textDecoration: "none" }}>Hablar con ventas</a>
+                  ) : Number(plan.monthlyPrice) === 0 ? (
+                    <Link href={`/auth/register?plan=${plan.slug}`} className="plan-cta outline" style={{ display: "block", textAlign: "center", textDecoration: "none" }}>Empezar gratis</Link>
+                  ) : (
+                    <Link href={`/auth/register?plan=${plan.slug}`} className={plan.isPopular ? "plan-cta" : "plan-cta outline"} style={{ display: "block", textAlign: "center", textDecoration: "none" }}>Empezar 14 días gratis</Link>
+                  )}
+                  <div className="plan-count">
+                    <span className="n">{feat.moduleCount}</span>
+                    <span className="l">{feat.moduleLabel}</span>
+                  </div>
+                  <p className="plan-modlabel">{feat.prevLabel}</p>
+                  <ul className="plan-feats">
+                    {feat.items.map((item, j) => {
+                      const text = typeof item.text === "function" ? item.text(maxU, maxB) : item.text;
+                      return (
+                        <li key={j} className={item.ok ? "" : "dim"}>
+                          {item.ok ? CHECK : CROSS}
+                          {" "}
+                          {(item as any).bold ? <strong>{text}</strong> : text}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })}
+            {/* Fallback skeleton while loading */}
+            {plans.length === 0 && [0, 1, 2].map(i => (
+              <div key={i} className="plan" style={{ opacity: 0.4 }}>
+                <div style={{ height: 200, background: "#f3f4f6", borderRadius: 8 }} />
+              </div>
+            ))}
           </div>
         </div>
       </section>
