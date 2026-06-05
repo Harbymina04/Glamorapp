@@ -3,6 +3,8 @@ import {
   UseInterceptors, UploadedFiles, BadRequestException, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { Audit } from '../audit/audit.decorator';
+import { AuditInterceptor } from '../audit/audit.interceptor';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ProductsService } from './products.service';
 import { CreateProductDto, UpdateProductDto } from './dto/product.dto';
@@ -15,6 +17,7 @@ import { StorageService } from '../../storage/storage.service';
 @ApiTags('Products')
 @Controller('products')
 @UseGuards(JwtAuthGuard, TenantGuard)
+@UseInterceptors(AuditInterceptor)
 @ApiBearerAuth()
 export class ProductsController {
   constructor(
@@ -67,16 +70,19 @@ export class ProductsController {
   }
 
   @Post()
+  @Audit('products', 'create', 'Producto {name} creado (SKU: {sku})')
   create(@TenantId() tenantId: string, @StoreId() storeId: string, @Body() dto: CreateProductDto) {
     return this.productsService.create(tenantId, storeId, dto);
   }
 
   @Put(':id')
+  @Audit('products', 'update', 'Producto actualizado', { entityIdFrom: 'param' })
   update(@TenantId() tenantId: string, @StoreId() storeId: string, @Param('id') id: string, @Body() dto: UpdateProductDto) {
     return this.productsService.update(tenantId, storeId, id, dto);
   }
 
   @Delete(':id')
+  @Audit('products', 'delete', 'Producto eliminado', { entityIdFrom: 'param' })
   remove(@TenantId() tenantId: string, @StoreId() storeId: string, @Param('id') id: string) {
     return this.productsService.remove(tenantId, storeId, id);
   }

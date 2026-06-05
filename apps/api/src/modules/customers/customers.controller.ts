@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CustomersService } from './customers.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -6,13 +6,13 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 import { TenantId, StoreId } from '../../common/decorators/tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
-
-// Customers are tenant-level. storeId is used as a filter (origin store or activity store),
-// not as a strict ownership boundary.
+import { Audit } from '../audit/audit.decorator';
+import { AuditInterceptor } from '../audit/audit.interceptor';
 
 @ApiTags('Customers')
 @Controller('customers')
 @UseGuards(JwtAuthGuard, TenantGuard)
+@UseInterceptors(AuditInterceptor)
 @ApiBearerAuth()
 export class CustomersController {
   constructor(private service: CustomersService) {}
@@ -23,7 +23,6 @@ export class CustomersController {
     @StoreId() s: string,
     @Query() q: PaginationDto & { search?: string; segment?: string; loyaltyTier?: string; allStores?: string },
   ) {
-    // allStores=true allows tenant_admin to see customers across all stores
     const storeFilter = q.allStores === 'true' ? null : s;
     return this.service.findAll(t, storeFilter, q);
   }
@@ -64,16 +63,19 @@ export class CustomersController {
   }
 
   @Post()
+  @Audit('customers', 'create', 'Cliente {firstName} {lastName} creado')
   create(@TenantId() t: string, @StoreId() s: string, @Body() d: any) {
-    return this.service.create(t, s, d); // storeId = origin store
+    return this.service.create(t, s, d);
   }
 
   @Put(':id')
+  @Audit('customers', 'update', 'Cliente actualizado', { entityIdFrom: 'param' })
   update(@TenantId() t: string, @Param('id') id: string, @Body() d: any) {
     return this.service.update(t, id, d);
   }
 
   @Delete(':id')
+  @Audit('customers', 'delete', 'Cliente eliminado', { entityIdFrom: 'param' })
   remove(@TenantId() t: string, @Param('id') id: string) {
     return this.service.remove(t, id);
   }
