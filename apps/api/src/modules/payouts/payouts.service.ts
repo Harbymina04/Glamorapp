@@ -19,21 +19,31 @@ export class PayoutsService {
     return cfg;
   }
 
-  async updateConfig(dto: { commissionRate?: number; minPayoutAmount?: number }, updatedBy: string) {
+  async updateConfig(
+    dto: { commissionRate?: number; minPayoutAmount?: number; storeBannerUrl?: string | null },
+    updatedBy: string,
+  ) {
     return this.prisma.platformConfig.upsert({
       where: { id: CONFIG_ID },
       create: {
         id: CONFIG_ID,
         commissionRate: dto.commissionRate ?? 0.03,
         minPayoutAmount: dto.minPayoutAmount ?? 50000,
+        storeBannerUrl: dto.storeBannerUrl ?? null,
         updatedBy,
       },
       update: {
         ...(dto.commissionRate !== undefined ? { commissionRate: dto.commissionRate } : {}),
         ...(dto.minPayoutAmount !== undefined ? { minPayoutAmount: dto.minPayoutAmount } : {}),
+        ...(dto.storeBannerUrl !== undefined ? { storeBannerUrl: dto.storeBannerUrl } : {}),
         updatedBy,
       },
     });
+  }
+
+  async getPublicConfig() {
+    const cfg = await this.getConfig();
+    return { storeBannerUrl: cfg.storeBannerUrl ?? null };
   }
 
   // ── Summary: pending payout per tenant ───────────────────────

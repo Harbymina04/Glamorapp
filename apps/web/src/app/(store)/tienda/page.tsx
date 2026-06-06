@@ -5,6 +5,7 @@ import { getPublicStores, getPublicProducts, getPublicDesigns } from '@/lib/stor
 import { StoreHomeClient } from './StoreHomeClient';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://glamorapp.co';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
 export const metadata: Metadata = {
   title: 'Tienda de Belleza — Productos, Servicios y Diseños | Glamorapp',
@@ -27,11 +28,23 @@ export const metadata: Metadata = {
   },
 };
 
+async function getStoreBanner(): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_URL}/platform/config`, { next: { revalidate: 3600 } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.storeBannerUrl ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function StorePage() {
-  const [shops, products, designs] = await Promise.all([
+  const [shops, products, designs, bannerUrl] = await Promise.all([
     getPublicStores(),
     getPublicProducts(20),
     getPublicDesigns(8),
+    getStoreBanner(),
   ]);
 
   return (
@@ -39,6 +52,7 @@ export default async function StorePage() {
       shops={shops}
       products={products}
       designs={designs}
+      bannerUrl={bannerUrl}
     />
   );
 }

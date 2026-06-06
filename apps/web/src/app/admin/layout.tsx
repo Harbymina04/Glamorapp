@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Crown, CreditCard, Users, ChevronLeft, MessageCircle, Brain, LayoutDashboard, LogOut, Database, Banknote, Shield } from 'lucide-react';
+import { Crown, CreditCard, Users, ChevronLeft, MessageCircle, Brain, LayoutDashboard, LogOut, Database, Banknote, Shield, Settings2 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 
 const ADMIN_LINKS = [
@@ -16,6 +16,7 @@ const ADMIN_LINKS = [
   { name: 'IA - Consumo', href: '/admin/ai-usage', icon: Brain },
   { name: 'Audit Logs',     href: '/admin/audit-logs',             icon: Shield },
   { name: 'Datos Maestros', href: '/admin/master-data/categories', icon: Database },
+  { name: 'Plataforma',    href: '/admin/platform',               icon: Settings2 },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

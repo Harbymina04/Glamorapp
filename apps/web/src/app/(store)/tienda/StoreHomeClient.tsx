@@ -79,10 +79,11 @@ function NailDesignModal({ design, onClose }: { design: any; onClose: () => void
 interface Props {
   shops: any[];
   products: any[];
+  bannerUrl?: string | null;
   designs: any[];
 }
 
-export function StoreHomeClient({ shops, products, designs }: Props) {
+export function StoreHomeClient({ shops, products, designs, bannerUrl }: Props) {
   const [activeCategory, setActiveCategory] = useState('Todos');
   const [selectedDesign, setSelectedDesign] = useState<any>(null);
 
@@ -97,8 +98,17 @@ export function StoreHomeClient({ shops, products, designs }: Props) {
   return (
     <div>
       {/* Hero */}
-      <section className="relative overflow-hidden py-24 px-4 text-white"
-        style={{ background: 'linear-gradient(135deg, #EF2D8F 0%, #8B5CF6 100%)' }}>
+      <section
+        className="relative overflow-hidden py-24 px-4 text-white"
+        style={bannerUrl
+          ? { backgroundImage: `url(${bannerUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+          : { background: 'linear-gradient(135deg, #EF2D8F 0%, #8B5CF6 100%)' }
+        }
+      >
+        {/* Overlay sobre la imagen para mantener legibilidad del texto */}
+        {bannerUrl && (
+          <div className="absolute inset-0 bg-gradient-to-r from-[#EF2D8F]/70 to-[#8B5CF6]/70" />
+        )}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-10 left-10 w-64 h-64 rounded-full bg-white blur-3xl" />
           <div className="absolute bottom-10 right-10 w-96 h-96 rounded-full bg-white blur-3xl" />
