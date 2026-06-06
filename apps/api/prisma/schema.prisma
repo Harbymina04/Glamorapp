@@ -1759,6 +1759,7 @@ model PlatformConfig {
   commissionRate    Decimal  @default(0.03) @map("commission_rate") @db.Decimal(5, 4)
   minPayoutAmount   Decimal  @default(50000) @map("min_payout_amount") @db.Decimal(12, 2)
   storeBannerUrl    String?  @map("store_banner_url") @db.VarChar(500)
+  storeVideoUrl     String?  @map("store_video_url") @db.VarChar(500)
   updatedAt         DateTime @updatedAt @map("updated_at")
   updatedBy         String?  @map("updated_by") @db.Uuid
 

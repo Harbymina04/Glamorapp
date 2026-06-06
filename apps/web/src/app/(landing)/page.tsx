@@ -73,11 +73,20 @@ export default function LandingPage() {
   const [billingMode, setBillingMode] = useState<"m" | "y">("m");
   const [scrolled, setScrolled] = useState(false);
   const [plans, setPlans] = useState<ApiPlan[]>([]);
+  const DEFAULT_VIDEO = "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1&mute=1&rel=0&modestbranding=1&loop=1&playlist=dQw4w9WgXcQ";
+  const [videoSrc, setVideoSrc] = useState(DEFAULT_VIDEO);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API}/platform/config`)
+      .then(r => r.json())
+      .then(d => { if (d.storeVideoUrl) setVideoSrc(d.storeVideoUrl); })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -357,7 +366,7 @@ export default function LandingPage() {
           </div>
           <div className="video-wrapper">
             <iframe
-              src="https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1&mute=1&rel=0&modestbranding=1&loop=1&playlist=dQw4w9WgXcQ"
+              src={videoSrc}
               title="Glamorapp — Demo Tienda Virtual"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
