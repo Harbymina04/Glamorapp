@@ -398,7 +398,7 @@ export default function TenantBillingPage() {
             {plans.map(plan => {
               const price = Number(cycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice);
               const modules = plan.features?.modules ?? {};
-              const lim = plan.features?.limits ?? {};
+              const lim = (plan.features?.limits ?? {}) as Record<string, number>;
               const isCurrent = billing?.planSlug === plan.slug && billing?.status === 'active';
 
               return (
