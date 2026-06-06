@@ -30,6 +30,7 @@ interface Payment {
   invoiceEmail: string | null;
   invoiceNumber: string | null;
   invoiceIssuedAt: string | null;
+  invoiceData: Record<string, string> | null;
   createdAt: string;
 }
 
@@ -234,7 +235,7 @@ export default function AdminBillingPage() {
 
   const openInvoiceModal = (payment: Payment) => {
     setInvoiceModal(payment);
-    const existing = payment.invoiceData as any;
+    const existing = payment.invoiceData;
     setInvoiceForm({
       businessName: existing?.businessName || '',
       nit: existing?.nit || '',
