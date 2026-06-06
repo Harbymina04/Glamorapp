@@ -186,6 +186,7 @@ model Tenant {
   storefrontOrders   StorefrontOrder[]
   storefrontReviews  StorefrontReview[]
   marketingCampaigns MarketingCampaign[]
+  discounts            Discount[]
   platformPayouts      PlatformPayout[]
   subscriptionPayments SubscriptionPayment[]
 
@@ -264,6 +265,7 @@ model Store {
   storefrontOrders   StorefrontOrder[]
   storefrontReviews  StorefrontReview[]
   marketingCampaigns MarketingCampaign[]
+  discounts          Discount[]
 
   @@unique([tenantId, slug])
   @@index([tenantId])
@@ -1872,6 +1874,38 @@ model MarketingCampaign {
   @@index([tenantId, storeId])
   @@index([tenantId, storeId, status])
   @@map("marketing_campaigns")
+}
+
+// ─── Discount Campaigns ──────────────────────────────────────────
+
+enum DiscountScope {
+  all
+  category
+  products
+  services
+}
+
+model Discount {
+  id              String        @id @default(uuid()) @db.Uuid
+  tenantId        String        @map("tenant_id") @db.Uuid
+  tenant          Tenant        @relation(fields: [tenantId], references: [id])
+  storeId         String        @map("store_id") @db.Uuid
+  store           Store         @relation(fields: [storeId], references: [id])
+  name            String        @db.VarChar(255)
+  description     String?
+  discountPercent Decimal       @map("discount_percent") @db.Decimal(5, 2)
+  scope           DiscountScope @default(all)
+  targetIds       Json          @default("[]") @map("target_ids")
+  startDate       DateTime?     @map("start_date") @db.Date
+  endDate         DateTime?     @map("end_date") @db.Date
+  isActive        Boolean       @default(true) @map("is_active")
+  createdBy       String?       @map("created_by") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@index([tenantId, storeId])
+  @@index([tenantId, storeId, isActive])
+  @@map("discounts")
 }
 
 // ─── Master Data (gestionado por superadmin) ─────────────────────

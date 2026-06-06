@@ -36,6 +36,7 @@ import { StorefrontModule } from './modules/storefront/storefront.module';
 import { MasterDataModule } from './modules/master-data/master-data.module';
 import { ImportModule } from './modules/import/import.module';
 import { MarketingModule } from './modules/marketing/marketing.module';
+import { DiscountsModule } from './modules/discounts/discounts.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
 import { AuditModule } from './modules/audit/audit.module';
@@ -80,6 +81,7 @@ import { GuardsModule } from './common/guards/guards.module';
     MasterDataModule,
     ImportModule,
     MarketingModule,
+    DiscountsModule,
     PaymentsModule,
     PayoutsModule,
     AuditModule,

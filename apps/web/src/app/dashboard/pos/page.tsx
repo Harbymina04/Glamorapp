@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
-import { useCartStore } from '@/stores/cart-store';
+import { useCartStore, getApplicableDiscount } from '@/stores/cart-store';
 import { api } from '@/lib/api-client';
 import { formatCurrency } from '@/lib/utils';
 import {
@@ -109,6 +109,9 @@ function POSContent() {
   // Quotation modal
   const [showQuoteModal, setShowQuoteModal] = useState(false);
 
+  // Discount campaigns
+  const [activeDiscounts, setActiveDiscounts] = useState<any[]>([]);
+
   // Cash Register
   const [registerSession, setRegisterSession] = useState<any>(null);
   const [showOpenRegister, setShowOpenRegister] = useState(false);
@@ -154,6 +157,17 @@ function POSContent() {
       .then((rates: any[]) => {
         const defaultIva = (rates || []).find((r: any) => r.taxType === 'iva' && r.isDefault);
         if (defaultIva) cart.setTaxPercent(Number(defaultIva.rate));
+      })
+      .catch(() => {});
+  }, [token]);
+
+  // Load active discount campaigns
+  useEffect(() => {
+    if (!token) return;
+    api.get('/discounts/active', { token })
+      .then((data: any[]) => {
+        setActiveDiscounts(data || []);
+        cart.setDiscounts(data || []);
       })
       .catch(() => {});
   }, [token]);
@@ -212,13 +226,33 @@ function POSContent() {
       return;
     }
     setError('');
+
+    const unitPrice = selectedTab === 'products' ? Number(item.salePrice) : Number(item.price);
+
+    // Apply campaign discount automatically
+    const applicable = getApplicableDiscount(
+      {
+        productId:  selectedTab === 'products' ? item.id : undefined,
+        serviceId:  selectedTab === 'services' ? item.id : undefined,
+        itemType:   selectedTab === 'products' ? 'product' : 'service',
+        categoryId: item.categoryId ?? undefined,
+      },
+      activeDiscounts,
+    );
+    const discountPct    = applicable ? Number(applicable.discountPercent) : 0;
+    const discountAmount = discountPct > 0 ? (unitPrice * discountPct) / 100 : 0;
+
     cart.addItem({
-      productId: selectedTab === 'products' ? item.id : undefined,
-      serviceId: selectedTab === 'services' ? item.id : undefined,
-      itemType: selectedTab === 'products' ? 'product' : 'service',
-      name: item.name,
-      unitPrice: selectedTab === 'products' ? Number(item.salePrice) : Number(item.price),
-      quantity: 1, discountAmount: 0,
+      productId:              selectedTab === 'products' ? item.id : undefined,
+      serviceId:              selectedTab === 'services' ? item.id : undefined,
+      itemType:               selectedTab === 'products' ? 'product' : 'service',
+      name:                   item.name,
+      unitPrice,
+      quantity:               1,
+      discountAmount,
+      appliedDiscountPercent: discountPct,
+      discountId:             applicable?.id,
+      categoryId:             item.categoryId ?? undefined,
     });
   };
 
@@ -551,6 +585,12 @@ function POSContent() {
               {filtered.map(item => {
                 const stock = selectedTab === 'products' ? item.currentStock : 999;
                 const imgUrl = item.images?.[0]?.url || item.imageUrl;
+                const itemDiscount = getApplicableDiscount(
+                  { productId: selectedTab === 'products' ? item.id : undefined, serviceId: selectedTab === 'services' ? item.id : undefined, itemType: selectedTab === 'products' ? 'product' : 'service', categoryId: item.categoryId },
+                  activeDiscounts,
+                );
+                const basePrice = selectedTab === 'products' ? Number(item.salePrice) : Number(item.price);
+                const discountedPrice = itemDiscount ? basePrice * (1 - Number(itemDiscount.discountPercent) / 100) : null;
                 return (
                 <button key={item.id} onClick={() => addToCart(item)} className="bg-white rounded-xl border border-border-primary p-3 text-left hover:border-glamor-primary/40 hover:shadow-card-hover transition">
                   <div className="w-full h-20 rounded-lg bg-surface-hover flex items-center justify-center mb-2 overflow-hidden relative">
@@ -560,9 +600,21 @@ function POSContent() {
                         {stock === 0 ? 'Sin stock' : `Quedan ${stock}`}
                       </span>
                     )}
+                    {itemDiscount && (
+                      <span className="absolute top-1 left-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                        {Number(itemDiscount.discountPercent)}% OFF
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm font-medium text-foreground truncate">{item.name}</p>
-                  <p className="text-sm font-bold text-glamor-primary mt-0.5">{formatCurrency(selectedTab === 'products' ? item.salePrice : item.price)}</p>
+                  {discountedPrice != null ? (
+                    <div className="mt-0.5">
+                      <p className="text-[11px] text-muted-foreground line-through leading-tight">{formatCurrency(basePrice)}</p>
+                      <p className="text-sm font-bold text-red-600 leading-tight">{formatCurrency(discountedPrice)}</p>
+                    </div>
+                  ) : (
+                    <p className="text-sm font-bold text-glamor-primary mt-0.5">{formatCurrency(basePrice)}</p>
+                  )}
                   {item.sku && <p className="text-[10px] text-muted-foreground truncate">{item.sku}</p>}
                 </button>
               )})}
@@ -755,7 +807,18 @@ function POSContent() {
           ) : cart.items.map(item => (
             <div key={item.id} className="py-2 border-b border-border-primary/50">
               <div className="flex items-center gap-3">
-                <div className="flex-1 min-w-0"><p className="text-sm font-medium text-foreground truncate">{item.name}</p><p className="text-xs text-muted-foreground">{formatCurrency(item.unitPrice)} c/u</p></div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{item.name}</p>
+                  {item.appliedDiscountPercent > 0 ? (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-xs text-muted-foreground line-through">{formatCurrency(item.unitPrice)} c/u</p>
+                      <p className="text-xs font-medium text-red-600">{formatCurrency(item.unitPrice - item.discountAmount)} c/u</p>
+                      <span className="text-[9px] bg-red-100 text-red-600 px-1 rounded font-bold">-{item.appliedDiscountPercent}%</span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">{formatCurrency(item.unitPrice)} c/u</p>
+                  )}
+                </div>
                 <div className="flex items-center gap-1.5">
                   <button onClick={() => cart.updateQuantity(item.id, item.quantity - 1)} className="p-1 rounded hover:bg-surface-hover"><Minus className="w-3.5 h-3.5" /></button>
                   <span className="text-sm font-medium w-6 text-center">{item.quantity}</span>
@@ -791,6 +854,12 @@ function POSContent() {
         <div className="p-4 border-t border-border-primary space-y-2 bg-surface-primary/50">
           <div className="flex items-center gap-2">
             <Percent className="w-4 h-4 text-muted-foreground shrink-0" />
+            {activeDiscounts.length > 0 && (
+              <div className="flex items-center gap-2 px-2 py-1.5 mb-1 bg-green-50 border border-green-200 rounded-lg text-xs text-green-800">
+                <Percent className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                <span><strong>{activeDiscounts.length}</strong> campaña{activeDiscounts.length > 1 ? 's' : ''} activa{activeDiscounts.length > 1 ? 's' : ''}</span>
+              </div>
+            )}
             <input type="number" min="0" max="100" value={discountInput} onChange={e => setDiscountInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && applyDiscount()} onBlur={applyDiscount} placeholder="Descuento %" className="flex-1 h-8 px-2 rounded-lg border border-border-primary text-sm bg-white focus:outline-none focus:ring-2 focus:ring-glamor-primary/20" />
             <span className="text-xs text-muted-foreground w-10 text-right">{cart.discountPercent > 0 ? `${cart.discountPercent}%` : ''}</span>
           </div>

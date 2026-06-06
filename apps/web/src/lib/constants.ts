@@ -12,6 +12,7 @@ export const ADMIN_MODULES = [
   { name: 'Clientes', href: '/dashboard/customers', icon: 'Users', feature: 'customers' },
   { name: 'Proveedores', href: '/dashboard/suppliers', icon: 'Truck', feature: 'suppliers' },
   { name: 'Compras', href: '/dashboard/inventory/purchases', icon: 'ShoppingCart', feature: 'purchases' },
+  { name: 'Descuentos', href: '/dashboard/discounts', icon: 'Percent', feature: 'pos' },
   { name: 'Reportes', href: '/dashboard/reports', icon: 'BarChart3', feature: 'reports' },
   { name: 'Gastos', href: '/dashboard/expenses', icon: 'Wallet', feature: 'expenses' },
   { name: 'Usuarios', href: '/dashboard/users', icon: 'UserCog', feature: 'users' },
