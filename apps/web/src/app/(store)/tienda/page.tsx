@@ -30,7 +30,7 @@ export const metadata: Metadata = {
 
 async function getStoreBanner(): Promise<string | null> {
   try {
-    const res = await fetch(`${API_URL}/platform/config`, { next: { revalidate: 3600 } });
+    const res = await fetch(`${API_URL}/platform/config`, { next: { revalidate: 60 } });
     if (!res.ok) return null;
     const data = await res.json();
     return data.storeBannerUrl ?? null;
