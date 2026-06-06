@@ -8,10 +8,10 @@ export interface CartItem {
   name: string;
   quantity: number;
   unitPrice: number;
-  discountAmount: number;          // per-unit discount from campaign
-  appliedDiscountPercent: number;  // % applied — for badge/strikethrough display
-  discountId?: string;             // which campaign applied
-  categoryId?: string;             // for discount matching
+  discountAmount: number;           // per-unit discount from campaign
+  appliedDiscountPercent?: number;  // % applied — for badge/strikethrough display
+  discountId?: string;              // which campaign applied
+  categoryId?: string;              // for discount matching
 }
 
 interface CartState {

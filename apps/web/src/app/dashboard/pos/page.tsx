@@ -809,11 +809,11 @@ function POSContent() {
               <div className="flex items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground truncate">{item.name}</p>
-                  {item.appliedDiscountPercent > 0 ? (
+                  {(item.appliedDiscountPercent ?? 0) > 0 ? (
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="text-xs text-muted-foreground line-through">{formatCurrency(item.unitPrice)} c/u</p>
                       <p className="text-xs font-medium text-red-600">{formatCurrency(item.unitPrice - item.discountAmount)} c/u</p>
-                      <span className="text-[9px] bg-red-100 text-red-600 px-1 rounded font-bold">-{item.appliedDiscountPercent}%</span>
+                      <span className="text-[9px] bg-red-100 text-red-600 px-1 rounded font-bold">-{item.appliedDiscountPercent ?? 0}%</span>
                     </div>
                   ) : (
                     <p className="text-xs text-muted-foreground">{formatCurrency(item.unitPrice)} c/u</p>
