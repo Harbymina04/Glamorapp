@@ -266,6 +266,22 @@ export class PlansService {
       where: { id: tenantId },
       data: { plan: plan.slug },
     });
+
+    // Record subscription payment
+    const price = billingCycle === 'yearly' ? Number(plan.yearlyPrice) : Number(plan.monthlyPrice);
+    await this.prisma.subscriptionPayment.create({
+      data: {
+        tenantId,
+        planId,
+        wompiReference: reference,
+        amount: price,
+        billingCycle,
+        periodStart: now,
+        periodEnd,
+        paymentMethod: 'pse',
+        status: 'approved',
+      },
+    });
   }
 
   // Payment exceptions
@@ -297,6 +313,105 @@ export class PlansService {
       where: { id },
       data: { status: 'rejected' },
     });
+  }
+
+  // ─── Billing / Subscription Payments ────────────────────────
+
+  async listAllPayments(query: any) {
+    const where: any = {};
+    if (query.status) where.status = query.status;
+    if (query.billingCycle) where.billingCycle = query.billingCycle;
+    if (query.tenantId) where.tenantId = query.tenantId;
+
+    return this.prisma.subscriptionPayment.findMany({
+      where,
+      include: {
+        tenant: { select: { id: true, name: true, slug: true } },
+        plan: { select: { id: true, name: true, slug: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: Number(query.limit) || 100,
+    });
+  }
+
+  async listTenantPayments(tenantId: string) {
+    return this.prisma.subscriptionPayment.findMany({
+      where: { tenantId },
+      include: {
+        plan: { select: { id: true, name: true, slug: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createManualPayment(data: any, adminUserId: string) {
+    const plan = await this.prisma.plan.findUnique({ where: { id: data.planId } });
+    if (!plan) throw new NotFoundException('Plan no encontrado');
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: data.tenantId } });
+    if (!tenant) throw new NotFoundException('Tenant no encontrado');
+
+    return this.prisma.subscriptionPayment.create({
+      data: {
+        tenantId: data.tenantId,
+        planId: data.planId,
+        amount: data.amount,
+        billingCycle: data.billingCycle || 'monthly',
+        periodStart: new Date(data.periodStart),
+        periodEnd: new Date(data.periodEnd),
+        paymentMethod: data.paymentMethod || 'transfer',
+        status: 'approved',
+        notes: data.notes,
+        recordedBy: adminUserId,
+        currency: 'COP',
+      },
+    });
+  }
+
+  async updateInvoiceData(paymentId: string, invoiceData: any) {
+    const payment = await this.prisma.subscriptionPayment.findUnique({ where: { id: paymentId } });
+    if (!payment) throw new NotFoundException('Pago no encontrado');
+
+    return this.prisma.subscriptionPayment.update({
+      where: { id: paymentId },
+      data: {
+        invoiceRequested: true,
+        invoiceEmail: invoiceData.email,
+        invoiceData: invoiceData,
+        invoiceStatus: 'issued',
+        invoiceIssuedAt: new Date(),
+        invoiceNumber: invoiceData.invoiceNumber || null,
+      },
+    });
+  }
+
+  async getBillingStats() {
+    const [payments, pendingInvoices] = await Promise.all([
+      this.prisma.subscriptionPayment.findMany({
+        where: { status: 'approved' },
+        select: { amount: true, billingCycle: true, createdAt: true },
+      }),
+      this.prisma.subscriptionPayment.count({
+        where: { status: 'approved', invoiceStatus: 'none', invoiceRequested: true },
+      }),
+    ]);
+
+    const totalCollected = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+
+    // MRR: active monthly payments in current month + yearly/12
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthlyPayments = payments.filter(p => p.createdAt >= monthStart && p.billingCycle === 'monthly');
+    const yearlyPayments = payments.filter(p => p.billingCycle === 'yearly');
+    const mrr = monthlyPayments.reduce((s, p) => s + Number(p.amount), 0)
+      + yearlyPayments.reduce((s, p) => s + Number(p.amount) / 12, 0);
+
+    return {
+      totalCollected,
+      mrr: Math.round(mrr),
+      arr: Math.round(mrr * 12),
+      totalPayments: payments.length,
+      pendingInvoices,
+    };
   }
 
   // ─── Tenants (Platform Admin) ───────────────────────────────

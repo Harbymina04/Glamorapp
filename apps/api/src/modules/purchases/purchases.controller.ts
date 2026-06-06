@@ -21,10 +21,13 @@ import {
   ReceivePurchaseDto,
 } from './dto/purchase.dto';
 import { SubscriptionGuard } from '../../common/guards/subscription.guard';
+import { PlanModuleGuard } from '../../common/guards/plan-module.guard';
+import { RequirePlanModule } from '../../common/decorators/require-plan-module.decorator';
 
 @ApiTags('Purchases')
 @Controller('purchases')
-@UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard, PlanModuleGuard)
+@RequirePlanModule('purchases')
 @ApiBearerAuth()
 export class PurchasesController {
   constructor(private service: PurchasesService) {}

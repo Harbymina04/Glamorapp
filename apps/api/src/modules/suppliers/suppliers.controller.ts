@@ -6,10 +6,13 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 import { TenantId, StoreId } from '../../common/decorators/tenant.decorator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { SubscriptionGuard } from '../../common/guards/subscription.guard';
+import { PlanModuleGuard } from '../../common/guards/plan-module.guard';
+import { RequirePlanModule } from '../../common/decorators/require-plan-module.decorator';
 
 @ApiTags('Suppliers')
 @Controller('suppliers')
-@UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard, PlanModuleGuard)
+@RequirePlanModule('suppliers')
 @ApiBearerAuth()
 export class SuppliersController {
   constructor(private service: SuppliersService) {}

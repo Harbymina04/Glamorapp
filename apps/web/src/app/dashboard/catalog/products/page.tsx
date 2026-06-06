@@ -1,5 +1,6 @@
 'use client';
 
+import { PlanGate } from '@/hooks/use-plan-gate';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { api, API_BASE_URL } from '@/lib/api-client';
@@ -12,7 +13,7 @@ import {
   EyeOff, Sparkles, RefreshCw, Tag, Box, AlertCircle, CheckCircle2, X, ImageIcon,
 } from 'lucide-react';
 
-export default function CatalogProductsPage() {
+function CatalogProductsPage() {
   const { token } = useAuthStore();
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -521,4 +522,8 @@ export default function CatalogProductsPage() {
       )}
     </div>
   );
+}
+
+export default function CatalogProductsPageWithGate() {
+  return <PlanGate feature="catalog"><CatalogProductsPage /></PlanGate>;
 }

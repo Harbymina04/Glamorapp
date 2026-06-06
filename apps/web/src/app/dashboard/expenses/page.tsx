@@ -1,5 +1,7 @@
 'use client';
 
+import { PlanGate } from '@/hooks/use-plan-gate';
+
 import { useEffect, useState, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
@@ -64,7 +66,7 @@ const emptyForm: ExpenseForm = {
 };
 
 // ─── Page ───────────────────────────────────────────────────────────
-export default function ExpensesPage() {
+function ExpensesPage() {
   const { token } = useAuthStore();
   const [expenses, setExpenses] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
@@ -491,4 +493,8 @@ export default function ExpensesPage() {
       )}
     </div>
   );
+}
+
+export default function ExpensesPageWithGate() {
+  return <PlanGate feature="expenses"><ExpensesPage /></PlanGate>;
 }

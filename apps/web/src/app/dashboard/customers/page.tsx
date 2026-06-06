@@ -1,5 +1,7 @@
 'use client';
 
+import { PlanGate } from '@/hooks/use-plan-gate';
+
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
@@ -55,7 +57,7 @@ const emptyForm: CustomerForm = {
 };
 
 // ─── Page ───────────────────────────────────────────────────────────
-export default function CustomersPage() {
+function CustomersPage() {
   const router = useRouter();
   const { token } = useAuthStore();
   const [customers, setCustomers] = useState<any[]>([]);
@@ -431,4 +433,8 @@ export default function CustomersPage() {
       )}
     </div>
   );
+}
+
+export default function CustomersPageWithGate() {
+  return <PlanGate feature="customers"><CustomersPage /></PlanGate>;
 }

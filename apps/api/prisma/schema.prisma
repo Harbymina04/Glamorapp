@@ -186,7 +186,8 @@ model Tenant {
   storefrontOrders   StorefrontOrder[]
   storefrontReviews  StorefrontReview[]
   marketingCampaigns MarketingCampaign[]
-  platformPayouts    PlatformPayout[]
+  platformPayouts      PlatformPayout[]
+  subscriptionPayments SubscriptionPayment[]
 
   @@map("tenants")
 }
@@ -1235,7 +1236,8 @@ model Plan {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  subscriptions  Subscription[]
+  subscriptions        Subscription[]
+  subscriptionPayments SubscriptionPayment[]
 
   @@map("plans")
 }
@@ -1944,4 +1946,43 @@ model City {
   @@unique([departmentId, code])
   @@index([departmentId])
   @@map("cities")
+}
+
+// ─── Subscription Payments ──────────────────────────────────────
+
+model SubscriptionPayment {
+  id                  String    @id @default(uuid()) @db.Uuid
+  tenantId            String    @map("tenant_id") @db.Uuid
+  tenant              Tenant    @relation(fields: [tenantId], references: [id])
+  planId              String    @map("plan_id") @db.Uuid
+  plan                Plan      @relation(fields: [planId], references: [id])
+
+  wompiTransactionId  String?   @map("wompi_transaction_id") @db.VarChar(100)
+  wompiReference      String?   @map("wompi_reference") @db.VarChar(100)
+  amount              Decimal   @db.Decimal(12, 2)
+  currency            String    @default("COP") @db.VarChar(3)
+  billingCycle        String    @map("billing_cycle") @db.VarChar(10)
+  periodStart         DateTime  @map("period_start")
+  periodEnd           DateTime  @map("period_end")
+  paymentMethod       String    @default("pse") @map("payment_method") @db.VarChar(20)
+  status              String    @default("pending") @db.VarChar(20)
+
+  recordedBy          String?   @map("recorded_by") @db.Uuid
+  notes               String?   @db.Text
+
+  invoiceRequested    Boolean   @default(false) @map("invoice_requested")
+  invoiceEmail        String?   @map("invoice_email") @db.VarChar(255)
+  invoiceData         Json      @default("{}") @map("invoice_data")
+  invoiceStatus       String    @default("none") @map("invoice_status") @db.VarChar(20)
+  invoiceNumber       String?   @map("invoice_number") @db.VarChar(50)
+  invoicePdfUrl       String?   @map("invoice_pdf_url") @db.VarChar(500)
+  invoiceIssuedAt     DateTime? @map("invoice_issued_at")
+
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([wompiTransactionId])
+  @@index([status])
+  @@map("subscription_payments")
 }

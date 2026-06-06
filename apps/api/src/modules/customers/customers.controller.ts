@@ -9,10 +9,13 @@ import { PaginationDto } from '../../common/dto/pagination.dto';
 import { Audit } from '../audit/audit.decorator';
 import { AuditInterceptor } from '../audit/audit.interceptor';
 import { SubscriptionGuard } from '../../common/guards/subscription.guard';
+import { PlanModuleGuard } from '../../common/guards/plan-module.guard';
+import { RequirePlanModule } from '../../common/decorators/require-plan-module.decorator';
 
 @ApiTags('Customers')
 @Controller('customers')
-@UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard, PlanModuleGuard)
+@RequirePlanModule('customers')
 @UseInterceptors(AuditInterceptor)
 @ApiBearerAuth()
 export class CustomersController {

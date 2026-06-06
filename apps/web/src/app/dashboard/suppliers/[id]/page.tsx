@@ -1,5 +1,6 @@
 'use client';
 
+import { PlanGate } from '@/hooks/use-plan-gate';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
@@ -19,7 +20,7 @@ const labelClass = 'block text-sm font-medium text-foreground mb-1.5';
 
 type Tab = 'info' | 'contacts' | 'products' | 'documents' | 'history';
 
-export default function SupplierDetailPage() {
+function SupplierDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
@@ -650,4 +651,8 @@ function TransactionsList({ supplierId }: { supplierId: string }) {
       ))}
     </div>
   );
+}
+
+export default function SupplierDetailPageWithGate() {
+  return <PlanGate feature="suppliers"><SupplierDetailPage /></PlanGate>;
 }

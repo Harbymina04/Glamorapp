@@ -7,15 +7,18 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AccountingService } from './accounting.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { PlanModuleGuard } from '../../common/guards/plan-module.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePlanModule } from '../../common/decorators/require-plan-module.decorator';
 import { CreateFiscalConfigDto } from './dto/fiscal-config.dto';
 import { CreateInvoiceDto } from './dto/invoice.dto';
 import { CreateTransactionDto } from './dto/transaction.dto';
 
 @ApiTags('Accounting')
 @Controller('accounting')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PlanModuleGuard)
 @Roles('superadmin', 'tenant_admin', 'store_admin')
+@RequirePlanModule('accounting')
 @ApiBearerAuth()
 export class AccountingController {
   constructor(private service: AccountingService) {}

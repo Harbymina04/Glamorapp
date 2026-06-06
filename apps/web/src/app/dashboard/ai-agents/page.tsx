@@ -1,5 +1,7 @@
 'use client';
 
+import { PlanGate } from '@/hooks/use-plan-gate';
+
 import { useEffect, useState, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
@@ -171,7 +173,7 @@ function AgentCard({ agent, onClick }: { agent: any; onClick: () => void }) {
 
 // ─── Page ─────────────────────────────────────────────────────────
 
-export default function AIAgentsPage() {
+function AIAgentsPage() {
   const router = useRouter();
   const { token } = useAuthStore();
   const [agents, setAgents] = useState<any[]>([]);
@@ -320,4 +322,8 @@ export default function AIAgentsPage() {
       )}
     </div>
   );
+}
+
+export default function AIAgentsPageWithGate() {
+  return <PlanGate feature="ai_agents"><AIAgentsPage /></PlanGate>;
 }

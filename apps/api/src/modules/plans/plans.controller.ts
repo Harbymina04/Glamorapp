@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus, Request } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { PlansService } from './plans.service';
+import { BillingTasksService } from './billing-tasks.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { SkipSubscriptionCheck } from '../../common/decorators/skip-subscription.decorator';
@@ -32,7 +33,10 @@ export class PublicPlansController {
 @Roles('superadmin')
 @ApiBearerAuth()
 export class PlansController {
-  constructor(private service: PlansService) {}
+  constructor(
+    private service: PlansService,
+    private billingTasks: BillingTasksService,
+  ) {}
 
   // ─── Specific routes FIRST (before :id) ─────────────────────
 
@@ -52,6 +56,39 @@ export class PlansController {
   @Post('tenants/:tenantId/change-plan')
   changeTenantPlan(@Param('tenantId') tenantId: string, @Body() dto: any) {
     return this.service.changeTenantPlan(tenantId, dto);
+  }
+
+  // ─── Billing / Subscription Payments ────────────────────────
+
+  @Get('billing/stats')
+  getBillingStats() { return this.service.getBillingStats(); }
+
+  /** Suscripciones que vencen en los próximos N días (default 14) */
+  @Get('billing/expiring-soon')
+  getExpiringSoon(@Query('days') days?: string) {
+    return this.billingTasks.getExpiringSoon(days ? Number(days) : 14);
+  }
+
+  /** Disparo manual del cron de vencimientos (útil para pruebas desde el panel) */
+  @Post('billing/run-renewal-check')
+  runRenewalCheck() {
+    return this.billingTasks.triggerManually();
+  }
+
+  @Get('billing/payments')
+  listAllPayments(@Query() q: any) { return this.service.listAllPayments(q); }
+
+  @Get('billing/payments/:tenantId/tenant')
+  listTenantPayments(@Param('tenantId') tenantId: string) { return this.service.listTenantPayments(tenantId); }
+
+  @Post('billing/payments/manual')
+  createManualPayment(@Request() req: any, @Body() dto: any) {
+    return this.service.createManualPayment(dto, req.user.id);
+  }
+
+  @Put('billing/payments/:id/invoice')
+  updateInvoice(@Param('id') id: string, @Body() dto: any) {
+    return this.service.updateInvoiceData(id, dto);
   }
 
   // Payment exceptions

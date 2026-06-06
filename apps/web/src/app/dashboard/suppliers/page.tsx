@@ -1,5 +1,7 @@
 'use client';
 
+import { PlanGate } from '@/hooks/use-plan-gate';
+
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
@@ -13,7 +15,7 @@ import { Plus, Search, Pencil, Trash2, Loader2, Save, X, BarChart3 } from 'lucid
 const inputClass = 'w-full h-10 px-3 rounded-lg border border-border-primary text-sm bg-white focus:outline-none focus:ring-2 focus:ring-glamor-primary/20 focus:border-glamor-primary transition';
 const labelClass = 'block text-sm font-medium text-foreground mb-1.5';
 
-export default function SuppliersPage() {
+function SuppliersPage() {
   const router = useRouter();
   const { token } = useAuthStore();
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -289,4 +291,8 @@ export default function SuppliersPage() {
       )}
     </div>
   );
+}
+
+export default function SuppliersPageWithGate() {
+  return <PlanGate feature="suppliers"><SuppliersPage /></PlanGate>;
 }

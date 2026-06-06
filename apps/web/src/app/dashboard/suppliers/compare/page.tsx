@@ -1,5 +1,6 @@
 'use client';
 
+import { PlanGate } from '@/hooks/use-plan-gate';
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
@@ -11,7 +12,7 @@ import {
   Package, Clock, BarChart3,
 } from 'lucide-react';
 
-export default function CompareSuppliersPage() {
+function CompareSuppliersPage() {
   const router = useRouter();
 
   const [productSearch, setProductSearch] = useState('');
@@ -214,4 +215,8 @@ export default function CompareSuppliersPage() {
       )}
     </div>
   );
+}
+
+export default function CompareSuppliersPageWithGate() {
+  return <PlanGate feature="suppliers"><CompareSuppliersPage /></PlanGate>;
 }

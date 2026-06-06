@@ -5,10 +5,13 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { TenantId, StoreId } from '../../common/decorators/tenant.decorator';
 import { SubscriptionGuard } from '../../common/guards/subscription.guard';
+import { PlanModuleGuard } from '../../common/guards/plan-module.guard';
+import { RequirePlanModule } from '../../common/decorators/require-plan-module.decorator';
 
 @ApiTags('Reports')
 @Controller('reports')
-@UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard, PlanModuleGuard)
+@RequirePlanModule('reports')
 @ApiBearerAuth()
 export class ReportsController {
   constructor(private service: ReportsService) {}

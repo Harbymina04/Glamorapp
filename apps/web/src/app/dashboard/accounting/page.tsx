@@ -1,5 +1,7 @@
 'use client';
 
+import { PlanGate } from '@/hooks/use-plan-gate';
+
 import { useEffect, useState, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
@@ -79,7 +81,7 @@ const TX_TYPE_LABELS: Record<string, string> = {
 type Tab = 'resumen' | 'facturas' | 'transacciones' | 'impuestos' | 'configuracion';
 
 // ─── Page ──────────────────────────────────────────────────────────
-export default function AccountingPage() {
+function AccountingPage() {
   const { user, token } = useAuthStore();
   const isTenantAdmin = user?.role === 'tenant_admin' || user?.role === 'superadmin';
   const [activeTab, setActiveTab] = useState<Tab>('resumen');
@@ -988,4 +990,8 @@ function InvoicePDFModal({ invoice, fiscalConfig, onClose }: { invoice: any; fis
       </div>
     </div>
   );
+}
+
+export default function AccountingPageWithGate() {
+  return <PlanGate feature="accounting"><AccountingPage /></PlanGate>;
 }

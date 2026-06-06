@@ -1,5 +1,7 @@
 'use client';
 
+import { PlanGate } from '@/hooks/use-plan-gate';
+
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
@@ -254,7 +256,7 @@ const labelClass = 'block text-sm font-medium text-foreground mb-1.5';
 // ═══════════════════════════════════════════════════════════════════
 // PAGE
 // ═══════════════════════════════════════════════════════════════════
-export default function AppointmentsPage() {
+function AppointmentsPage() {
   const { token, user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -1118,4 +1120,8 @@ function MonthView({
       </div>
     </div>
   );
+}
+
+export default function AppointmentsPageWithGate() {
+  return <PlanGate feature="appointments"><AppointmentsPage /></PlanGate>;
 }

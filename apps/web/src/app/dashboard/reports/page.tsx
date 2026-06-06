@@ -1,5 +1,7 @@
 'use client';
 
+import { PlanGate } from '@/hooks/use-plan-gate';
+
 import { useEffect, useState, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
@@ -74,7 +76,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 // ── Page ──────────────────────────────────────────────────────────────────
-export default function ReportsPage() {
+function ReportsPage() {
   const { token } = useAuthStore();
   const [tab, setTab] = useState<Tab>('overview');
 
@@ -630,4 +632,8 @@ export default function ReportsPage() {
       )}
     </div>
   );
+}
+
+export default function ReportsPageWithGate() {
+  return <PlanGate feature="reports"><ReportsPage /></PlanGate>;
 }

@@ -8,10 +8,13 @@ import { PaginationDto } from '../../common/dto/pagination.dto';
 import { Audit } from '../audit/audit.decorator';
 import { AuditInterceptor } from '../audit/audit.interceptor';
 import { SubscriptionGuard } from '../../common/guards/subscription.guard';
+import { PlanModuleGuard } from '../../common/guards/plan-module.guard';
+import { RequirePlanModule } from '../../common/decorators/require-plan-module.decorator';
 
 @ApiTags('Appointments')
 @Controller('appointments')
 @UseInterceptors(AuditInterceptor)
+@RequirePlanModule('appointments')
 export class AppointmentsController {
   constructor(private appointmentsService: AppointmentsService) {}
 
@@ -34,7 +37,7 @@ export class AppointmentsController {
   // ─── Staff / Admin — require TenantGuard ─────────────────────────────────────
 
   @Get()
-  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard, PlanModuleGuard)
   @ApiBearerAuth()
   findAll(
     @TenantId() t: string, @StoreId() s: string,
@@ -43,7 +46,7 @@ export class AppointmentsController {
   ) { return this.appointmentsService.findAll(t, s, q, user); }
 
   @Get('available-slots')
-  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard, PlanModuleGuard)
   @ApiBearerAuth()
   availableSlots(
     @TenantId() t: string, @StoreId() s: string,
@@ -51,56 +54,56 @@ export class AppointmentsController {
   ) { return this.appointmentsService.getAvailableSlots(t, s, q.date, q.professionalId, q.duration); }
 
   @Get('summary/week')
-  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard, PlanModuleGuard)
   @ApiBearerAuth()
   weekSummary(@TenantId() t: string, @StoreId() s: string) {
     return this.appointmentsService.getWeekSummary(t, s);
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard, PlanModuleGuard)
   @ApiBearerAuth()
   findOne(@TenantId() t: string, @StoreId() s: string, @Param('id') id: string) {
     return this.appointmentsService.findOne(t, s, id);
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard, PlanModuleGuard)
   @ApiBearerAuth()
   @Audit('appointments', 'create', 'Cita creada')
   create(@TenantId() t: string, @StoreId() s: string, @Body() d: any) { return this.appointmentsService.create(t, s, d); }
 
   @Put(':id')
-  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard, PlanModuleGuard)
   @ApiBearerAuth()
   @Audit('appointments', 'update', 'Cita actualizada', { entityIdFrom: 'param' })
   update(@TenantId() t: string, @StoreId() s: string, @Param('id') id: string, @Body() d: any) { return this.appointmentsService.update(t, s, id, d); }
 
   @Post(':id/confirm')
-  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard, PlanModuleGuard)
   @ApiBearerAuth()
   @Audit('appointments', 'update', 'Cita confirmada', { entityIdFrom: 'param' })
   confirm(@TenantId() t: string, @StoreId() s: string, @Param('id') id: string) { return this.appointmentsService.updateStatus(t, s, id, 'confirmed'); }
 
   @Post(':id/complete')
-  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard, PlanModuleGuard)
   @ApiBearerAuth()
   @Audit('appointments', 'update', 'Cita completada', { entityIdFrom: 'param' })
   complete(@TenantId() t: string, @StoreId() s: string, @Param('id') id: string) { return this.appointmentsService.updateStatus(t, s, id, 'completed'); }
 
   @Post(':id/cancel')
-  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard, PlanModuleGuard)
   @ApiBearerAuth()
   @Audit('appointments', 'update', 'Cita cancelada', { entityIdFrom: 'param' })
   cancel(@TenantId() t: string, @StoreId() s: string, @Param('id') id: string, @Body('reason') r: string) { return this.appointmentsService.updateStatus(t, s, id, 'cancelled', r); }
 
   @Post(':id/start')
-  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard, PlanModuleGuard)
   @ApiBearerAuth()
   start(@TenantId() t: string, @StoreId() s: string, @Param('id') id: string) { return this.appointmentsService.updateStatus(t, s, id, 'in_progress'); }
 
   @Post(':id/no-show')
-  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard)
+  @UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard, PlanModuleGuard)
   @ApiBearerAuth()
   @Audit('appointments', 'update', 'Cita no-show', { entityIdFrom: 'param' })
   noShow(@TenantId() t: string, @StoreId() s: string, @Param('id') id: string) { return this.appointmentsService.updateStatus(t, s, id, 'no_show'); }

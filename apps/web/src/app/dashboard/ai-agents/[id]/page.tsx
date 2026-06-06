@@ -1,5 +1,6 @@
 'use client';
 
+import { PlanGate } from '@/hooks/use-plan-gate';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
@@ -399,7 +400,7 @@ function LogLine({ line, index }: { line: string; index: number }) {
 
 // ─── Main Page ────────────────────────────────────────────────────
 
-export default function AIAgentDetailPage() {
+function AIAgentDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { token } = useAuthStore();
@@ -866,4 +867,8 @@ export default function AIAgentDetailPage() {
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
+}
+
+export default function AIAgentDetailPageWithGate() {
+  return <PlanGate feature="ai_agents"><AIAgentDetailPage /></PlanGate>;
 }

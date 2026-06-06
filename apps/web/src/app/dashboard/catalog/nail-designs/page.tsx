@@ -1,5 +1,6 @@
 'use client';
 
+import { PlanGate } from '@/hooks/use-plan-gate';
 import { useEffect, useState, useRef } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { api, API_BASE_URL } from '@/lib/api-client';
@@ -36,7 +37,7 @@ const PRESET_COLORS = [
   '#000000', '#FFFFFF', '#F5F5DC', '#FFF8DC', '#FAEBD7',
 ];
 
-export default function NailDesignsPage() {
+function NailDesignsPage() {
   const { token } = useAuthStore();
   const [designs, setDesigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -689,4 +690,8 @@ export default function NailDesignsPage() {
       )}
     </div>
   );
+}
+
+export default function NailDesignsPageWithGate() {
+  return <PlanGate feature="catalog"><NailDesignsPage /></PlanGate>;
 }

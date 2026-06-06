@@ -1,5 +1,6 @@
 'use client';
 
+import { PlanGate } from '@/hooks/use-plan-gate';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
@@ -50,7 +51,7 @@ const APPOINTMENT_STATUS_ICONS: Record<string, JSX.Element> = {
   in_progress: <Clock className="w-4 h-4 text-purple-500" />,
 };
 
-export default function CustomerDetailPage() {
+function CustomerDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
@@ -477,4 +478,8 @@ export default function CustomerDetailPage() {
       )}
     </div>
   );
+}
+
+export default function CustomerDetailPageWithGate() {
+  return <PlanGate feature="customers"><CustomerDetailPage /></PlanGate>;
 }

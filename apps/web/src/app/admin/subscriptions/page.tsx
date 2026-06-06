@@ -5,10 +5,11 @@ import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { StatusBadge } from '@/components/shared/status-badge';
+import Link from 'next/link';
 import {
   Loader2, Search, Crown, CreditCard, Clock, AlertCircle,
   Building2, ArrowUpDown, RefreshCw, CheckCircle2, X, Ban,
-  ChevronDown, Store,
+  ChevronDown, Store, Receipt,
 } from 'lucide-react';
 
 interface SubscriptionData {
@@ -191,6 +192,7 @@ export default function AdminSubscriptionsPage() {
               <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Precio</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Trial</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Próx. cobro</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Pagos</th>
               <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Acciones</th>
             </tr>
           </thead>
@@ -224,6 +226,14 @@ export default function AdminSubscriptionsPage() {
                 <td className="px-4 py-3 text-sm text-muted-foreground">
                   {s.currentPeriodEnd ? formatDate(s.currentPeriodEnd) : '-'}
                 </td>
+                <td className="px-4 py-3">
+                  <Link
+                    href={`/admin/billing?tenantId=${s.tenantId}`}
+                    className="px-2.5 py-1.5 text-xs rounded-lg bg-surface-hover text-muted-foreground font-medium hover:bg-surface-primary transition flex items-center gap-1 w-fit"
+                  >
+                    <Receipt className="w-3 h-3" /> Ver pagos
+                  </Link>
+                </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
                     <button onClick={() => openChange(s)} className="px-2.5 py-1.5 text-xs rounded-lg bg-glamor-primary/10 text-glamor-primary font-medium hover:bg-glamor-primary/20 transition flex items-center gap-1">
@@ -239,7 +249,7 @@ export default function AdminSubscriptionsPage() {
               </tr>
             ))}
             {subs.length === 0 && (
-              <tr><td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">No hay suscripciones.</td></tr>
+              <tr><td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">No hay suscripciones.</td></tr>
             )}
           </tbody>
         </table>
