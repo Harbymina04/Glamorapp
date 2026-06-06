@@ -9,14 +9,15 @@ const API_PUBLIC = process.env.NEXT_PUBLIC_API_BASE_URL || API_INTERNAL;
 // Build Content-Security-Policy header value
 const csp = [
   `default-src 'self'`,
-  `script-src 'self' 'unsafe-inline' 'unsafe-eval'`, // unsafe-eval needed by Next.js dev; restrict in prod
-  `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`, // Tailwind + Google Fonts CSS
-  `img-src 'self' data: blob: ${API_PUBLIC}`,        // allow images from API server
-  `font-src 'self' https://fonts.gstatic.com`,       // Google Fonts actual font files
-  `connect-src 'self' ${API_PUBLIC}`,                // API fetch calls
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com https://s.ytimg.com`,
+  `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
+  `img-src 'self' data: blob: ${API_PUBLIC} https://i.ytimg.com https://*.ytimg.com`,
+  `font-src 'self' https://fonts.gstatic.com`,
+  `connect-src 'self' ${API_PUBLIC} https://www.youtube.com`,
+  `frame-src https://www.youtube.com https://www.youtube-nocookie.com`,
   `media-src 'none'`,
   `object-src 'none'`,
-  `frame-ancestors 'none'`,                          // prevent clickjacking
+  `frame-ancestors 'none'`,
   `base-uri 'self'`,
   `form-action 'self'`,
 ].join('; ');
