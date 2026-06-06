@@ -75,7 +75,7 @@ function CatalogoContent() {
   // Load storefront discounts once products are available
   useEffect(() => {
     if (!products.length) return;
-    const tenantIds = [...new Set(products.map((p: any) => p.tenantId).filter(Boolean))] as string[];
+    const tenantIds = Array.from(new Set(products.map((p: any) => p.tenantId).filter(Boolean))) as string[];
     Promise.all(
       tenantIds.map(tid =>
         storeApi.get(`/storefront/public/discounts?tenantId=${tid}`).catch(() => []),

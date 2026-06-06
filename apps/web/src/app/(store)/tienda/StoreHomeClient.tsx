@@ -90,7 +90,7 @@ export function StoreHomeClient({ shops, products, designs, bannerUrl }: Props) 
 
   // Load storefront discounts per unique tenant in product list
   useEffect(() => {
-    const tenantIds = [...new Set(products.map((p: any) => p.tenantId).filter(Boolean))] as string[];
+    const tenantIds = Array.from(new Set(products.map((p: any) => p.tenantId).filter(Boolean))) as string[];
     if (!tenantIds.length) return;
     Promise.all(
       tenantIds.map(tid =>
