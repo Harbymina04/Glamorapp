@@ -347,6 +347,25 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ===== VIDEO ===== */}
+      <section className="video-section" id="recursos">
+        <div className="container">
+          <div className="section-head">
+            <span className="section-eyebrow">Demo en vivo</span>
+            <h2 className="section-title">Mira cómo funciona <em>la tienda</em> en acción.</h2>
+            <p className="section-sub">Desde catálogo de productos hasta checkout con IA — todo en un solo lugar para tus clientas.</p>
+          </div>
+          <div className="video-wrapper">
+            <iframe
+              src="https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1&mute=1&rel=0&modestbranding=1&loop=1&playlist=dQw4w9WgXcQ"
+              title="Glamorapp — Demo Tienda Virtual"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      </section>
+
       {/* ===== FINAL CTA ===== */}
       <div className="cta-final">
         <div className="cta-card">
