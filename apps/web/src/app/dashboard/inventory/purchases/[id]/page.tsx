@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
 import { formatCurrency } from '@/lib/utils';
 import { StatusBadge } from '@/components/shared/status-badge';
-import { ArrowLeft, Loader2, Package, CheckCircle, XCircle, AlertCircle, Clock, Truck } from 'lucide-react';
+import { ArrowLeft, Loader2, Package, CheckCircle, XCircle, AlertCircle, Clock, Truck, CreditCard } from 'lucide-react';
 
 const PURCHASE_STATUS_COLORS: Record<string, string> = {
   pending: 'bg-orange-50 text-orange-700 border-orange-200',
@@ -31,6 +31,7 @@ export default function PurchaseDetailPage() {
   const [loading, setLoading] = useState(true);
   const [receiving, setReceiving] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [markingPaid, setMarkingPaid] = useState(false);
   const [error, setError] = useState('');
   const [receiveQtys, setReceiveQtys] = useState<Record<string, number>>({});
 
@@ -81,6 +82,20 @@ export default function PurchaseDetailPage() {
     }
   };
 
+  const handleMarkAsPaid = async () => {
+    if (!confirm('¿Marcar esta orden como pagada?')) return;
+    setMarkingPaid(true);
+    setError('');
+    try {
+      await api.patch(`/purchases/${purchaseId}/mark-paid`, {}, { token: token! });
+      await fetchPurchase();
+    } catch (e: any) {
+      setError(e.message || 'Error al marcar como pagada');
+    } finally {
+      setMarkingPaid(false);
+    }
+  };
+
   const handleCancel = async () => {
     if (!confirm('¿Cancelar esta orden de compra?')) return;
     setCancelling(true);
@@ -125,6 +140,7 @@ export default function PurchaseDetailPage() {
   const isCancelled = purchase.status === 'cancelled';
   const canReceive = isPending || isPartial;
   const canCancel = isPending || isPartial;
+  const canMarkPaid = purchase.paymentStatus === 'pending' && !isCancelled;
 
   return (
     <div className="max-w-3xl">
@@ -155,6 +171,16 @@ export default function PurchaseDetailPage() {
               {receiving ? 'Recibiendo...' : 'Recibir'}
             </button>
           )}
+          {canMarkPaid && (
+            <button
+              onClick={handleMarkAsPaid}
+              disabled={markingPaid}
+              className="flex items-center gap-2 h-9 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50"
+            >
+              {markingPaid ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+              {markingPaid ? 'Guardando...' : 'Marcar como pagado'}
+            </button>
+          )}
           {canCancel && (
             <button
               onClick={handleCancel}
@@ -180,16 +206,19 @@ export default function PurchaseDetailPage() {
           <p className="text-xs text-muted-foreground">{purchase.supplier?.supplierNumber}</p>
         </div>
         <div className="bg-white rounded-xl border border-border-primary p-4 shadow-card">
+          <p className="text-xs text-muted-foreground mb-1">Subtotal</p>
+          <p className="text-lg font-bold text-foreground">{formatCurrency(purchase.subtotal ?? purchase.total)}</p>
+          {Number(purchase.ivaPercent) > 0 && (
+            <p className="text-xs text-blue-600 mt-0.5">IVA {Number(purchase.ivaPercent)}%: {formatCurrency(purchase.ivaAmount)}</p>
+          )}
+        </div>
+        <div className="bg-white rounded-xl border border-border-primary p-4 shadow-card">
           <p className="text-xs text-muted-foreground mb-1">Total</p>
-          <p className="text-lg font-bold text-foreground">{formatCurrency(purchase.total)}</p>
+          <p className="text-lg font-bold text-glamor-primary">{formatCurrency(purchase.total)}</p>
         </div>
         <div className="bg-white rounded-xl border border-border-primary p-4 shadow-card">
           <p className="text-xs text-muted-foreground mb-1">Estado pago</p>
           <StatusBadge status={purchase.paymentStatus} colors={PAYMENT_STATUS_COLORS} />
-        </div>
-        <div className="bg-white rounded-xl border border-border-primary p-4 shadow-card">
-          <p className="text-xs text-muted-foreground mb-1">Items</p>
-          <p className="text-lg font-bold text-foreground">{purchase.items?.length || 0}</p>
         </div>
       </div>
 

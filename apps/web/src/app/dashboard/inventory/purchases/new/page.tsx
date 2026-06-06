@@ -29,6 +29,7 @@ function NewPurchaseForm() {
   const [selectedSupplier, setSelectedSupplier] = useState(prefilledSupplierId);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [notes, setNotes] = useState('');
+  const [ivaPercent, setIvaPercent] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [productSearch, setProductSearch] = useState('');
@@ -89,7 +90,9 @@ function NewPurchaseForm() {
     ));
   };
 
-  const total = cart.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+  const subtotal = cart.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+  const ivaAmount = subtotal * (ivaPercent / 100);
+  const total = subtotal + ivaAmount;
 
   const handleSave = async () => {
     if (!selectedSupplier) return setError('Selecciona un proveedor');
@@ -100,6 +103,7 @@ function NewPurchaseForm() {
     try {
       await api.post('/purchases', {
         supplierId: selectedSupplier,
+        ivaPercent,
         notes: notes.trim() || undefined,
         items: cart.map(i => ({
           productId: i.productId,
@@ -247,14 +251,41 @@ function NewPurchaseForm() {
           </div>
         )}
 
+        {/* IVA Selector */}
+        <div>
+          <label className={labelClass}>IVA de la compra</label>
+          <div className="flex gap-2">
+            {[0, 19].map(rate => (
+              <button
+                key={rate}
+                type="button"
+                onClick={() => setIvaPercent(rate)}
+                className={`h-9 px-4 rounded-lg text-sm font-medium border transition ${
+                  ivaPercent === rate
+                    ? 'bg-glamor-primary text-white border-glamor-primary'
+                    : 'bg-white text-foreground border-border-primary hover:bg-surface-hover'
+                }`}
+              >
+                {rate === 0 ? 'Sin IVA' : `IVA ${rate}%`}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Totals */}
         {cart.length > 0 && (
           <div className="flex justify-end">
-            <div className="bg-surface-primary/30 rounded-lg px-4 py-3 min-w-[200px]">
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-muted-foreground">Items:</span>
-                <span className="font-medium text-foreground">{cart.length}</span>
+            <div className="bg-surface-primary/30 rounded-lg px-4 py-3 min-w-[220px] space-y-1">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal:</span>
+                <span className="font-medium text-foreground">{formatCurrency(subtotal)}</span>
               </div>
+              {ivaPercent > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">IVA ({ivaPercent}%):</span>
+                  <span className="font-medium text-blue-600">{formatCurrency(ivaAmount)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-lg font-bold border-t border-border-primary pt-2 mt-1">
                 <span className="text-foreground">Total:</span>
                 <span className="text-glamor-primary">{formatCurrency(total)}</span>

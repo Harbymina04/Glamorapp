@@ -63,6 +63,41 @@ export class EmailService {
     return this.send(to, subject, html);
   }
 
+  /** Send with optional PDF attachment and CC recipients */
+  async sendWithAttachment(opts: {
+    to: string;
+    cc?: string[];
+    subject: string;
+    html: string;
+    attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>;
+  }): Promise<void> {
+    if (!this.enabled) {
+      this.logger.debug(`[Email disabled] To: ${opts.to} | Subject: ${opts.subject}`);
+      return;
+    }
+    if (this.useResendApi) {
+      await this.sendViaResendApiWithAttachment(opts);
+      return;
+    }
+    try {
+      await this.transporter.sendMail({
+        from: this.from,
+        to: opts.to,
+        cc: opts.cc?.join(', '),
+        subject: opts.subject,
+        html: opts.html,
+        attachments: opts.attachments?.map(a => ({
+          filename: a.filename,
+          content: a.content,
+          contentType: a.contentType ?? 'application/pdf',
+        })),
+      });
+      this.logger.log(`Email sent to ${opts.to}: ${opts.subject}`);
+    } catch (err: any) {
+      this.logger.error(`Failed to send email to ${opts.to}: ${err.message}`);
+    }
+  }
+
   private async send(to: string, subject: string, html: string): Promise<void> {
     if (!this.enabled) {
       this.logger.debug(`[Email disabled] To: ${to} | Subject: ${subject}`);
@@ -101,6 +136,68 @@ export class EmailService {
     } catch (err: any) {
       this.logger.error(`Resend API fetch failed to ${to}: ${err.message}`);
     }
+  }
+
+  private async sendViaResendApiWithAttachment(opts: {
+    to: string;
+    cc?: string[];
+    subject: string;
+    html: string;
+    attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>;
+  }): Promise<void> {
+    try {
+      const body: any = {
+        from: this.from,
+        to: opts.to,
+        subject: opts.subject,
+        html: opts.html,
+      };
+      if (opts.cc?.length) body.cc = opts.cc;
+      if (opts.attachments?.length) {
+        body.attachments = opts.attachments.map(a => ({
+          filename: a.filename,
+          content: a.content.toString('base64'),
+        }));
+      }
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json() as any;
+      if (!res.ok) {
+        this.logger.error(`Resend API error to ${opts.to}: ${JSON.stringify(data)}`);
+      } else {
+        this.logger.log(`Email+attachment sent via Resend to ${opts.to}: ${opts.subject} (id: ${data.id})`);
+      }
+    } catch (err: any) {
+      this.logger.error(`Resend API fetch failed to ${opts.to}: ${err.message}`);
+    }
+  }
+
+  async sendPurchaseOrder(opts: {
+    to: string;
+    cc?: string[];
+    purchaseNumber: string;
+    supplierName: string;
+    storeName: string;
+    storeColor?: string;
+    total: number;
+    itemCount: number;
+    pdfBuffer: Buffer;
+  }): Promise<void> {
+    const subject = `📦 Orden de Compra ${opts.purchaseNumber} – ${opts.storeName}`;
+    const html = this.purchaseOrderTemplate(opts);
+    await this.sendWithAttachment({
+      to: opts.to,
+      cc: opts.cc,
+      subject,
+      html,
+      attachments: [{ filename: `OC-${opts.purchaseNumber}.pdf`, content: opts.pdfBuffer }],
+    });
   }
 
   async sendAppointmentCreated(data: AppointmentEmailData): Promise<void> {
@@ -257,5 +354,56 @@ export class EmailService {
         O copia este enlace en tu navegador: ${resetUrl}
       </p>
     `);
+  }
+
+  private purchaseOrderTemplate(opts: {
+    purchaseNumber: string;
+    supplierName: string;
+    storeName: string;
+    storeColor?: string;
+    total: number;
+    itemCount: number;
+  }): string {
+    const color = opts.storeColor && /^#[0-9A-Fa-f]{6}$/.test(opts.storeColor) ? opts.storeColor : '#1a1a2e';
+    const totalFmt = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(opts.total);
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; background: #f3f4f6; }
+  .wrap { max-width: 580px; margin: 32px auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 8px rgba(0,0,0,.08); }
+  .header { background: ${color}; padding: 28px 32px; }
+  .header h1 { margin: 0; color: #fff; font-size: 20px; font-weight: 800; }
+  .header p  { margin: 4px 0 0; color: rgba(255,255,255,.75); font-size: 13px; }
+  .body { padding: 28px 32px; }
+  .body p { color: #374151; font-size: 14px; line-height: 1.6; margin: 0 0 16px; }
+  table.info { width: 100%; border-collapse: collapse; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin: 20px 0; }
+  table.info td { padding: 11px 16px; font-size: 13px; }
+  table.info tr:nth-child(odd) td { background: #f9fafb; }
+  table.info td:first-child { color: #6b7280; font-weight: 600; width: 42%; }
+  table.info td:last-child  { color: #111827; font-weight: 500; }
+  .total-row td { border-top: 2px solid ${color} !important; }
+  .total-row td:first-child { color: #374151; font-size: 14px; font-weight: 700; }
+  .total-row td:last-child  { color: ${color}; font-size: 18px; font-weight: 800; }
+  .footer { background: #f9fafb; border-top: 1px solid #e5e7eb; padding: 16px 32px; text-align: center; color: #9ca3af; font-size: 12px; }
+</style></head><body>
+<div class="wrap">
+  <div class="header">
+    <h1>${opts.storeName}</h1>
+    <p>Orden de Compra · ${opts.purchaseNumber}</p>
+  </div>
+  <div class="body">
+    <p>Se ha generado una nueva orden de compra que requiere tu atención.</p>
+    <table class="info">
+      <tr><td>Número de OC</td><td><strong>${opts.purchaseNumber}</strong></td></tr>
+      <tr><td>Proveedor</td><td>${opts.supplierName}</td></tr>
+      <tr><td>Emitido por</td><td>${opts.storeName}</td></tr>
+      <tr><td>Productos</td><td>${opts.itemCount} ítem${opts.itemCount !== 1 ? 's' : ''}</td></tr>
+      <tr class="total-row"><td>TOTAL</td><td>${totalFmt}</td></tr>
+    </table>
+    <p>Se adjunta el PDF con el detalle completo: productos, cantidades, precios e IVA.</p>
+    <p style="color:#6b7280; font-size:13px;">Por favor revisa el documento adjunto y coordina el despacho según las condiciones acordadas.</p>
+  </div>
+  <div class="footer">${opts.storeName} · Documento generado automáticamente</div>
+</div>
+</body></html>`;
   }
 }

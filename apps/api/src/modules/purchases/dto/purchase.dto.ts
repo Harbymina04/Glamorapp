@@ -19,6 +19,11 @@ export class CreatePurchaseDto {
   supplierId: string;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  ivaPercent?: number;
+
+  @IsOptional()
   @IsString()
   notes?: string;
 

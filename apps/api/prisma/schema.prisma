@@ -865,6 +865,9 @@ model Purchase {
   supplierId      String         @map("supplier_id") @db.Uuid
   supplier        Supplier       @relation(fields: [supplierId], references: [id])
   purchaseNumber  String         @map("purchase_number") @db.VarChar(20)
+  subtotal        Decimal        @default(0) @db.Decimal(12, 2)
+  ivaPercent      Decimal        @default(0) @map("iva_percent") @db.Decimal(5, 2)
+  ivaAmount       Decimal        @default(0) @map("iva_amount") @db.Decimal(12, 2)
   total           Decimal        @db.Decimal(12, 2)
   status          PurchaseStatus @default(pending)
   paymentStatus   ExpenseStatus  @default(pending) @map("payment_status")

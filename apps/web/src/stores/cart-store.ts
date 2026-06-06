@@ -16,12 +16,14 @@ interface CartState {
   customerId: string | null;
   customerName: string | null;
   discountPercent: number;
+  taxPercent: number;
   addItem: (item: Omit<CartItem, 'id'>) => void;
   removeItem: (id: string) => void;
   updateQuantity: (id: string, qty: number) => void;
   clearCart: () => void;
   setCustomer: (id: string, name: string) => void;
   setDiscount: (percent: number) => void;
+  setTaxPercent: (percent: number) => void;
   getSubtotal: () => number;
   getDiscountAmount: () => number;
   getTax: () => number;
@@ -33,6 +35,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   customerId: null,
   customerName: null,
   discountPercent: 0,
+  taxPercent: 19,
 
   addItem: (item) => {
     const items = get().items;
@@ -58,6 +61,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   clearCart: () => set({ items: [], customerId: null, customerName: null, discountPercent: 0 }),
   setCustomer: (id, name) => set({ customerId: id, customerName: name }),
   setDiscount: (percent) => set({ discountPercent: percent }),
+  setTaxPercent: (percent) => set({ taxPercent: percent }),
 
   getSubtotal: () => get().items.reduce((s, i) => s + i.unitPrice * i.quantity, 0),
   getDiscountAmount: () => {
@@ -66,14 +70,14 @@ export const useCartStore = create<CartState>((set, get) => ({
     return subtotal * (discountPercent / 100);
   },
   getTax: () => {
-    const { discountPercent, items } = get();
+    const { discountPercent, items, taxPercent } = get();
     const subtotal = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-    return (subtotal - subtotal * (discountPercent / 100)) * 0.16;
+    return (subtotal - subtotal * (discountPercent / 100)) * (taxPercent / 100);
   },
   getTotal: () => {
-    const { discountPercent, items } = get();
+    const { discountPercent, items, taxPercent } = get();
     const subtotal = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
     const discount = subtotal * (discountPercent / 100);
-    return (subtotal - discount) * 1.16;
+    return (subtotal - discount) * (1 + taxPercent / 100);
   },
 }));

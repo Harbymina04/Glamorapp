@@ -7,6 +7,7 @@ import {
   Param,
   Query,
   UseGuards,
+  Patch,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { PurchasesService } from './purchases.service';
@@ -93,6 +94,17 @@ export class PurchasesController {
     @Body() d: ReceivePurchaseDto,
   ) {
     return this.service.receive(t, s, id, d, userId);
+  }
+
+  @Patch(':id/mark-paid')
+  markAsPaid(
+    @TenantId() t: string,
+    @StoreId() s: string,
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @Body() d: { paymentMethod?: string; paymentDate?: string; notes?: string },
+  ) {
+    return this.service.markAsPaid(t, s, id, d, userId);
   }
 
   @Post(':id/cancel')

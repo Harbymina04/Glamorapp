@@ -147,6 +147,17 @@ function POSContent() {
       .catch(() => {});
   }, [token]);
 
+  // Load IVA rate from tenant tax config
+  useEffect(() => {
+    if (!token) return;
+    api.get('/accounting/tax-rates', { token })
+      .then((rates: any[]) => {
+        const defaultIva = (rates || []).find((r: any) => r.taxType === 'iva' && r.isDefault);
+        if (defaultIva) cart.setTaxPercent(Number(defaultIva.rate));
+      })
+      .catch(() => {});
+  }, [token]);
+
   // Load cash register session
   useEffect(() => {
     if (!token) return;
@@ -246,6 +257,7 @@ function POSContent() {
     try {
       const sale = await api.post('/sales', {
         customerId: cart.customerId || undefined, discountPercent: cart.discountPercent,
+        taxPercent: cart.taxPercent,
         items: cart.items.map(i => ({
           productId: i.productId, serviceId: i.serviceId, itemType: i.itemType,
           name: i.name, quantity: i.quantity, unitPrice: i.unitPrice, discountAmount: i.discountAmount,
@@ -784,7 +796,7 @@ function POSContent() {
           </div>
           <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
           <div className="flex justify-between text-sm"><span className="text-muted-foreground">Descuento</span><span className="text-red-500">-{formatCurrency(discount)}</span></div>
-          <div className="flex justify-between text-sm"><span className="text-muted-foreground">IVA (16%)</span><span>{formatCurrency(tax)}</span></div>
+          <div className="flex justify-between text-sm"><span className="text-muted-foreground">IVA ({cart.taxPercent}%)</span><span>{formatCurrency(tax)}</span></div>
           <div className="flex justify-between text-lg font-bold pt-2 border-t border-border-primary"><span>Total</span><span className="text-glamor-primary">{formatCurrency(total)}</span></div>
           {/* Notes */}
           <input value={saleNotes} onChange={e => setSaleNotes(e.target.value)} placeholder="Notas de venta (opcional)" className="w-full h-8 px-2 rounded-lg border border-border-primary text-xs bg-white focus:outline-none focus:ring-2 focus:ring-glamor-primary/20" />

@@ -27,6 +27,7 @@ const ACCOUNTING_LINKS = [
   { name: 'Resumen', href: '/tenant/accounting', icon: Calculator },
   { name: 'Facturas', href: '/tenant/accounting/invoices', icon: FileText },
   { name: 'Impuestos', href: '/tenant/accounting/taxes', icon: Receipt },
+  { name: 'Tarifas IVA', href: '/tenant/accounting/tax-rates', icon: Receipt },
   { name: 'Liquidación', href: '/tenant/accounting/liquidacion', icon: ScrollText },
   { name: 'Config. fiscal', href: '/tenant/accounting/config', icon: Building2 },
   { name: 'Proveedor FE', href: '/tenant/accounting/fe-provider', icon: Zap },

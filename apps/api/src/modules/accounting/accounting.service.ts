@@ -801,6 +801,7 @@ export class AccountingService {
     const conceptLabels: Record<string, string> = {
       sales:               'Ingresos propios (servicios)',
       operational_expense: 'Compras y servicios',
+      inventory_purchase:  'Compra de inventario',
       payroll:             'Pagos laborales',
       rent:                'Arrendamientos',
       honorarios:          'Honorarios',
