@@ -44,6 +44,10 @@ export class CreateDiscountDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  applyToStorefront?: boolean;
 }
 
 export class UpdateDiscountDto extends CreateDiscountDto {}

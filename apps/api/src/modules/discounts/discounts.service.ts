@@ -50,6 +50,26 @@ export class DiscountsService {
     });
   }
 
+  // ── Active (for Storefront — public, by tenantId) ───────────────
+
+  async findActiveStorefront(tenantId: string) {
+    const now = new Date();
+    return this.prisma.discount.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        applyToStorefront: true,
+        // exclude services-only discounts (storefront only sells products)
+        scope: { not: 'services' },
+        AND: [
+          { OR: [{ startDate: null }, { startDate: { lte: now } }] },
+          { OR: [{ endDate: null },   { endDate:   { gte: now } }] },
+        ],
+      },
+      orderBy: { discountPercent: 'desc' },
+    });
+  }
+
   // ── Single ──────────────────────────────────────────────────────
 
   async findOne(tenantId: string, storeId: string, id: string) {
@@ -74,8 +94,9 @@ export class DiscountsService {
         targetIds: dto.targetIds ?? [],
         startDate: dto.startDate ? new Date(dto.startDate) : null,
         endDate:   dto.endDate   ? new Date(dto.endDate)   : null,
-        isActive: dto.isActive ?? true,
-        createdBy: userId ?? null,
+        isActive:          dto.isActive ?? true,
+        applyToStorefront: dto.applyToStorefront ?? false,
+        createdBy:         userId ?? null,
       },
     });
   }
@@ -94,7 +115,8 @@ export class DiscountsService {
         targetIds:       dto.targetIds ?? [],
         startDate:       dto.startDate ? new Date(dto.startDate) : null,
         endDate:         dto.endDate   ? new Date(dto.endDate)   : null,
-        isActive:        dto.isActive ?? true,
+        isActive:          dto.isActive ?? true,
+        applyToStorefront: dto.applyToStorefront ?? false,
       },
     });
   }

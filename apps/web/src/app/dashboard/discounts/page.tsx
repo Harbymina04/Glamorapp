@@ -37,6 +37,7 @@ function getStatus(d: any): DiscountStatus {
 const emptyForm = {
   name: '', description: '', discountPercent: '', scope: 'all',
   targetIds: [] as string[], startDate: '', endDate: '', isActive: true,
+  applyToStorefront: false,
 };
 
 const inputCls = 'w-full h-10 px-3 rounded-lg border border-border-primary text-sm bg-white focus:outline-none focus:ring-2 focus:ring-glamor-primary/20 focus:border-glamor-primary transition';
@@ -84,6 +85,7 @@ export default function DiscountsPage() {
       startDate: d.startDate ? d.startDate.slice(0, 10) : '',
       endDate:   d.endDate   ? d.endDate.slice(0, 10)   : '',
       isActive: d.isActive,
+      applyToStorefront: d.applyToStorefront ?? false,
     });
     setEditId(d.id); setError(''); setShowForm(true);
   };
@@ -99,6 +101,7 @@ export default function DiscountsPage() {
         discountPercent: pct, scope: form.scope, targetIds: form.targetIds,
         startDate: form.startDate || undefined, endDate: form.endDate || undefined,
         isActive: form.isActive,
+        applyToStorefront: form.applyToStorefront,
       };
       if (editId) await api.put(`/discounts/${editId}`, payload, { token: token! });
       else await api.post('/discounts', payload, { token: token! });
@@ -226,11 +229,21 @@ export default function DiscountsPage() {
             <input className={inputCls} placeholder="Notas internas..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
           </div>
 
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={form.isActive} onChange={e => setForm(f => ({ ...f, isActive: e.target.checked }))}
-              className="w-4 h-4 rounded accent-glamor-primary" />
-            <span className="text-sm text-foreground">Activa al guardar</span>
-          </label>
+          <div className="flex flex-col gap-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={form.isActive} onChange={e => setForm(f => ({ ...f, isActive: e.target.checked }))}
+                className="w-4 h-4 rounded accent-glamor-primary" />
+              <span className="text-sm text-foreground">Activa al guardar</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={form.applyToStorefront} onChange={e => setForm(f => ({ ...f, applyToStorefront: e.target.checked }))}
+                className="w-4 h-4 rounded accent-glamor-primary" />
+              <span className="text-sm text-foreground">
+                Aplicar también en la <strong>Tienda Virtual</strong>
+                <span className="ml-1 text-xs text-muted-foreground">(muestra precio tachado y badge en el catálogo online)</span>
+              </span>
+            </label>
+          </div>
 
           <div className="flex justify-end gap-3 pt-2 border-t border-border-primary">
             <button onClick={() => setShowForm(false)} className="h-9 px-4 rounded-lg border border-border-primary text-sm text-muted-foreground hover:bg-surface-hover transition">Cancelar</button>

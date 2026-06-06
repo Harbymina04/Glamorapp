@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Search, SlidersHorizontal, X, Heart, AlertCircle, Loader2 } from 'lucide-react';
 import { ProductCard } from '@/components/store/ProductCard';
 import { storeApi, formatCOP } from '@/lib/store-utils';
-import { useStoreCart } from '@/stores/store-cart';
+import { useStoreCart, getStorefrontDiscount } from '@/stores/store-cart';
 
 const SORT_OPTIONS = [
   { value: 'default', label: 'Relevancia' },
@@ -27,6 +27,7 @@ function CatalogoContent() {
   const { isFavorite } = useStoreCart();
 
   const [products, setProducts] = useState<any[]>([]);
+  const [storefrontDiscounts, setStorefrontDiscounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(false);
@@ -66,7 +67,21 @@ function CatalogoContent() {
       .finally(() => setter(false));
   };
 
-  useEffect(() => { fetchProducts(true); }, []);
+  useEffect(() => {
+    fetchProducts(true);
+    // Load discounts after products arrive — re-fetch when products list changes
+  }, []);
+
+  // Load storefront discounts once products are available
+  useEffect(() => {
+    if (!products.length) return;
+    const tenantIds = [...new Set(products.map((p: any) => p.tenantId).filter(Boolean))] as string[];
+    Promise.all(
+      tenantIds.map(tid =>
+        storeApi.get(`/storefront/public/discounts?tenantId=${tid}`).catch(() => []),
+      ),
+    ).then(results => setStorefrontDiscounts((results as any[][]).flat()));
+  }, [products.length]);
 
   const filtered = useMemo(() => {
     let result = [...products];
@@ -171,11 +186,25 @@ function CatalogoContent() {
           ) : (
             <>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {filtered.map(p => (
-                  <ProductCard key={p.id} id={p.id} name={p.name}
-                    price={Number(p.salePrice)} imageUrl={p.images?.[0]?.url}
-                    category={p.category?.name} tenantId={p.tenantId} />
-                ))}
+                {filtered.map(p => {
+                  const basePrice = Number(p.salePrice || 0);
+                  const disc = getStorefrontDiscount(
+                    { id: p.id, categoryId: p.categoryId, tenantId: p.tenantId },
+                    storefrontDiscounts,
+                  );
+                  const effectivePrice = disc
+                    ? Math.round(basePrice * (1 - Number(disc.discountPercent) / 100))
+                    : basePrice;
+                  return (
+                    <ProductCard key={p.id} id={p.id} name={p.name}
+                      price={effectivePrice}
+                      oldPrice={disc ? basePrice : undefined}
+                      imageUrl={p.images?.[0]?.url}
+                      category={p.category?.name}
+                      categoryId={p.categoryId}
+                      tenantId={p.tenantId} />
+                  );
+                })}
               </div>
               {hasMore && !debouncedSearch && category === 'Todos' && !minPrice && !maxPrice && !onlyFavs && (
                 <div className="flex justify-center mt-8">

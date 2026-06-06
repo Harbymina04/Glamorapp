@@ -18,6 +18,7 @@ interface ProductCardProps {
   shopName?: string;
   imageUrl?: string;
   category?: string;
+  categoryId?: string;
   tenantId?: string;
 }
 
@@ -32,7 +33,7 @@ const CATEGORY_GRADIENTS: Record<string, string> = {
 
 export function ProductCard({
   id, name, brand, price, oldPrice, rating = 0, reviewCount = 0,
-  shopName, imageUrl, category, tenantId = '',
+  shopName, imageUrl, category, categoryId, tenantId = '',
 }: ProductCardProps) {
   const { addItem, toggleFavorite, isFavorite } = useStoreCart();
   const [toastMsg, setToastMsg] = useState('');
@@ -43,7 +44,12 @@ export function ProductCard({
   const discount = oldPrice ? Math.round((1 - price / oldPrice) * 100) : 0;
 
   const handleAdd = () => {
-    addItem({ productId: id, name, price, shopName: shopName || '', tenantId, imageUrl });
+    addItem({
+      productId: id, name, price,
+      originalPrice: oldPrice ?? undefined,
+      discountPercent: discount > 0 ? discount : undefined,
+      shopName: shopName || '', tenantId, imageUrl, categoryId,
+    });
   };
 
   const handleFavorite = (e: React.MouseEvent) => {

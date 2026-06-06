@@ -17,6 +17,7 @@ import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { StorefrontService } from './storefront.service';
 import { StorefrontChatService } from './storefront-chat.service';
+import { DiscountsService } from '../discounts/discounts.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -29,6 +30,7 @@ export class StorefrontController {
   constructor(
     private service: StorefrontService,
     private chatService: StorefrontChatService,
+    private discounts: DiscountsService,
   ) {}
 
   // ── Public (no auth) ─────────────────────────────────────
@@ -51,6 +53,13 @@ export class StorefrontController {
   @ApiOperation({ summary: 'List active storefronts (public)' })
   getPublic(@Query() query: any) {
     return this.service.getPublicStorefronts(query);
+  }
+
+  @Get('public/discounts')
+  @ApiOperation({ summary: 'Get active storefront discounts for a tenant (public)' })
+  getPublicDiscounts(@Query('tenantId') tenantId: string) {
+    if (!tenantId) return [];
+    return this.discounts.findActiveStorefront(tenantId);
   }
 
   @Get('public/products')

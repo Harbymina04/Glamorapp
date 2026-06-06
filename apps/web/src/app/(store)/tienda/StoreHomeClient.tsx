@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Sparkles, X, Heart, Clock, Store as StoreIcon } from 'lucide-react';
 import { ProductCard } from '@/components/store/ProductCard';
 import { NailDesignCard } from '@/components/store/NailDesignCard';
-import { formatCOP, categoryColors } from '@/lib/store-utils';
-import { useStoreCart } from '@/stores/store-cart';
+import { formatCOP, categoryColors, storeApi } from '@/lib/store-utils';
+import { useStoreCart, getStorefrontDiscount } from '@/stores/store-cart';
 import { useAuthStore } from '@/stores/auth-store';
 import { getToken } from '@/lib/auth';
 import { StoreChatbot } from '@/components/store/StoreChatbot';
@@ -86,6 +86,20 @@ interface Props {
 export function StoreHomeClient({ shops, products, designs, bannerUrl }: Props) {
   const [activeCategory, setActiveCategory] = useState('Todos');
   const [selectedDesign, setSelectedDesign] = useState<any>(null);
+  const [storefrontDiscounts, setStorefrontDiscounts] = useState<any[]>([]);
+
+  // Load storefront discounts per unique tenant in product list
+  useEffect(() => {
+    const tenantIds = [...new Set(products.map((p: any) => p.tenantId).filter(Boolean))] as string[];
+    if (!tenantIds.length) return;
+    Promise.all(
+      tenantIds.map(tid =>
+        storeApi.get(`/storefront/public/discounts?tenantId=${tid}`).catch(() => []),
+      ),
+    ).then(results => {
+      setStorefrontDiscounts((results as any[][]).flat());
+    });
+  }, [products]);
 
   const filteredProducts = activeCategory === 'Todos'
     ? products
@@ -155,13 +169,26 @@ export function StoreHomeClient({ shops, products, designs, bannerUrl }: Props) 
             <div className="text-center py-12 text-gray-400"><p>No hay productos en esta categoría</p></div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {filteredProducts.slice(0, 10).map(p => (
-                <ProductCard key={p.id} id={p.id} name={p.name}
-                  price={Number(p.salePrice || p.price || 0)}
-                  imageUrl={p.images?.[0]?.url || p.imageUrl}
-                  category={p.category?.name} shopName={p.brand?.name || ''}
-                  tenantId={p.tenantId} />
-              ))}
+              {filteredProducts.slice(0, 10).map(p => {
+                const basePrice = Number(p.salePrice || p.price || 0);
+                const disc = getStorefrontDiscount(
+                  { id: p.id, categoryId: p.categoryId, tenantId: p.tenantId },
+                  storefrontDiscounts,
+                );
+                const effectivePrice = disc
+                  ? Math.round(basePrice * (1 - Number(disc.discountPercent) / 100))
+                  : basePrice;
+                return (
+                  <ProductCard key={p.id} id={p.id} name={p.name}
+                    price={effectivePrice}
+                    oldPrice={disc ? basePrice : undefined}
+                    imageUrl={p.images?.[0]?.url || p.imageUrl}
+                    category={p.category?.name}
+                    categoryId={p.categoryId}
+                    shopName={p.brand?.name || ''}
+                    tenantId={p.tenantId} />
+                );
+              })}
             </div>
           )}
         </section>

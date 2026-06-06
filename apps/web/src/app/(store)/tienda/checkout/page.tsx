@@ -36,7 +36,7 @@ const STEPS = ['Carrito', 'Datos', 'Pago', 'Confirmación'];
 // ─── Component ───────────────────────────────────────────────────
 
 export default function CheckoutPage() {
-  const { items, total, clearCart } = useStoreCart();
+  const { items, total, subtotalBeforeDiscounts, totalDiscountAmount, clearCart } = useStoreCart();
   const [step, setStep]             = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -394,8 +394,14 @@ export default function CheckoutPage() {
                 <span>{items.reduce((s, i) => s + i.qty, 0)} productos de {Object.keys(grouped).length} tienda{Object.keys(grouped).length !== 1 ? 's' : ''}</span>
               </div>
               <div className="flex justify-between text-gray-600">
-                <span>Subtotal</span><span>{formatCOP(total())}</span>
+                <span>Subtotal</span><span>{formatCOP(subtotalBeforeDiscounts())}</span>
               </div>
+              {totalDiscountAmount() > 0 && (
+                <div className="flex justify-between text-green-600 font-medium">
+                  <span>🎉 Descuentos</span>
+                  <span>-{formatCOP(totalDiscountAmount())}</span>
+                </div>
+              )}
               <div className="flex justify-between text-green-600">
                 <span>Envío</span><span className="font-medium">Gratis</span>
               </div>
