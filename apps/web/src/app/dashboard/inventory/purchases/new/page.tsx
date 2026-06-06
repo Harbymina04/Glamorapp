@@ -26,6 +26,7 @@ function NewPurchaseForm() {
 
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [supplierPrices, setSupplierPrices] = useState<Record<string, number>>({}); // productId → supplier price
   const [selectedSupplier, setSelectedSupplier] = useState(prefilledSupplierId);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [notes, setNotes] = useState('');
@@ -40,6 +41,8 @@ function NewPurchaseForm() {
     api.get('/suppliers?limit=100', { token }).then(res => {
       setSuppliers(res.data || []);
     });
+    // Load supplier prices if supplier was prefilled via URL param
+    if (prefilledSupplierId) handleSupplierChange(prefilledSupplierId);
     api.get('/products?limit=200', { token }).then(res => {
       const prods = res.data || [];
       setProducts(prods);
@@ -61,6 +64,23 @@ function NewPurchaseForm() {
     });
   }, [token, prefilledProductId]);
 
+  // Load supplier prices when supplier changes
+  const handleSupplierChange = async (supplierId: string) => {
+    setSelectedSupplier(supplierId);
+    setSupplierPrices({});
+    if (!supplierId || !token) return;
+    try {
+      const spList = await api.get(`/suppliers/${supplierId}/products`, { token });
+      const map: Record<string, number> = {};
+      for (const sp of spList || []) {
+        if (sp.productId && sp.supplierPrice != null) {
+          map[sp.productId] = Number(sp.supplierPrice);
+        }
+      }
+      setSupplierPrices(map);
+    } catch { /* ignore */ }
+  };
+
   const filteredProducts = products.filter(p =>
     p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
     (p.sku && p.sku.toLowerCase().includes(productSearch.toLowerCase()))
@@ -68,12 +88,14 @@ function NewPurchaseForm() {
 
   const addToCart = (product: any) => {
     if (cart.find(i => i.productId === product.id)) return;
+    // Use supplier price if available, otherwise fall back to cost price
+    const unitPrice = supplierPrices[product.id] ?? Number(product.costPrice) ?? 0;
     setCart(prev => [...prev, {
       productId: product.id,
       productName: product.name,
       productSku: product.sku || '',
       quantity: 1,
-      unitPrice: Number(product.costPrice) || 0,
+      unitPrice,
       stock: product.currentStock,
     }]);
     setProductSearch('');
@@ -145,7 +167,7 @@ function NewPurchaseForm() {
           <select
             className={inputClass}
             value={selectedSupplier}
-            onChange={e => setSelectedSupplier(e.target.value)}
+            onChange={e => handleSupplierChange(e.target.value)}
           >
             <option value="">Seleccionar proveedor...</option>
             {suppliers.map((s: any) => (
@@ -172,20 +194,32 @@ function NewPurchaseForm() {
             </div>
             {showProductList && productSearch && (
               <div className="absolute z-10 mt-1 w-full bg-white border border-border-primary rounded-lg shadow-lg max-h-60 overflow-auto">
-                {filteredProducts.slice(0, 20).map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => addToCart(p)}
-                    disabled={cart.some(i => i.productId === p.id)}
-                    className="w-full text-left px-4 py-2.5 hover:bg-surface-hover text-sm flex items-center justify-between disabled:opacity-40"
-                  >
-                    <div>
-                      <p className="font-medium text-foreground">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">SKU: {p.sku || '—'} · Stock: {p.currentStock}</p>
-                    </div>
-                    <span className="text-xs text-muted-foreground">Costo: {formatCurrency(p.costPrice)}</span>
-                  </button>
-                ))}
+                {filteredProducts.slice(0, 20).map(p => {
+                  const hasSupplierPrice = supplierPrices[p.id] != null;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => addToCart(p)}
+                      disabled={cart.some(i => i.productId === p.id)}
+                      className="w-full text-left px-4 py-2.5 hover:bg-surface-hover text-sm flex items-center justify-between disabled:opacity-40"
+                    >
+                      <div>
+                        <p className="font-medium text-foreground">{p.name}</p>
+                        <p className="text-xs text-muted-foreground">SKU: {p.sku || '—'} · Stock: {p.currentStock}</p>
+                      </div>
+                      <div className="text-right">
+                        {hasSupplierPrice ? (
+                          <>
+                            <p className="text-xs font-semibold text-glamor-primary">{formatCurrency(supplierPrices[p.id])} <span className="text-[10px]">proveedor</span></p>
+                            <p className="text-[10px] text-muted-foreground line-through">Costo: {formatCurrency(p.costPrice)}</p>
+                          </>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Costo: {formatCurrency(p.costPrice)}</span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
                 {filteredProducts.length === 0 && (
                   <p className="px-4 py-3 text-sm text-muted-foreground text-center">No se encontraron productos</p>
                 )}
