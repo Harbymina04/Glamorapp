@@ -25,6 +25,7 @@ export class PayoutsService {
       minPayoutAmount?: number;
       storeBannerUrl?: string | null;
       storeVideoUrl?: string | null;
+      platformLogoUrl?: string | null;
     },
     updatedBy: string,
   ) {
@@ -32,17 +33,19 @@ export class PayoutsService {
       where: { id: CONFIG_ID },
       create: {
         id: CONFIG_ID,
-        commissionRate: dto.commissionRate ?? 0.03,
-        minPayoutAmount: dto.minPayoutAmount ?? 50000,
-        storeBannerUrl: dto.storeBannerUrl ?? null,
-        storeVideoUrl: dto.storeVideoUrl ?? null,
+        commissionRate:   dto.commissionRate   ?? 0.03,
+        minPayoutAmount:  dto.minPayoutAmount  ?? 50000,
+        storeBannerUrl:   dto.storeBannerUrl   ?? null,
+        storeVideoUrl:    dto.storeVideoUrl    ?? null,
+        platformLogoUrl:  dto.platformLogoUrl  ?? null,
         updatedBy,
       },
       update: {
-        ...(dto.commissionRate !== undefined ? { commissionRate: dto.commissionRate } : {}),
+        ...(dto.commissionRate  !== undefined ? { commissionRate:  dto.commissionRate  } : {}),
         ...(dto.minPayoutAmount !== undefined ? { minPayoutAmount: dto.minPayoutAmount } : {}),
-        ...(dto.storeBannerUrl !== undefined ? { storeBannerUrl: dto.storeBannerUrl } : {}),
-        ...(dto.storeVideoUrl !== undefined ? { storeVideoUrl: dto.storeVideoUrl } : {}),
+        ...(dto.storeBannerUrl  !== undefined ? { storeBannerUrl:  dto.storeBannerUrl  } : {}),
+        ...(dto.storeVideoUrl   !== undefined ? { storeVideoUrl:   dto.storeVideoUrl   } : {}),
+        ...(dto.platformLogoUrl !== undefined ? { platformLogoUrl: dto.platformLogoUrl } : {}),
         updatedBy,
       },
     });
@@ -51,8 +54,9 @@ export class PayoutsService {
   async getPublicConfig() {
     const cfg = await this.getConfig();
     return {
-      storeBannerUrl: cfg.storeBannerUrl ?? null,
-      storeVideoUrl: cfg.storeVideoUrl ?? null,
+      storeBannerUrl:  cfg.storeBannerUrl  ?? null,
+      storeVideoUrl:   cfg.storeVideoUrl   ?? null,
+      platformLogoUrl: (cfg as any).platformLogoUrl ?? null,
     };
   }
 

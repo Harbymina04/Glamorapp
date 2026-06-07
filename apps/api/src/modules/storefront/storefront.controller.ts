@@ -57,6 +57,12 @@ export class StorefrontController {
     return this.service.getPublicStorefronts(query);
   }
 
+  @Get('public/config')
+  @ApiOperation({ summary: 'Get public platform config (logo, banner)' })
+  getPublicConfig() {
+    return this.service.getPublicConfig();
+  }
+
   @Get('public/discounts')
   @ApiOperation({ summary: 'Get active storefront discounts for a tenant (public)' })
   getPublicDiscounts(@Query('tenantId') tenantId: string) {

@@ -77,6 +77,27 @@ export class PayoutsController {
     return this.service.updateConfig({ storeBannerUrl: null }, req.user.id);
   }
 
+  /** POST /admin/payouts/config/logo — upload platform logo */
+  @Post('config/logo')
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 2 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      cb(null, /image\/(jpeg|jpg|png|webp|svg\+xml)/.test(file.mimetype));
+    },
+  }))
+  async uploadLogo(@UploadedFile() file: Express.Multer.File, @Request() req: any) {
+    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    const saved = await this.storage.saveFile(file, 'logos');
+    await this.service.updateConfig({ platformLogoUrl: saved.url }, req.user.id);
+    return { url: saved.url };
+  }
+
+  /** PUT /admin/payouts/config/logo/remove — remove platform logo */
+  @Put('config/logo/remove')
+  removeLogo(@Request() req: any) {
+    return this.service.updateConfig({ platformLogoUrl: null }, req.user.id);
+  }
+
   /** GET /admin/payouts/overview — platform earnings KPIs */
   @Get('overview')
   getOverview() {

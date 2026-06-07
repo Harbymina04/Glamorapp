@@ -506,6 +506,15 @@ export class StorefrontService {
   }
 
   // ── Public endpoints (no auth) ───────────────────────────
+  async getPublicConfig() {
+    const CONFIG_ID = '00000000-0000-0000-0000-000000000001';
+    const cfg = await this.prisma.platformConfig.findUnique({ where: { id: CONFIG_ID } });
+    return {
+      platformLogoUrl: (cfg as any)?.platformLogoUrl ?? null,
+      storeBannerUrl:  cfg?.storeBannerUrl  ?? null,
+    };
+  }
+
   async getPublicStorefronts(query: any) {
     const where: any = { isActive: true };
     if (query.q) where.displayName = { contains: query.q, mode: 'insensitive' };

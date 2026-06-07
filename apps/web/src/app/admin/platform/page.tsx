@@ -28,21 +28,26 @@ function buildEmbedUrl(videoId: string) {
 export default function PlatformConfigPage() {
   const { token } = useAuthStore();
   const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState('');
   const [videoInput, setVideoInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [removingLogo, setRemovingLogo] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [savingVideo, setSavingVideo] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+  const logoRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!token) return;
     api.get('/admin/payouts/config', { token })
       .then(cfg => {
         setBannerUrl(cfg.storeBannerUrl ?? null);
+        setLogoUrl(cfg.platformLogoUrl ?? null);
         const vid = cfg.storeVideoUrl ?? '';
         setVideoUrl(vid);
         setVideoInput(vid);
@@ -50,6 +55,40 @@ export default function PlatformConfigPage() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [token]);
+
+  const handleLogoUpload = async (file: File) => {
+    if (!token) return;
+    setUploadingLogo(true); setError('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${API_BASE}/api/v1/admin/payouts/config/logo`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) throw new Error((await res.json()).message || 'Error al subir');
+      const data = await res.json();
+      setLogoUrl(data.url);
+      showSuccess('Logo actualizado correctamente');
+    } catch (e: any) {
+      setError(e.message || 'Error al subir el logo');
+    } finally {
+      setUploadingLogo(false);
+      if (logoRef.current) logoRef.current.value = '';
+    }
+  };
+
+  const handleLogoRemove = async () => {
+    if (!token || !confirm('¿Eliminar el logo de la plataforma?')) return;
+    setRemovingLogo(true);
+    try {
+      await api.put('/admin/payouts/config/logo/remove', {}, { token });
+      setLogoUrl(null);
+      showSuccess('Logo eliminado');
+    } catch { setError('Error al eliminar el logo'); }
+    finally { setRemovingLogo(false); }
+  };
 
   const showSuccess = (msg: string) => {
     setSuccess(msg); setError('');
@@ -144,6 +183,54 @@ export default function PlatformConfigPage() {
         <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-glamor-primary" /></div>
       ) : (
         <>
+          {/* ── Logo de la plataforma ── */}
+          <div className="bg-white rounded-xl border shadow-sm p-6 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-glamor-primary/10 flex items-center justify-center">
+                <ImageIcon className="w-5 h-5 text-glamor-primary" />
+              </div>
+              <div>
+                <h2 className="font-semibold">Logo de la plataforma</h2>
+                <p className="text-sm text-muted-foreground">Aparece en el navbar de la tienda virtual. Recomendado: PNG transparente, alto máx 48 px.</p>
+              </div>
+            </div>
+
+            {logoUrl ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-4 p-4 border rounded-xl bg-gray-50">
+                  <img
+                    src={logoUrl.startsWith('http') ? logoUrl : `${API_BASE}${logoUrl}`}
+                    alt="Logo plataforma"
+                    className="h-12 w-auto object-contain rounded"
+                  />
+                  <div className="flex gap-2">
+                    <button onClick={() => logoRef.current?.click()} disabled={uploadingLogo}
+                      className="flex items-center gap-2 px-4 py-2 bg-glamor-primary text-white text-sm font-medium rounded-lg hover:bg-glamor-primary-hover transition disabled:opacity-50">
+                      {uploadingLogo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                      Cambiar logo
+                    </button>
+                    <button onClick={handleLogoRemove} disabled={removingLogo}
+                      className="flex items-center gap-2 px-4 py-2 border border-red-200 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition disabled:opacity-50">
+                      {removingLogo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div onClick={() => logoRef.current?.click()}
+                className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-glamor-primary/40 hover:bg-glamor-primary/5 transition">
+                {uploadingLogo
+                  ? <Loader2 className="w-8 h-8 animate-spin text-glamor-primary mx-auto mb-2" />
+                  : <Upload className="w-8 h-8 text-gray-300 mx-auto mb-2" />}
+                <p className="text-sm font-medium text-gray-600">{uploadingLogo ? 'Subiendo logo...' : 'Haz clic para subir el logo'}</p>
+                <p className="text-xs text-gray-400 mt-1">PNG, JPG, WEBP o SVG · Máx 2 MB</p>
+              </div>
+            )}
+            <input ref={logoRef} type="file" accept="image/*" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); }} />
+          </div>
+
           {/* ── Banner ── */}
           <div className="bg-white rounded-xl border shadow-sm p-6 space-y-5">
             <div className="flex items-center gap-3">

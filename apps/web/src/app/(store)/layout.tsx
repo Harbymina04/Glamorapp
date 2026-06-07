@@ -8,6 +8,9 @@ import { useStoreCart } from '@/stores/store-cart';
 import { CartDrawer } from '@/components/store/CartDrawer';
 import { useAuthStore } from '@/stores/auth-store';
 
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+
 const CATEGORIES = [
   { id: 'all', label: 'Todos' },
   { id: 'nails', label: 'Uñas' },
@@ -24,14 +27,17 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
   const [cartOpen, setCartOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [mounted, setMounted] = useState(false);
-  const [platformLogo] = useState<string | null>(
-    process.env.NEXT_PUBLIC_PLATFORM_LOGO_URL || null,
-  );
+  const [platformLogo, setPlatformLogo] = useState<string | null>(null);
 
   // Avoid hydration mismatch: Zustand persist reads localStorage only on client
   useEffect(() => {
     setMounted(true);
     checkAuth();
+    // Load platform logo from public config
+    fetch(`${API}/storefront/public/config`)
+      .then(r => r.ok ? r.json() : null)
+      .then(cfg => { if (cfg?.platformLogoUrl) setPlatformLogo(cfg.platformLogoUrl); })
+      .catch(() => {});
   }, []);
 
   const router = useRouter();
@@ -52,7 +58,11 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
           {/* Logo */}
           <Link href="/tienda" className="flex items-center gap-2 flex-shrink-0">
             {platformLogo ? (
-              <img src={platformLogo} alt="Glamorapp" className="h-8 w-auto object-contain rounded" />
+              <img
+                src={platformLogo.startsWith('http') ? platformLogo : `${API_BASE}${platformLogo}`}
+                alt="Glamorapp"
+                className="h-8 w-auto object-contain"
+              />
             ) : (
               <div className="h-8 w-auto flex items-center gap-1.5">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#EF2D8F] to-purple-500 flex items-center justify-center shadow-sm">
