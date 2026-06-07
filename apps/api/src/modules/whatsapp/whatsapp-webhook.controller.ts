@@ -5,7 +5,8 @@ import { WhatsAppService } from './whatsapp.service';
 
 interface IncomingMessage {
   sessionId: string;   // bridge session ID → maps to storeId in multi-session
-  from: string;        // sender phone (digits only, no @s.whatsapp.net)
+  from: string;        // sender phone (digits only)
+  fromJid: string;     // full JID, e.g. 1234@s.whatsapp.net or 1234@lid
   fromName: string;    // WhatsApp display name
   body: string;        // message text
   timestamp: number;
@@ -31,7 +32,7 @@ export class WhatsAppWebhookController {
   ) {
     if (apiKey !== this.bridgeKey) throw new UnauthorizedException();
 
-    this.logger.log(`Webhook: ${payload.from} → "${payload.body.substring(0, 60)}" [session: ${payload.sessionId}]`);
+    this.logger.log(`Webhook: ${payload.fromJid || payload.from} → "${payload.body.substring(0, 60)}" [session: ${payload.sessionId}]`);
 
     // Process async — respond 200 immediately so bridge doesn't retry
     this.whatsapp.handleIncomingMessage(payload).catch(err =>

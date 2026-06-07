@@ -573,9 +573,9 @@ export class WhatsAppService {
           }
         }
         if (action.type === 'order_created') {
-          // Order confirmed → clear cart and session
+          // Order confirmed → clear cart and session (use phone digits as key)
           this.clearSession(storeId, from);
-          return reply; // session already cleared, return early
+          return reply;
         }
       }
 
@@ -604,11 +604,14 @@ export class WhatsAppService {
   async handleIncomingMessage(payload: {
     sessionId: string;
     from: string;
+    fromJid?: string;   // full JID with suffix (@s.whatsapp.net or @lid)
     fromName: string;
     body: string;
     timestamp: number;
   }): Promise<void> {
     const { sessionId, from, fromName, body } = payload;
+    // Use fromJid for sending so @lid contacts get the message correctly
+    const replyTo = payload.fromJid || from;
 
     // 1. Resolve storeId and tenantId from sessionId
     const storeIdFromSession = sessionId.startsWith('store_')
@@ -693,13 +696,13 @@ export class WhatsAppService {
     switch (command) {
       case 'confirm': {
         if (!appointment) {
-          await this.sendMessage(storeId, from,
+          await this.sendMessage(storeId, replyTo,
             `Hola ${customerName} 👋\n\nNo encontramos una cita pendiente asociada a este número.\n\nSi necesitas agendar una cita, visita nuestro sitio web o escríbenos *AYUDA*.`);
           break;
         }
         if (appointment.status === 'confirmed') {
           const dateStr = new Date(appointment.date).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
-          await this.sendMessage(storeId, from,
+          await this.sendMessage(storeId, replyTo,
             `✅ Tu cita del *${dateStr}* a las *${appointment.startTime}* ya estaba confirmada.\n\n¡Te esperamos! 💅`);
           break;
         }
@@ -709,7 +712,7 @@ export class WhatsAppService {
           data: { status: 'confirmed', confirmedAt: new Date() },
         });
         const dateStr = new Date(appointment.date).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
-        await this.sendMessage(storeId, from,
+        await this.sendMessage(storeId, replyTo,
           `✅ *¡Cita confirmada!*\n\n` +
           `📋 *Servicio:* ${appointment.service?.name || 'Tu servicio'}\n` +
           `📅 *Fecha:* ${dateStr}\n` +
@@ -723,7 +726,7 @@ export class WhatsAppService {
 
       case 'cancel': {
         if (!appointment) {
-          await this.sendMessage(storeId, from,
+          await this.sendMessage(storeId, replyTo,
             `Hola ${customerName} 👋\n\nNo encontramos una cita activa para cancelar.\n\n` +
             `Para agendar una nueva cita visita:\n${bookingUrl}\n\n` +
             `Escribe *AYUDA* para ver todas las opciones.`);
@@ -734,7 +737,7 @@ export class WhatsAppService {
           data: { status: 'cancelled', cancelledAt: new Date(), cancelReason: 'Cancelado por cliente vía WhatsApp' },
         });
         const cancelDateStr = new Date(appointment.date).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
-        await this.sendMessage(storeId, from,
+        await this.sendMessage(storeId, replyTo,
           `❌ *Cita cancelada*\n\n` +
           `Tu cita del *${cancelDateStr}* a las *${appointment.startTime}* ha sido cancelada.\n\n` +
           `¿Quieres agendar una nueva? 👇\n${bookingUrl}`);
@@ -746,13 +749,13 @@ export class WhatsAppService {
       case 'reagendar': {
         if (appointment) {
           const reagDateStr = new Date(appointment.date).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
-          await this.sendMessage(storeId, from,
+          await this.sendMessage(storeId, replyTo,
             `🔄 *Reagendar cita*\n\n` +
             `Tienes una cita el *${reagDateStr}* a las *${appointment.startTime}*.\n\n` +
             `Para elegir una nueva fecha y hora agenda directamente en:\n${bookingUrl}\n\n` +
             (storePhone ? `O llámanos: 📞 ${storePhone}` : ''));
         } else {
-          await this.sendMessage(storeId, from,
+          await this.sendMessage(storeId, replyTo,
             `Hola ${customerName} 👋\n\nNo encontramos una cita activa para reagendar.\n\n` +
             `Puedes agendar una nueva aquí:\n${bookingUrl}`);
         }
@@ -764,9 +767,9 @@ export class WhatsAppService {
         // Route to Glamy if we have tenantId, otherwise fallback to help
         if (tenantId) {
           const glamyReply = await this.handleWithGlamy(storeId, tenantId, from, body, session);
-          await this.sendMessage(storeId, from, glamyReply);
+          await this.sendMessage(storeId, replyTo, glamyReply);
         } else {
-          await this.sendMessage(storeId, from, this.getHelpMessage(storeName, storePhone, bookingUrl));
+          await this.sendMessage(storeId, replyTo, this.getHelpMessage(storeName, storePhone, bookingUrl));
         }
         break;
       }
@@ -776,7 +779,7 @@ export class WhatsAppService {
       default: {
         // Reset session on HOLA/AYUDA so user starts fresh
         this.clearSession(storeId, from);
-        await this.sendMessage(storeId, from, this.getHelpMessage(storeName, storePhone, bookingUrl));
+        await this.sendMessage(storeId, replyTo, this.getHelpMessage(storeName, storePhone, bookingUrl));
         break;
       }
     }

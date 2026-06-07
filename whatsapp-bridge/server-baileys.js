@@ -136,7 +136,8 @@ async function startSession(sessionId, phone) {
       if (msg.key.remoteJid === 'status@broadcast') continue;
       if (msg.key.remoteJid?.endsWith('@g.us')) continue; // ignorar grupos
 
-      const from = msg.key.remoteJid?.replace(/@s\.whatsapp\.net|@lid|@c\.us/, '') || '';
+      const fromJid = msg.key.remoteJid || ''; // JID completo, ej: 1234@s.whatsapp.net o 1234@lid
+      const from = fromJid.replace(/@s\.whatsapp\.net|@lid|@c\.us/, ''); // solo dígitos
       const body = (
         msg.message?.conversation ||
         msg.message?.extendedTextMessage?.text ||
@@ -147,14 +148,14 @@ async function startSession(sessionId, phone) {
       if (!body) continue;
 
       const fromName = msg.pushName || from;
-      console.log(`[${sessionId}] 📩 Mensaje de ${from} (${fromName}): ${body.substring(0, 80)}`);
+      console.log(`[${sessionId}] 📩 Mensaje de ${fromJid} (${fromName}): ${body.substring(0, 80)}`);
 
-      // Forward to backend webhook
+      // Forward to backend webhook — include fromJid so reply goes to correct JID
       try {
         await fetch(WEBHOOK_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Api-Key': API_KEY },
-          body: JSON.stringify({ sessionId, from, fromName, body, timestamp: Date.now() }),
+          body: JSON.stringify({ sessionId, from, fromJid, fromName, body, timestamp: Date.now() }),
         });
       } catch (e) {
         console.error(`[${sessionId}] Error enviando webhook:`, e.message);
@@ -306,11 +307,12 @@ app.post('/api/sendText', auth, async (req, res) => {
   if (!s.connected) return res.status(503).json({ error: `Sesión '${sessionId}' no conectada (${s.connectionState})` });
 
   try {
+    // Use JID as-is if it already has a suffix, otherwise default to @s.whatsapp.net
     const jid = chatId.includes('@') ? chatId : `${chatId}@s.whatsapp.net`;
     const msg = await s.sock.sendMessage(jid, { text });
-    res.json({ success: true, id: msg.key.id, sessionId });
+    res.json({ success: true, id: msg.key.id, sessionId, jid });
   } catch (e) {
-    console.error(`[${sessionId}] Error enviando:`, e.message);
+    console.error(`[${sessionId}] Error enviando a ${chatId}:`, e.message);
     res.status(500).json({ error: e.message });
   }
 });
