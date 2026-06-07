@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Sparkles, X, Heart, Clock, Store as StoreIcon } from 'lucide-react';
+import { ArrowRight, Sparkles, X, Heart, Clock, Store as StoreIcon, Search } from 'lucide-react';
 import { ProductCard } from '@/components/store/ProductCard';
 import { NailDesignCard } from '@/components/store/NailDesignCard';
 import { formatCOP, categoryColors, storeApi } from '@/lib/store-utils';
@@ -83,10 +83,14 @@ interface Props {
   designs: any[];
 }
 
+const SHOPS_PAGE_SIZE = 6;
+
 export function StoreHomeClient({ shops, products, designs, bannerUrl }: Props) {
   const [activeCategory, setActiveCategory] = useState('Todos');
   const [selectedDesign, setSelectedDesign] = useState<any>(null);
   const [storefrontDiscounts, setStorefrontDiscounts] = useState<any[]>([]);
+  const [shopSearch, setShopSearch] = useState('');
+  const [shopsExpanded, setShopsExpanded] = useState(false);
 
   // Load storefront discounts per unique tenant in product list
   useEffect(() => {
@@ -196,32 +200,73 @@ export function StoreHomeClient({ shops, products, designs, bannerUrl }: Props) 
         {/* Salones */}
         {shops.length > 0 && (
           <section className="bg-gradient-to-br from-pink-50 to-fuchsia-50 rounded-3xl p-8">
-            <div className="text-center mb-8">
+            <div className="text-center mb-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">💅 Agenda tu cita</h2>
               <p className="text-gray-500 text-sm max-w-md mx-auto">
                 Elige un salón y explora sus servicios, precios y disponibilidad.
               </p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {shops.map(shop => (
-                <Link key={shop.id} href={`/tienda/${shop.slug}`}
-                  className="bg-white rounded-2xl p-5 flex items-center gap-4 hover:shadow-md hover:-translate-y-0.5 transition-all border border-gray-100 group">
-                  <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#EF2D8F] to-purple-500 flex items-center justify-center text-white text-2xl font-black flex-shrink-0 group-hover:scale-105 transition-transform">
-                    {shop.displayName?.[0] || '✦'}
+
+            {/* Search — only show when many shops */}
+            {shops.length > SHOPS_PAGE_SIZE && (
+              <div className="relative max-w-sm mx-auto mb-6">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar salón..."
+                  value={shopSearch}
+                  onChange={e => setShopSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-pink-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/20"
+                />
+              </div>
+            )}
+
+            {(() => {
+              const filtered = shopSearch.trim()
+                ? shops.filter(s => s.displayName?.toLowerCase().includes(shopSearch.toLowerCase()))
+                : shops;
+              const visible = shopsExpanded || shopSearch.trim() ? filtered : filtered.slice(0, SHOPS_PAGE_SIZE);
+
+              return (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {visible.map(shop => (
+                      <Link key={shop.id} href={`/tienda/${shop.slug}`}
+                        className="bg-white rounded-2xl p-5 flex items-center gap-4 hover:shadow-md hover:-translate-y-0.5 transition-all border border-gray-100 group">
+                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#EF2D8F] to-purple-500 flex items-center justify-center text-white text-2xl font-black flex-shrink-0 group-hover:scale-105 transition-transform">
+                          {shop.displayName?.[0] || '✦'}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-gray-900 truncate">{shop.displayName}</p>
+                          {shop.tagline && <p className="text-xs text-gray-400 truncate mt-0.5">{shop.tagline}</p>}
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {(Array.isArray(shop.tags) ? shop.tags : []).slice(0, 2).map((tag: string) => (
+                              <span key={tag} className="px-1.5 py-0.5 bg-pink-50 text-[#EF2D8F] text-xs rounded-full font-medium">{tag}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-[#EF2D8F] transition-colors flex-shrink-0" />
+                      </Link>
+                    ))}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-gray-900 truncate">{shop.displayName}</p>
-                    {shop.tagline && <p className="text-xs text-gray-400 truncate mt-0.5">{shop.tagline}</p>}
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                      {(Array.isArray(shop.tags) ? shop.tags : []).slice(0, 2).map((tag: string) => (
-                        <span key={tag} className="px-1.5 py-0.5 bg-pink-50 text-[#EF2D8F] text-xs rounded-full font-medium">{tag}</span>
-                      ))}
+
+                  {/* Show more / less */}
+                  {!shopSearch.trim() && filtered.length > SHOPS_PAGE_SIZE && (
+                    <div className="text-center mt-6">
+                      <button
+                        onClick={() => setShopsExpanded(v => !v)}
+                        className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full border-2 border-[#EF2D8F] text-[#EF2D8F] text-sm font-semibold hover:bg-[#EF2D8F] hover:text-white transition-all"
+                      >
+                        {shopsExpanded
+                          ? <><X className="w-4 h-4" /> Mostrar menos</>
+                          : <><ArrowRight className="w-4 h-4" /> Ver los {filtered.length - SHOPS_PAGE_SIZE} salones restantes</>
+                        }
+                      </button>
                     </div>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-[#EF2D8F] transition-colors flex-shrink-0" />
-                </Link>
-              ))}
-            </div>
+                  )}
+                </>
+              );
+            })()}
           </section>
         )}
 
