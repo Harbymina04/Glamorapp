@@ -134,6 +134,7 @@ async function startSession(sessionId, phone) {
       // Skip messages sent by us, status updates, and non-text messages
       if (msg.key.fromMe) continue;
       if (msg.key.remoteJid === 'status@broadcast') continue;
+      if (msg.key.remoteJid?.endsWith('@g.us')) continue; // ignorar grupos
 
       const from = msg.key.remoteJid?.replace('@s.whatsapp.net', '') || '';
       const body = (

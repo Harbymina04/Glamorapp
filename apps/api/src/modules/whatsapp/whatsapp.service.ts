@@ -500,12 +500,20 @@ export class WhatsAppService {
     const { sessionId, from, fromName, body } = payload;
 
     // 1. Resolve storeId and tenantId from sessionId
-    const store = await this.prisma.store.findFirst({
-      where: this.multiSession
-        ? { whatsappSessionId: sessionId }
-        : undefined, // single session: any store won't work well; skip in that case
+    // sessionId may be stored as 'store_<uuid>' or directly as '<uuid>' in the DB
+    const storeIdFromSession = sessionId.startsWith('store_')
+      ? sessionId.replace('store_', '')
+      : null;
+
+    const store = this.multiSession ? await this.prisma.store.findFirst({
+      where: {
+        OR: [
+          { whatsappSessionId: sessionId },
+          ...(storeIdFromSession ? [{ id: storeIdFromSession }] : []),
+        ],
+      },
       select: { id: true, tenantId: true, name: true },
-    });
+    }) : null;
 
     if (!store && this.multiSession) {
       this.logger.warn(`No store found for sessionId ${sessionId} — ignoring message`);
