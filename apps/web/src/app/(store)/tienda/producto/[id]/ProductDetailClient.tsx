@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Heart, Minus, Plus, ShoppingBag, CheckCircle, AlertCircle, Star } from 'lucide-react';
-import { useStoreCart } from '@/stores/store-cart';
+import { useStoreCart, getStorefrontDiscount } from '@/stores/store-cart';
 import { storeApi, formatCOP } from '@/lib/store-utils';
 import { StarRating } from '@/components/store/StarRating';
 import { ProductCard } from '@/components/store/ProductCard';
@@ -21,6 +21,7 @@ export function ProductDetailClient({ id, initialProduct }: Props) {
   const [product, setProduct] = useState<any>(initialProduct || null);
   const [similar, setSimilar] = useState<any[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
+  const [discounts, setDiscounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(!initialProduct);
   const [error, setError] = useState(false);
   const [qty, setQty] = useState(1);
@@ -40,13 +41,17 @@ export function ProductDetailClient({ id, initialProduct }: Props) {
         Promise.allSettled([
           tenantId ? storeApi.get(`/storefront/public/products?tenantId=${tenantId}&limit=8`) : Promise.resolve([]),
           storeApi.get(`/storefront/reviews?productId=${id}`),
-        ]).then(([similarRes, reviewsRes]) => {
+          tenantId ? storeApi.get(`/storefront/public/discounts?tenantId=${tenantId}`).catch(() => []) : Promise.resolve([]),
+        ]).then(([similarRes, reviewsRes, discountsRes]) => {
           if (similarRes.status === 'fulfilled') {
             const all = Array.isArray(similarRes.value) ? similarRes.value : [];
             setSimilar(all.filter((p: any) => p.id !== id).slice(0, 4));
           }
           if (reviewsRes.status === 'fulfilled') {
             setReviews(Array.isArray(reviewsRes.value) ? reviewsRes.value : []);
+          }
+          if (discountsRes.status === 'fulfilled') {
+            setDiscounts(Array.isArray(discountsRes.value) ? discountsRes.value : []);
           }
         });
       })
@@ -63,13 +68,17 @@ export function ProductDetailClient({ id, initialProduct }: Props) {
       Promise.allSettled([
         tenantId ? storeApi.get(`/storefront/public/products?tenantId=${tenantId}&limit=8`) : Promise.resolve([]),
         storeApi.get(`/storefront/reviews?productId=${id}`),
-      ]).then(([similarRes, reviewsRes]) => {
+        tenantId ? storeApi.get(`/storefront/public/discounts?tenantId=${tenantId}`).catch(() => []) : Promise.resolve([]),
+      ]).then(([similarRes, reviewsRes, discountsRes]) => {
         if (similarRes.status === 'fulfilled') {
           const all = Array.isArray(similarRes.value) ? similarRes.value : [];
           setSimilar(all.filter((p: any) => p.id !== id).slice(0, 4));
         }
         if (reviewsRes.status === 'fulfilled') {
           setReviews(Array.isArray(reviewsRes.value) ? reviewsRes.value : []);
+        }
+        if (discountsRes.status === 'fulfilled') {
+          setDiscounts(Array.isArray(discountsRes.value) ? discountsRes.value : []);
         }
       });
     }
@@ -78,10 +87,31 @@ export function ProductDetailClient({ id, initialProduct }: Props) {
   const avgRating = reviews.length > 0
     ? reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length : null;
 
+  const activeDiscount = product
+    ? getStorefrontDiscount(
+        { id: product.id, categoryId: product.categoryId, tenantId: product.tenantId },
+        discounts,
+      )
+    : null;
+  const basePrice     = product ? Number(product.salePrice) : 0;
+  const effectivePrice = activeDiscount
+    ? Math.round(basePrice * (1 - Number(activeDiscount.discountPercent) / 100))
+    : basePrice;
+
   const handleAdd = () => {
     if (!product) return;
     for (let i = 0; i < qty; i++) {
-      addItem({ productId: product.id, name: product.name, price: Number(product.salePrice), shopName: '', tenantId: product.tenantId, imageUrl: product.images?.[0]?.url });
+      addItem({
+        productId:       product.id,
+        name:            product.name,
+        price:           effectivePrice,
+        originalPrice:   activeDiscount ? basePrice : undefined,
+        discountPercent: activeDiscount ? Number(activeDiscount.discountPercent) : undefined,
+        shopName:        '',
+        tenantId:        product.tenantId,
+        imageUrl:        product.images?.[0]?.url,
+        categoryId:      product.categoryId,
+      });
     }
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
@@ -143,8 +173,18 @@ export function ProductDetailClient({ id, initialProduct }: Props) {
             ? <StarRating rating={avgRating} count={reviews.length} size="md" />
             : <div className="flex items-center gap-1.5 text-sm text-gray-400"><Star className="w-4 h-4" /> Sin calificaciones aún</div>
           }
-          <div className="flex items-baseline gap-3">
-            <span className="text-4xl font-extrabold text-gray-900">{formatCOP(Number(product.salePrice))}</span>
+          <div className="flex items-baseline gap-3 flex-wrap">
+            <span className={`text-4xl font-extrabold ${activeDiscount ? 'text-red-600' : 'text-gray-900'}`}>
+              {formatCOP(effectivePrice)}
+            </span>
+            {activeDiscount && (
+              <>
+                <span className="text-xl text-gray-400 line-through">{formatCOP(basePrice)}</span>
+                <span className="bg-red-500 text-white text-sm font-bold px-2.5 py-1 rounded-full">
+                  -{Number(activeDiscount.discountPercent)}% OFF
+                </span>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full bg-green-500" />

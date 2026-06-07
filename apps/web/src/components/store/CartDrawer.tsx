@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { X, Minus, Plus, Trash2, ShoppingBag } from 'lucide-react';
 import { useStoreCart } from '@/stores/store-cart';
+import { Tag } from 'lucide-react';
 import { formatCOP } from '@/lib/store-utils';
 
 interface CartDrawerProps {
@@ -13,14 +14,15 @@ interface CartDrawerProps {
 
 export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const router = useRouter();
-  const { items, updateQty, removeItem, total, count } = useStoreCart();
+  const { items, updateQty, removeItem, total, totalDiscountAmount, count } = useStoreCart();
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
   // Use empty state until client hydrates to avoid mismatch
-  const clientItems = mounted ? items : [];
-  const clientCount = mounted ? count() : 0;
-  const clientTotal = mounted ? total() : 0;
+  const clientItems        = mounted ? items : [];
+  const clientCount        = mounted ? count() : 0;
+  const clientTotal        = mounted ? total() : 0;
+  const clientSavings      = mounted ? totalDiscountAmount() : 0;
 
   // Group by shopName
   const grouped: Record<string, typeof items> = {};
@@ -89,7 +91,15 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                       {/* Info */}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
-                        <p className="text-sm font-bold text-gray-900">{formatCOP(item.price)}</p>
+                        {item.originalPrice ? (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-xs text-gray-400 line-through">{formatCOP(item.originalPrice)}</p>
+                            <p className="text-sm font-bold text-red-600">{formatCOP(item.price)}</p>
+                            <span className="text-[10px] bg-red-100 text-red-600 px-1.5 rounded-full font-bold">-{item.discountPercent}%</span>
+                          </div>
+                        ) : (
+                          <p className="text-sm font-bold text-gray-900">{formatCOP(item.price)}</p>
+                        )}
                       </div>
                       {/* Controls */}
                       <div className="flex flex-col items-end gap-1">
@@ -119,8 +129,14 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         {/* Footer */}
         {clientItems.length > 0 && (
           <div className="border-t border-gray-200 px-5 py-4 space-y-3">
+            {clientSavings > 0 && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+                <Tag className="w-3.5 h-3.5 shrink-0" />
+                <span>Ahorras <strong>{formatCOP(clientSavings)}</strong> con descuentos</span>
+              </div>
+            )}
             <div className="flex justify-between text-sm text-gray-600">
-              <span>Subtotal</span>
+              <span>Total</span>
               <span className="font-semibold text-gray-900">{formatCOP(clientTotal)}</span>
             </div>
             <div className="flex justify-between text-sm text-green-600">
@@ -128,7 +144,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               <span className="font-semibold">Gratis</span>
             </div>
             <div className="flex justify-between font-bold text-gray-900">
-              <span>Total</span>
+              <span>A pagar</span>
               <span>{formatCOP(clientTotal)}</span>
             </div>
             <button
