@@ -275,27 +275,26 @@ export class WhatsAppService {
   }
 
   /**
-   * Get help/info response message
+   * Get help/info response message with real store data
    */
-  getHelpMessage(): string {
+  getHelpMessage(storeName?: string, storePhone?: string | null, bookingUrl?: string): string {
+    const name = storeName || 'el salón';
+    const url  = bookingUrl || 'https://glamorapp.co/tienda';
     return [
-      `💅 *Glamorapp — Asistente Virtual*`,
+      `💅 *${name} — Asistente WhatsApp*`,
       ``,
-      `¡Hola! Soy el asistente de Glamorapp. Puedes:`,
+      `¡Hola! Puedo ayudarte con lo siguiente:`,
       ``,
-      `📅 *AGENDAR* — Agendar una nueva cita`,
-      `   Ej: \"AGENDAR Manicure para el viernes\"`,
-      ``,
-      `✅ *CONFIRMAR* — Confirmar tu cita`,
-      `   Ej: \"CONFIRMAR\"`,
-      ``,
+      `📅 *AGENDAR* — Ver servicios y agendar tu cita`,
+      `✅ *CONFIRMAR* — Confirmar tu cita pendiente`,
       `❌ *CANCELAR* — Cancelar tu cita`,
-      `   Ej: \"CANCELAR\"`,
+      `🔄 *REAGENDAR* — Cambiar la fecha de tu cita`,
       ``,
-      `🔄 *REAGENDAR* — Cambiar fecha/hora`,
-      `   Ej: \"REAGENDAR para el sábado\"`,
+      `🌐 *Agenda en línea:*`,
+      url,
+      ...(storePhone ? [``, `📞 *Teléfono:* ${storePhone}`] : []),
       ``,
-      `📞 ¿Prefieres hablar? Llámanos al +52 55 1234 5678`,
+      `_Responde con una de las palabras en negrita para continuar._`,
     ].join('\n');
   }
 
@@ -500,7 +499,6 @@ export class WhatsAppService {
     const { sessionId, from, fromName, body } = payload;
 
     // 1. Resolve storeId and tenantId from sessionId
-    // sessionId may be stored as 'store_<uuid>' or directly as '<uuid>' in the DB
     const storeIdFromSession = sessionId.startsWith('store_')
       ? sessionId.replace('store_', '')
       : null;
@@ -512,7 +510,7 @@ export class WhatsAppService {
           ...(storeIdFromSession ? [{ id: storeIdFromSession }] : []),
         ],
       },
-      select: { id: true, tenantId: true, name: true },
+      select: { id: true, tenantId: true, name: true, phone: true, slug: true },
     }) : null;
 
     if (!store && this.multiSession) {
@@ -522,6 +520,20 @@ export class WhatsAppService {
 
     const storeId  = store?.id  || sessionId;
     const tenantId = store?.tenantId;
+
+    // 1b. Fetch storefront slug for booking link
+    const APP_URL = this.config.get('NEXT_PUBLIC_APP_URL') || 'https://glamorapp.co';
+    const storefront = tenantId ? await this.prisma.storefront.findFirst({
+      where: { tenantId },
+      select: { slug: true, displayName: true },
+    }) : null;
+
+    const bookingUrl = storefront?.slug
+      ? `${APP_URL}/tienda/${storefront.slug}`
+      : `${APP_URL}/tienda`;
+
+    const storePhone  = store?.phone || null;
+    const storeName   = storefront?.displayName || store?.name || 'el salón';
 
     // 2. Parse command
     const { command } = this.parseCommand(body);
@@ -593,35 +605,53 @@ export class WhatsAppService {
       case 'cancel': {
         if (!appointment) {
           await this.sendMessage(storeId, from,
-            `Hola ${customerName} 👋\n\nNo encontramos una cita activa para cancelar.\n\nEscríbenos *AYUDA* para ver las opciones disponibles.`);
+            `Hola ${customerName} 👋\n\nNo encontramos una cita activa para cancelar.\n\n` +
+            `Para agendar una nueva cita visita:\n${bookingUrl}\n\n` +
+            `Escribe *AYUDA* para ver todas las opciones.`);
           break;
         }
         await this.prisma.appointment.update({
           where: { id: appointment.id },
           data: { status: 'cancelled', cancelledAt: new Date(), cancelReason: 'Cancelado por cliente vía WhatsApp' },
         });
-        const dateStr = new Date(appointment.date).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
+        const cancelDateStr = new Date(appointment.date).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
         await this.sendMessage(storeId, from,
           `❌ *Cita cancelada*\n\n` +
-          `Tu cita del *${dateStr}* a las *${appointment.startTime}* ha sido cancelada.\n\n` +
-          `¿Deseas reagendar? Escríbenos *REAGENDAR* y te ayudamos con una nueva fecha. 🗓️`);
+          `Tu cita del *${cancelDateStr}* a las *${appointment.startTime}* ha sido cancelada.\n\n` +
+          `¿Quieres agendar una nueva? 👇\n${bookingUrl}`);
         this.logger.log(`Cita ${appointment.id} cancelada por WhatsApp desde ${from}`);
         break;
       }
 
       case 'reagendar': {
-        const msg = appointment
-          ? `🔄 *Reagendar cita*\n\nPara cambiar tu cita del *${new Date(appointment.date).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })}*, contáctanos directamente:\n\n📞 Llámanos o visita nuestro sitio para elegir una nueva fecha.\n\n¡Con gusto te atendemos! 😊`
-          : `Hola ${customerName} 👋\n\nNo encontramos una cita activa para reagendar.\n\nEscríbenos *AYUDA* para ver las opciones.`;
-        await this.sendMessage(storeId, from, msg);
+        if (appointment) {
+          const reagDateStr = new Date(appointment.date).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
+          await this.sendMessage(storeId, from,
+            `🔄 *Reagendar cita*\n\n` +
+            `Tienes una cita el *${reagDateStr}* a las *${appointment.startTime}*.\n\n` +
+            `Para elegir una nueva fecha y hora agenda directamente en:\n${bookingUrl}\n\n` +
+            (storePhone ? `O llámanos: 📞 ${storePhone}` : ''));
+        } else {
+          await this.sendMessage(storeId, from,
+            `Hola ${customerName} 👋\n\nNo encontramos una cita activa para reagendar.\n\n` +
+            `Puedes agendar una nueva aquí:\n${bookingUrl}`);
+        }
         break;
       }
 
-      case 'book':
+      case 'book': {
+        await this.sendMessage(storeId, from,
+          `📅 *Agendar cita en ${storeName}*\n\n` +
+          `Puedes ver nuestros servicios, precios y disponibilidad en:\n${bookingUrl}\n\n` +
+          (storePhone ? `También puedes llamarnos: 📞 ${storePhone}\n\n` : '') +
+          `¡Con gusto te atendemos! 💅`);
+        break;
+      }
+
       case 'info':
       case 'help':
       default: {
-        await this.sendMessage(storeId, from, this.getHelpMessage());
+        await this.sendMessage(storeId, from, this.getHelpMessage(storeName, storePhone, bookingUrl));
         break;
       }
     }
