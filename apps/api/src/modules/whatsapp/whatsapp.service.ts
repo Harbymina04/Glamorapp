@@ -101,12 +101,15 @@ export class WhatsAppService {
 
     const sessionId = await this.ensureSession(storeId);
     const cleanPhone = to.replace(/[+\s\-()]/g, '');
+    // If 'to' already contains a JID domain (@lid, @s.whatsapp.net, etc.) preserve it as-is
+    // to avoid creating malformed JIDs like "123@lid@s.whatsapp.net"
+    const chatId = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@s.whatsapp.net`;
 
     try {
       const res = await this.bridgeFetch('/api/sendText', {
         method: 'POST',
         body: JSON.stringify({
-          chatId: `${cleanPhone}@s.whatsapp.net`,
+          chatId,
           text: text,
           sessionId: sessionId,
         }),
@@ -119,7 +122,11 @@ export class WhatsAppService {
       }
 
       const data = await res.json();
-      this.logger.log(`WhatsApp sent to ${cleanPhone} via session ${sessionId} (id: ${data.id})`);
+      if (data.success === false) {
+        this.logger.warn(`WhatsApp send skipped for ${chatId}: ${data.reason || 'unknown reason'}`);
+        return false;
+      }
+      this.logger.log(`WhatsApp sent to ${chatId} via session ${sessionId} (id: ${data.id})`);
       return true;
     } catch (e: any) {
       this.logger.error(`WhatsApp send error: ${e.message}`);
