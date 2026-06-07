@@ -39,13 +39,15 @@ export class StorefrontController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 20 } }) // 20 msgs/min por IP
   @ApiOperation({ summary: 'Storefront chatbot — public, no auth required' })
-  chat(@Body() body: { tenantId?: string; slug?: string; message: string; history?: any[]; cart?: any[] }) {
+  chat(@Body() body: { tenantId?: string; slug?: string; message: string; history?: any[]; cart?: any[]; clientLat?: number; clientLng?: number }) {
     return this.chatService.chat({
-      tenantId: body.tenantId,
-      slug: body.slug,
-      message: body.message,
-      history: body.history || [],
-      cart: body.cart || [],
+      tenantId:  body.tenantId,
+      slug:      body.slug,
+      message:   body.message,
+      history:   body.history  || [],
+      cart:      body.cart     || [],
+      clientLat: body.clientLat,
+      clientLng: body.clientLng,
     });
   }
 

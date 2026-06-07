@@ -116,6 +116,16 @@ interface DeepSeekTool {
   function: { name: string; description: string; parameters: Record<string, any> };
 }
 
+// Haversine distance in km
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 const GLAMY_TOOLS: DeepSeekTool[] = [
   {
     type: 'function',
@@ -204,6 +214,19 @@ const GLAMY_TOOLS: DeepSeekTool[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'buscar_tiendas_con_descuento',
+      description: 'Busca todas las tiendas que tienen descuentos activos en su catálogo online. Si el cliente pregunta qué tiendas tienen ofertas, promociones o descuentos, usa esta herramienta. Ordena por cercanía si hay coordenadas del cliente.',
+      parameters: {
+        type: 'object',
+        properties: {
+          limite: { type: 'number', description: 'Número máximo de tiendas a mostrar (por defecto 5)' },
+        },
+      },
+    },
+  },
 ];
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -228,6 +251,8 @@ export class StorefrontChatService {
     message: string;
     history: ChatMessage[];
     cart?: Array<{ productId: string; name: string; price: number; qty: number }>;
+    clientLat?: number;
+    clientLng?: number;
   }): Promise<{ reply: string; actions: GlamyAction[] }> {
     const msg = params.message?.trim() || '';
 
@@ -345,7 +370,7 @@ export class StorefrontChatService {
         const fnName = toolCall.function.name;
         const fnInput = JSON.parse(toolCall.function.arguments || '{}');
 
-        const result = await this.executeTool(fnName, fnInput, tenantId, storeName, actions);
+        const result = await this.executeTool(fnName, fnInput, tenantId, storeName, actions, params.clientLat, params.clientLng);
 
         messages.push({
           role: 'tool',
@@ -440,6 +465,8 @@ export class StorefrontChatService {
     tenantId: string | undefined,
     storeName: string,
     actions: GlamyAction[],
+    clientLat?: number,
+    clientLng?: number,
   ): Promise<string> {
     try {
       switch (name) {
@@ -451,6 +478,8 @@ export class StorefrontChatService {
           return await this.toolAgregarAlCarrito(input, tenantId, storeName, actions);
         case 'crear_orden':
           return await this.toolCrearOrden(input, tenantId, actions);
+        case 'buscar_tiendas_con_descuento':
+          return await this.toolBuscarTiendasConDescuento(input, clientLat, clientLng);
         default:
           return 'Herramienta no reconocida.';
       }
@@ -594,6 +623,97 @@ export class StorefrontChatService {
     return `${items.length === 1 ? `"${names}" fue agregado` : `${names} fueron agregados`} al carrito.`;
   }
 
+  private async toolBuscarTiendasConDescuento(
+    input: Record<string, any>,
+    clientLat?: number,
+    clientLng?: number,
+  ): Promise<string> {
+    const limite = Math.min(Number(input.limite) || 5, 10);
+    const now = new Date();
+
+    // Get all active storefront discounts across all tenants
+    const discounts = await this.prisma.discount.findMany({
+      where: {
+        isActive: true,
+        applyToStorefront: true,
+        scope: { not: 'services' },
+        AND: [
+          { OR: [{ startDate: null }, { startDate: { lte: now } }] },
+          { OR: [{ endDate: null },   { endDate:   { gte: now } }] },
+        ],
+      },
+      orderBy: { discountPercent: 'desc' },
+    });
+
+    if (discounts.length === 0) return 'En este momento no hay tiendas con descuentos activos en la plataforma.';
+
+    // Group discounts by tenantId (keep best % per tenant)
+    const byTenant = new Map<string, any>();
+    for (const d of discounts) {
+      if (!byTenant.has(d.tenantId) || Number(d.discountPercent) > Number(byTenant.get(d.tenantId).discountPercent)) {
+        byTenant.set(d.tenantId, d);
+      }
+    }
+
+    // Fetch store info for each tenant
+    const tenantIds = Array.from(byTenant.keys());
+    const stores = await this.prisma.store.findMany({
+      where: { tenantId: { in: tenantIds }, isActive: true },
+      select: { tenantId: true, name: true, address: true, city: true, phone: true, latitude: true, longitude: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // One store per tenant
+    const storeByTenant = new Map<string, any>();
+    for (const s of stores) {
+      if (!storeByTenant.has(s.tenantId)) storeByTenant.set(s.tenantId, s);
+    }
+
+    // Build result list with optional distance
+    const results: Array<{ name: string; address: string; discount: string; distanceKm?: number; mapsUrl?: string }> = [];
+
+    for (const [tid, disc] of byTenant) {
+      const store = storeByTenant.get(tid);
+      if (!store) continue;
+
+      const address = [store.address, store.city].filter(Boolean).join(', ') || 'Dirección no disponible';
+      const lat = store.latitude  ? Number(store.latitude)  : null;
+      const lng = store.longitude ? Number(store.longitude) : null;
+
+      let distanceKm: number | undefined;
+      if (clientLat != null && clientLng != null && lat != null && lng != null) {
+        distanceKm = Math.round(haversineKm(clientLat, clientLng, lat, lng) * 10) / 10;
+      }
+
+      const mapsUrl = lat && lng
+        ? `https://www.google.com/maps?q=${lat},${lng}`
+        : address !== 'Dirección no disponible'
+          ? `https://www.google.com/maps/search/${encodeURIComponent(address + ' ' + store.name)}`
+          : undefined;
+
+      results.push({
+        name: store.name,
+        address,
+        discount: `${Number(disc.discountPercent)}% OFF — "${disc.name}"${disc.endDate ? ` (hasta ${new Date(disc.endDate).toLocaleDateString('es-CO')})` : ''}`,
+        distanceKm,
+        mapsUrl,
+      });
+    }
+
+    // Sort by distance if available, else keep as-is
+    if (clientLat != null && clientLng != null) {
+      results.sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999));
+    }
+
+    const top = results.slice(0, limite);
+
+    return top.map((r, i) => {
+      const dist = r.distanceKm != null ? ` | 📍 ${r.distanceKm} km` : '';
+      const maps = r.mapsUrl ? ` | [Ver mapa](${r.mapsUrl})` : '';
+      return `${i + 1}. **${r.name}** — ${r.discount}\n   ${r.address}${dist}${maps}`;
+    }).join('\n\n');
+  }
+
   private async toolCrearOrden(
     input: Record<string, any>,
     tenantId: string | undefined,
@@ -711,6 +831,7 @@ ${locationSection}${discountSection}Tienes herramientas para:
 - buscar_servicios: ver servicios del salón
 - agregar_al_carrito: agregar productos al carrito del cliente
 - crear_orden: crear un pedido completo (necesitas nombre + email o teléfono)
+- buscar_tiendas_con_descuento: listar todas las tiendas con promociones activas, ordenadas por cercanía al cliente
 ${cartSection}
 FLUJO DE COMPRA:
 1. El cliente pregunta por un producto → usa buscar_productos para mostrar opciones reales

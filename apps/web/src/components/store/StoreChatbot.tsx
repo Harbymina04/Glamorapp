@@ -173,10 +173,25 @@ export function StoreChatbot({ tenantId, slug, storeName = 'Glamorapp' }: Props)
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [unread, setUnread] = useState(0);
+  const [clientLat, setClientLat] = useState<number | null>(null);
+  const [clientLng, setClientLng] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { addItem, items: cartItems } = useStoreCart();
+
+  // Request geolocation silently when component mounts
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        setClientLat(pos.coords.latitude);
+        setClientLng(pos.coords.longitude);
+      },
+      () => {}, // silently ignore if denied
+      { timeout: 5000, maximumAge: 300000 },
+    );
+  }, []);
 
   useEffect(() => {
     if (open && messages.length === 0) {
@@ -229,6 +244,8 @@ export function StoreChatbot({ tenantId, slug, storeName = 'Glamorapp' }: Props)
           slug,
           message: msg,
           history,
+          clientLat:  clientLat  ?? undefined,
+          clientLng:  clientLng  ?? undefined,
           cart: cartItems.map(i => ({
             productId: i.productId,
             name: i.name,
