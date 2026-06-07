@@ -171,7 +171,7 @@ app.post('/api/sessions/:sessionId/start', auth, async (req, res) => {
     return res.json({ sessionId: req.params.sessionId, status: 'connected', phone: existing.phone, startedAt: existing.startedAt });
   }
   try {
-    const result = await startSession(req.params.sessionId, req.body.phone);
+    const result = await startSession(req.params.sessionId, req.body?.phone);
     res.json(result);
   } catch (e) {
     console.error(`Error starting session ${req.params.sessionId}:`, e.message);
@@ -193,7 +193,7 @@ app.post('/api/sessions/:sessionId/reset', auth, async (req, res) => {
   try { fs.rmSync(authDir, { recursive: true, force: true }); } catch (_) {}
   console.log(`[${req.params.sessionId}] 🔄 Sesión reseteada — credenciales borradas`);
   try {
-    const result = await startSession(req.params.sessionId, req.body.phone);
+    const result = await startSession(req.params.sessionId, req.body?.phone);
     res.json({ ...result, reset: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
