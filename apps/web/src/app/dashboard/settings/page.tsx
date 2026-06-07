@@ -7,7 +7,7 @@ import {
   Store, Palette, CreditCard, Bell, ShoppingCart,
   Save, Loader2, CheckCircle2, AlertCircle,
   Upload, X, Plus, Pencil, Trash2,
-  QrCode, Smartphone, Link, RefreshCw, Wifi, WifiOff, Copy, Check,
+  QrCode, Smartphone, Link, RefreshCw, Wifi, WifiOff, Copy, Check, Play,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────
