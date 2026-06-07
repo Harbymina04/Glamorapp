@@ -414,40 +414,60 @@ export class WhatsAppService {
 
   /**
    * Get QR as base64 string for a specific store.
-   * WAHA Core: GET /api/{session}/auth/qr
+   * Retries up to 5 times with 1.5s delay to handle the async QR generation
+   * that Baileys does after the session starts (~1-3 seconds).
    */
   async getStoreQrBase64(storeId: string): Promise<{ qrBase64: string; status: string } | null> {
     const sessionId = await this.ensureSession(storeId);
-    try {
-      // server-baileys.js: GET /api/sessions/:sessionId/qr → { qr, status } | { status: 'already_connected' }
-      const res = await this.bridgeFetch(`/api/sessions/${sessionId}/qr`);
-      if (res.status === 404) return null;
-      const data = await res.json();
-      if (data.status === 'already_connected') return { qrBase64: '', status: 'already_connected' };
-      if (data.qr) return { qrBase64: data.qr, status: 'qr_ready' };
-      return null;
-    } catch (e: any) {
-      this.logger.error(`QR error for store ${storeId}: ${e.message}`);
-      return null;
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const res = await this.bridgeFetch(`/api/sessions/${sessionId}/qr`);
+
+        if (res.status === 404) {
+          // Session not started or QR not generated yet — wait and retry
+          if (attempt < 4) { await delay(1500); continue; }
+          return { qrBase64: '', status: 'not_ready' };
+        }
+
+        const data = await res.json();
+
+        if (data.status === 'already_connected') return { qrBase64: '', status: 'already_connected' };
+        if (data.qr) return { qrBase64: data.qr, status: 'qr_ready' };
+
+        // QR field not present yet — retry
+        if (attempt < 4) { await delay(1500); continue; }
+      } catch (e: any) {
+        this.logger.error(`QR error for store ${storeId} (attempt ${attempt + 1}): ${e.message}`);
+        if (attempt < 4) { await delay(1500); continue; }
+      }
     }
+    return { qrBase64: '', status: 'not_ready' };
   }
 
   /**
    * Request pairing code for a store.
-   * WAHA Core: POST /api/{session}/auth/request-code  { phoneNumber: "..." }
+   * phoneOverride: number passed directly from the frontend form.
+   * Falls back to store.whatsappNumber in DB if not provided.
    */
-  async requestPairingCode(storeId: string) {
+  async requestPairingCode(storeId: string, phoneOverride?: string) {
     const sessionId = await this.ensureSession(storeId);
-    const store = await this.prisma.store.findUnique({
-      where: { id: storeId },
-      select: { whatsappNumber: true },
-    });
-    const phone = store?.whatsappNumber;
-    if (!phone) return { success: false, error: 'La sucursal no tiene whatsappNumber configurado' };
 
-    // Strip non-digits for WAHA (expects e.g. "573167634973")
-    // server-baileys.js expects raw digits (e.g. "573001234567")
-    const phoneNumber = phone.replace(/[+\s\-()]/g, '');
+    let phone = phoneOverride?.replace(/[+\s\-()]/g, '') || '';
+
+    if (!phone && storeId) {
+      const store = await this.prisma.store.findUnique({
+        where: { id: storeId },
+        select: { whatsappNumber: true },
+      });
+      phone = (store?.whatsappNumber || '').replace(/[+\s\-()]/g, '');
+    }
+
+    if (!phone) return { success: false, error: 'Ingresa un número de teléfono válido' };
+
+    // phone is already stripped of non-digits above
+    const phoneNumber = phone;
     try {
       // server-baileys.js: POST /api/sessions/:sessionId/pair  { phone }
       const res = await this.bridgeFetch(`/api/sessions/${sessionId}/pair`, {

@@ -459,6 +459,19 @@ export default function SettingsPage() {
     setWaLoading(false);
   };
 
+  const handleStartSession = async () => {
+    setWaLoading(true);
+    setWaQrError('');
+    try {
+      const currentToken = useAuthStore.getState().token;
+      await api.post('/whatsapp/bridge/session/start', {}, { token: currentToken! });
+      await fetchWaStatus();
+    } catch (e: any) {
+      setWaQrError(e.message || 'Error al iniciar sesión');
+    }
+    setWaLoading(false);
+  };
+
   const fetchQr = async () => {
     setWaLoading(true);
     setWaQrError('');
@@ -467,16 +480,21 @@ export default function SettingsPage() {
       const currentToken = useAuthStore.getState().token;
       const res = await api.get('/whatsapp/bridge/session/qr', { token: currentToken! });
 
+      // Null/undefined guard — backend returns this when QR is still not ready
+      if (!res) {
+        setWaQrError('QR no disponible. Inicia la sesión y vuelve a intentar.');
+        return;
+      }
       if (res.status === 'already_connected') {
         setWaQrError('WhatsApp ya está vinculado. No se necesita QR.');
+        await fetchWaStatus();
         return;
       }
-      if (!res.qrBase64) {
-        setWaQrError('QR no disponible aún. Intenta iniciar la sesión primero.');
+      if (res.status === 'not_ready' || !res.qrBase64) {
+        setWaQrError('El QR aún no está listo. Inicia la sesión y espera unos segundos.');
         return;
       }
-      // El bridge devuelve el raw QR string de Baileys, hay que convertirlo a imagen
-      // Importa QRCode en el frontend o usa una URL de datos
+      // Bridge devuelve raw QR string de Baileys → convertir a imagen PNG
       const QRCode = (await import('qrcode')).default;
       const dataUrl = await QRCode.toDataURL(res.qrBase64);
       setWaQrUrl(dataUrl);
@@ -973,15 +991,32 @@ export default function SettingsPage() {
                   Vincula tu WhatsApp Business para enviar recordatorios, confirmaciones y recibir comandos de clientes.
                 </p>
 
-                {/* Status refresh button */}
-                <button
-                  onClick={fetchWaStatus}
-                  disabled={waLoading}
-                  className="flex items-center gap-2 h-9 px-4 mb-4 rounded-lg border border-border-primary text-sm font-medium text-muted-foreground hover:bg-surface-hover transition disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-4 h-4 ${waLoading ? 'animate-spin' : ''}`} />
-                  Verificar estado
-                </button>
+                {/* Status + session controls */}
+                <div className="flex items-center gap-2 mb-4 flex-wrap">
+                  <button
+                    onClick={fetchWaStatus}
+                    disabled={waLoading}
+                    className="flex items-center gap-2 h-9 px-4 rounded-lg border border-border-primary text-sm font-medium text-muted-foreground hover:bg-surface-hover transition disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${waLoading ? 'animate-spin' : ''}`} />
+                    Verificar estado
+                  </button>
+                  {(!waStatus?.connected) && (
+                    <button
+                      onClick={handleStartSession}
+                      disabled={waLoading}
+                      className="flex items-center gap-2 h-9 px-4 rounded-lg bg-glamor-primary text-white text-sm font-medium hover:bg-glamor-primary-hover transition disabled:opacity-50"
+                    >
+                      {waLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                      Iniciar sesión
+                    </button>
+                  )}
+                  {waStatus?.connected && (
+                    <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium">
+                      <Wifi className="w-4 h-4" /> WhatsApp conectado
+                    </span>
+                  )}
+                </div>
 
                 {/* QR Code Section */}
                 <div className="border-t border-border-primary pt-4">

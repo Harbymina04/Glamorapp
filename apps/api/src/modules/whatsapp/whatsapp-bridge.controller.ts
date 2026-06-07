@@ -62,12 +62,13 @@ export class WhatsAppBridgeController {
   }
 
   /**
-   * Request pairing code for store's WhatsApp number
+   * Request pairing code for store's WhatsApp number.
+   * Accepts { phone } from body — overrides store.whatsappNumber.
    */
   @Post('session/pair')
   @Roles('store_admin', 'tenant_admin')
-  async requestPairingCode(@Request() req: any) {
-    return this.whatsapp.requestPairingCode(req.user.storeId);
+  async requestPairingCode(@Request() req: any, @Body() body: { phone?: string }) {
+    return this.whatsapp.requestPairingCode(req.user.storeId, body?.phone);
   }
 
   /**
