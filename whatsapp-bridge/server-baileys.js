@@ -335,6 +335,13 @@ app.post('/api/sendText', auth, async (req, res) => {
       console.log(`[${sessionId}] 🔀 @lid resuelto: ${rawJid} → ${resolvedJid}`);
     }
 
+    // Cannot send to unresolved @lid — Baileys crashes with xml-not-well-formed
+    // This happens with WhatsApp Privacy Mode contacts whose phone is hidden
+    if (resolvedJid.endsWith('@lid')) {
+      console.warn(`[${sessionId}] ⚠️ No se puede enviar a @lid sin mapeo de teléfono (modo privacidad). Mensaje omitido.`);
+      return res.json({ success: false, reason: 'lid_no_phone_mapping', jid: resolvedJid });
+    }
+
     const quotedMsg = lastMessages.get(`${sessionId}:${rawJid}`);
     const sendOptions = quotedMsg ? { quoted: quotedMsg } : {};
 
