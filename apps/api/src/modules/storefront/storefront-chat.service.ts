@@ -276,7 +276,9 @@ export class StorefrontChatService {
     }
 
     const activeDiscounts = tenantId ? await this.getActiveStorefrontDiscounts(tenantId) : [];
-    const systemPrompt = this.buildSystemPrompt(storeName, storeDescription, params.cart, activeDiscounts);
+    // Enrich discounts with product names so Glami can mention them by name
+    const enrichedDiscounts = await this.enrichDiscountsWithProductNames(activeDiscounts);
+    const systemPrompt = this.buildSystemPrompt(storeName, storeDescription, params.cart, enrichedDiscounts);
 
     // ── Build initial messages (OpenAI format) ────────────────────────
     const messages: any[] = [
@@ -389,6 +391,21 @@ export class StorefrontChatService {
       discountPct: pct,
       discountName: match.name,
     };
+  }
+
+  private async enrichDiscountsWithProductNames(discounts: any[]): Promise<any[]> {
+    if (!discounts.length) return discounts;
+    return Promise.all(discounts.map(async d => {
+      if (d.scope === 'products' && Array.isArray(d.targetIds) && d.targetIds.length > 0) {
+        // Only include products visible in the storefront
+        const prods = await this.prisma.product.findMany({
+          where: { id: { in: d.targetIds }, isStoreVisible: true, status: { not: 'inactive' }, deletedAt: null },
+          select: { id: true, name: true, salePrice: true },
+        });
+        return { ...d, resolvedProducts: prods };
+      }
+      return d;
+    }));
   }
 
   // ── Tool implementations ────────────────────────────────────────────────────
@@ -628,13 +645,25 @@ export class StorefrontChatService {
 
     const discountSection = activeDiscounts && activeDiscounts.length > 0
       ? `\nDESCUENTOS ACTIVOS EN TIENDA:\n${activeDiscounts.map(d => {
-          const scopeLabel =
-            d.scope === 'all'      ? 'todos los productos' :
-            d.scope === 'products' ? (d.targetIds?.length ? `${d.targetIds.length} producto(s) específico(s)` : 'todos los productos') :
-            d.scope === 'category' ? 'productos de categorías seleccionadas' :
-            d.scope;
+          let scopeLabel: string;
+          if (d.scope === 'all') {
+            scopeLabel = 'todos los productos';
+          } else if (d.scope === 'products') {
+            const resolved: any[] = d.resolvedProducts ?? [];
+            if (resolved.length > 0) {
+              scopeLabel = resolved.map((p: any) =>
+                `${p.name} (precio normal $${Number(p.salePrice).toLocaleString('es-CO')}, con descuento $${Math.round(Number(p.salePrice) * (1 - Number(d.discountPercent) / 100)).toLocaleString('es-CO')} COP)`
+              ).join(', ');
+            } else {
+              scopeLabel = 'productos específicos (ninguno visible en tienda actualmente)';
+            }
+          } else if (d.scope === 'category') {
+            scopeLabel = 'productos de categorías seleccionadas';
+          } else {
+            scopeLabel = d.scope;
+          }
           return `- "${d.name}": ${d.discountPercent}% OFF en ${scopeLabel}${d.endDate ? ` (hasta ${new Date(d.endDate).toLocaleDateString('es-CO')})` : ''}`;
-        }).join('\n')}\nIMPORTANTE: Cuando busques o muestres productos, usa SIEMPRE el precio con descuento ya aplicado. Menciona proactivamente las promociones vigentes cuando sean relevantes.\n`
+        }).join('\n')}\nIMPORTANTE: Cuando el cliente pregunte por promociones o descuentos, menciona estos productos por nombre con su precio rebajado. Al buscarlos y mostrarlos, usa SIEMPRE el precio con descuento ya aplicado.\n`
       : '';
 
     return `Eres Glamy, la asistente virtual inteligente de ${storeName}${description ? ` — "${description}"` : ''}.
