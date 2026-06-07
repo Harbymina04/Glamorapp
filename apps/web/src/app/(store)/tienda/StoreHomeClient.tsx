@@ -244,7 +244,10 @@ export function StoreHomeClient({ shops, products, designs, bannerUrl }: Props) 
 
       {selectedDesign && <NailDesignModal design={selectedDesign} onClose={() => setSelectedDesign(null)} />}
 
-      <StoreChatbot storeName="Glamorapp" />
+      <StoreChatbot
+        tenantId={products[0]?.tenantId}
+        storeName="Glamorapp"
+      />
     </div>
   );
 }
