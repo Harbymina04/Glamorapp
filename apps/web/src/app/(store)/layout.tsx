@@ -52,7 +52,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
           {/* Logo */}
           <Link href="/tienda" className="flex items-center gap-2 flex-shrink-0">
             {platformLogo ? (
-              <img src={platformLogo} alt={platformName} className="h-8 w-auto object-contain rounded" />
+              <img src={platformLogo} alt="Glamorapp" className="h-8 w-auto object-contain rounded" />
             ) : (
               <div className="h-8 w-auto flex items-center gap-1.5">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#EF2D8F] to-purple-500 flex items-center justify-center shadow-sm">
