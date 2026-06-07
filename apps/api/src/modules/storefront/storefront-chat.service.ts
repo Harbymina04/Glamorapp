@@ -275,7 +275,8 @@ export class StorefrontChatService {
       }
     }
 
-    const systemPrompt = this.buildSystemPrompt(storeName, storeDescription, params.cart);
+    const activeDiscounts = tenantId ? await this.getActiveStorefrontDiscounts(tenantId) : [];
+    const systemPrompt = this.buildSystemPrompt(storeName, storeDescription, params.cart, activeDiscounts);
 
     // ── Build initial messages (OpenAI format) ────────────────────────
     const messages: any[] = [
@@ -349,6 +350,47 @@ export class StorefrontChatService {
     });
   }
 
+  // ── Discount helpers ─────────────────────────────────────────────────────────
+
+  private async getActiveStorefrontDiscounts(tenantId: string): Promise<any[]> {
+    const now = new Date();
+    return this.prisma.discount.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        applyToStorefront: true,
+        scope: { not: 'services' },
+        AND: [
+          { OR: [{ startDate: null }, { startDate: { lte: now } }] },
+          { OR: [{ endDate: null },   { endDate:   { gte: now } }] },
+        ],
+      },
+      orderBy: { discountPercent: 'desc' },
+    });
+  }
+
+  private applyDiscount(
+    productId: string,
+    categoryId: string | null,
+    basePrice: number,
+    discounts: any[],
+  ): { effectivePrice: number; discountPct: number; discountName: string | null } {
+    const match = discounts.find(d => {
+      const ids: string[] = Array.isArray(d.targetIds) ? d.targetIds : [];
+      if (d.scope === 'all') return true;
+      if (d.scope === 'products') return ids.length === 0 || ids.includes(productId);
+      if (d.scope === 'category') return categoryId != null && ids.includes(categoryId);
+      return false;
+    });
+    if (!match) return { effectivePrice: basePrice, discountPct: 0, discountName: null };
+    const pct = Number(match.discountPercent);
+    return {
+      effectivePrice: Math.round(basePrice * (1 - pct / 100)),
+      discountPct: pct,
+      discountName: match.name,
+    };
+  }
+
   // ── Tool implementations ────────────────────────────────────────────────────
 
   private async executeTool(
@@ -404,21 +446,34 @@ export class StorefrontChatService {
 
     if (products.length === 0) return 'No se encontraron productos con esos criterios.';
 
-    const mapped: GlamyProduct[] = products.map(p => ({
-      id: p.id,
-      name: p.name,
-      price: Number((p as any).salePrice),
-      imageUrl: (p as any).images?.[0]?.url ?? null,
-      category: (p as any).category?.name ?? null,
-      stock: (p as any).currentStock ?? 0,
-      tenantId: p.tenantId,
-      storeName: (p as any).store?.name ?? storeName,
-    }));
+    const discounts = tenantId ? await this.getActiveStorefrontDiscounts(tenantId) : [];
+
+    const mapped: GlamyProduct[] = products.map(p => {
+      const base = Number((p as any).salePrice);
+      const { effectivePrice } = this.applyDiscount(p.id, (p as any).categoryId ?? null, base, discounts);
+      return {
+        id: p.id,
+        name: p.name,
+        price: effectivePrice,          // ← discounted price for the cart action
+        imageUrl: (p as any).images?.[0]?.url ?? null,
+        category: (p as any).category?.name ?? null,
+        stock: (p as any).currentStock ?? 0,
+        tenantId: p.tenantId,
+        storeName: (p as any).store?.name ?? storeName,
+      };
+    });
 
     actions.push({ type: 'show_products', products: mapped });
 
     return mapped
-      .map(p => `${p.name}${p.category ? ` (${p.category})` : ''} — $${p.price.toLocaleString('es-CO')} COP | stock: ${p.stock} | ID: ${p.id}`)
+      .map(p => {
+        const base = Number((products.find(pr => pr.id === p.id) as any)?.salePrice ?? p.price);
+        const hasDiscount = p.price < base;
+        const priceStr = hasDiscount
+          ? `~~$${base.toLocaleString('es-CO')}~~ $${p.price.toLocaleString('es-CO')} COP (${Math.round((1 - p.price / base) * 100)}% OFF)`
+          : `$${p.price.toLocaleString('es-CO')} COP`;
+        return `${p.name}${p.category ? ` (${p.category})` : ''} — ${priceStr} | stock: ${p.stock} | ID: ${p.id}`;
+      })
       .join('\n');
   }
 
@@ -462,6 +517,7 @@ export class StorefrontChatService {
   ): Promise<string> {
     if (!tenantId) return 'No se pudo identificar el salón.';
 
+    const discounts = await this.getActiveStorefrontDiscounts(tenantId);
     const items: GlamyProduct[] = [];
 
     for (const item of input.productos ?? []) {
@@ -474,10 +530,13 @@ export class StorefrontChatService {
       });
       if (!p) continue;
 
+      const base = Number((p as any).salePrice);
+      const { effectivePrice } = this.applyDiscount(p.id, (p as any).categoryId ?? null, base, discounts);
+
       items.push({
         id: p.id,
         name: p.name,
-        price: Number((p as any).salePrice),
+        price: effectivePrice,          // ← discounted price
         imageUrl: (p as any).images?.[0]?.url ?? null,
         category: null,
         stock: (p as any).currentStock ?? 0,
@@ -503,6 +562,7 @@ export class StorefrontChatService {
     if (!input.nombre) return 'Se necesita el nombre del cliente para crear la orden.';
     if (!input.email && !input.telefono) return 'Se necesita al menos email o teléfono del cliente.';
 
+    const discounts = await this.getActiveStorefrontDiscounts(tenantId);
     const resolvedItems: any[] = [];
     let subtotal = 0;
 
@@ -512,9 +572,10 @@ export class StorefrontChatService {
       });
       if (!p) continue;
       const qty = Number(item.cantidad) || 1;
-      const unitPrice = Number((p as any).salePrice);
-      resolvedItems.push({ productId: p.id, name: p.name, qty, unitPrice, subtotal: unitPrice * qty });
-      subtotal += unitPrice * qty;
+      const base = Number((p as any).salePrice);
+      const { effectivePrice } = this.applyDiscount(p.id, (p as any).categoryId ?? null, base, discounts);
+      resolvedItems.push({ productId: p.id, name: p.name, qty, price: effectivePrice, subtotal: effectivePrice * qty });
+      subtotal += effectivePrice * qty;
     }
 
     if (resolvedItems.length === 0) return 'No se encontraron los productos para crear el pedido.';
@@ -557,6 +618,7 @@ export class StorefrontChatService {
     storeName: string,
     description: string,
     cart?: Array<{ productId: string; name: string; price: number; qty: number }>,
+    activeDiscounts?: any[],
   ): string {
     const cartSection = cart && cart.length > 0
       ? `\nCARRITO ACTUAL DEL CLIENTE:\n${cart.map(i =>
@@ -564,9 +626,20 @@ export class StorefrontChatService {
         ).join('\n')}\nTotal carrito: $${cart.reduce((s, i) => s + i.price * i.qty, 0).toLocaleString('es-CO')} COP\n\nUsa estos IDs y precios exactos al crear la orden. NO busques los productos de nuevo.`
       : '';
 
+    const discountSection = activeDiscounts && activeDiscounts.length > 0
+      ? `\nDESCUENTOS ACTIVOS EN TIENDA:\n${activeDiscounts.map(d => {
+          const scopeLabel =
+            d.scope === 'all'      ? 'todos los productos' :
+            d.scope === 'products' ? (d.targetIds?.length ? `${d.targetIds.length} producto(s) específico(s)` : 'todos los productos') :
+            d.scope === 'category' ? 'productos de categorías seleccionadas' :
+            d.scope;
+          return `- "${d.name}": ${d.discountPercent}% OFF en ${scopeLabel}${d.endDate ? ` (hasta ${new Date(d.endDate).toLocaleDateString('es-CO')})` : ''}`;
+        }).join('\n')}\nIMPORTANTE: Cuando busques o muestres productos, usa SIEMPRE el precio con descuento ya aplicado. Menciona proactivamente las promociones vigentes cuando sean relevantes.\n`
+      : '';
+
     return `Eres Glamy, la asistente virtual inteligente de ${storeName}${description ? ` — "${description}"` : ''}.
 
-Tienes herramientas para:
+${discountSection}Tienes herramientas para:
 - buscar_productos: ver el catálogo real con precios y stock
 - buscar_servicios: ver servicios del salón
 - agregar_al_carrito: agregar productos al carrito del cliente
