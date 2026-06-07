@@ -309,7 +309,9 @@ app.post('/api/sendText', auth, async (req, res) => {
   try {
     // Use JID as-is if it already has a suffix, otherwise default to @s.whatsapp.net
     const jid = chatId.includes('@') ? chatId : `${chatId}@s.whatsapp.net`;
-    const msg = await s.sock.sendMessage(jid, { text });
+    // detectLinks: false prevents Baileys from trying to import link-preview-js
+    // which would crash the connection if the message contains URLs
+    const msg = await s.sock.sendMessage(jid, { text, detectLinks: false });
     res.json({ success: true, id: msg.key.id, sessionId, jid });
   } catch (e) {
     console.error(`[${sessionId}] Error enviando a ${chatId}:`, e.message);
