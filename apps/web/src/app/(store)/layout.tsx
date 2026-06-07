@@ -18,18 +18,30 @@ const CATEGORIES = [
   { id: 'offers', label: 'Ofertas' },
 ];
 
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+
 export default function StoreLayout({ children }: { children: React.ReactNode }) {
   const { count, favorites } = useStoreCart();
   const { user, isAuthenticated, logout, checkAuth } = useAuthStore();
   const [cartOpen, setCartOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [mounted, setMounted] = useState(false);
+  const [platformLogo, setPlatformLogo] = useState<string | null>(null);
+  const [platformName, setPlatformName] = useState('Glamorapp');
 
   // Avoid hydration mismatch: Zustand persist reads localStorage only on client
   useEffect(() => {
     setMounted(true);
-    // Rehydrate auth state from localStorage on mount
     checkAuth();
+    // Load platform storefront logo
+    fetch(`${API}/storefront/public`)
+      .then(r => r.json())
+      .then((data: any[]) => {
+        const first = Array.isArray(data) ? data[0] : null;
+        if (first?.logoUrl) setPlatformLogo(first.logoUrl);
+        if (first?.displayName) setPlatformName(first.displayName);
+      })
+      .catch(() => {});
   }, []);
 
   const router = useRouter();
@@ -49,10 +61,16 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-4">
           {/* Logo */}
           <Link href="/tienda" className="flex items-center gap-2 flex-shrink-0">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#EF2D8F] to-purple-500 flex items-center justify-center">
-              <span className="text-white font-bold text-sm">G</span>
-            </div>
-            <span className="font-extrabold text-lg text-gray-900">Glamorapp</span>
+            {platformLogo ? (
+              <img src={platformLogo} alt={platformName} className="h-8 w-auto object-contain rounded" />
+            ) : (
+              <div className="h-8 w-auto flex items-center gap-1.5">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#EF2D8F] to-purple-500 flex items-center justify-center shadow-sm">
+                  <span className="text-white font-black text-base leading-none">G</span>
+                </div>
+                <span className="font-extrabold text-lg text-gray-900 tracking-tight">{platformName}</span>
+              </div>
+            )}
           </Link>
 
           {/* Search */}
