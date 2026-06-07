@@ -1,6 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
+import { StorefrontChatService, ChatMessage } from '../storefront/storefront-chat.service';
+
+// ─── Conversation session (in-memory, TTL 30 min) ─────────────────────────────
+interface WaSession {
+  history: ChatMessage[];
+  cart: Array<{ productId: string; name: string; price: number; qty: number }>;
+  lastActivity: number; // ms timestamp
+}
+
+const WA_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 export interface WhatsAppMessage {
   to: string;           // phone number with country code
@@ -23,12 +33,15 @@ export class WhatsAppService {
   private bridgeUrl: string;
   private bridgeKey: string;
   private enabled: boolean;
-
   private multiSession: boolean;
+
+  // In-memory conversation store: key = `${storeId}:${phone}`
+  private readonly sessions = new Map<string, WaSession>();
 
   constructor(
     private config: ConfigService,
     private prisma: PrismaService,
+    private glamyChat: StorefrontChatService,
   ) {
     this.bridgeUrl = this.config.get('WHATSAPP_BRIDGE_URL') || 'http://localhost:8081';
     this.bridgeKey = this.config.get('WHATSAPP_BRIDGE_API_KEY') || 'glamorapp_wa_2026';
@@ -482,6 +495,105 @@ export class WhatsAppService {
   }
 
   // ═══════════════════════════════════════════════════════════
+  // CONVERSATION SESSION HELPERS
+  // ═══════════════════════════════════════════════════════════
+
+  private sessionKey(storeId: string, phone: string) {
+    return `${storeId}:${phone}`;
+  }
+
+  private getSession(storeId: string, phone: string): WaSession {
+    const key = this.sessionKey(storeId, phone);
+    const existing = this.sessions.get(key);
+    const now = Date.now();
+
+    if (existing && now - existing.lastActivity < WA_SESSION_TTL_MS) {
+      existing.lastActivity = now;
+      return existing;
+    }
+
+    // New or expired session
+    const session: WaSession = { history: [], cart: [], lastActivity: now };
+    this.sessions.set(key, session);
+    return session;
+  }
+
+  private clearSession(storeId: string, phone: string) {
+    this.sessions.delete(this.sessionKey(storeId, phone));
+  }
+
+  /** Purge expired sessions (called opportunistically) */
+  private purgeExpiredSessions() {
+    const now = Date.now();
+    for (const [key, s] of this.sessions) {
+      if (now - s.lastActivity > WA_SESSION_TTL_MS) this.sessions.delete(key);
+    }
+  }
+
+  /**
+   * Route the message to Glamy (StorefrontChatService) and return
+   * a WhatsApp-friendly plain-text response.
+   */
+  private async handleWithGlamy(
+    storeId: string,
+    tenantId: string,
+    from: string,
+    body: string,
+    session: WaSession,
+  ): Promise<string> {
+    if (!this.glamyChat) {
+      return 'Lo siento, el asistente de ventas no está disponible en este momento.';
+    }
+
+    // Push user message to history
+    session.history.push({ role: 'user', content: body });
+    if (session.history.length > 20) session.history = session.history.slice(-20);
+
+    let reply: string;
+    try {
+      const result = await this.glamyChat.chat({
+        tenantId,
+        message: body,
+        history: session.history.slice(0, -1), // exclude current message (already added)
+        cart: session.cart,
+      });
+
+      reply = result.reply;
+
+      // Process actions to update in-memory cart
+      for (const action of result.actions ?? []) {
+        if (action.type === 'add_to_cart') {
+          for (const item of action.items) {
+            const existing = session.cart.find(c => c.productId === item.id);
+            if (existing) {
+              existing.qty += 1;
+            } else {
+              session.cart.push({ productId: item.id, name: item.name, price: item.price, qty: 1 });
+            }
+          }
+        }
+        if (action.type === 'order_created') {
+          // Order confirmed → clear cart and session
+          this.clearSession(storeId, from);
+          return reply; // session already cleared, return early
+        }
+      }
+
+      // Push assistant reply to history
+      session.history.push({ role: 'assistant', content: reply });
+
+    } catch (e: any) {
+      this.logger.error(`Glamy error for ${from}: ${e.message}`);
+      reply = 'Lo siento, ocurrió un error. Por favor intenta de nuevo en un momento.';
+    }
+
+    // Format for WhatsApp: remove markdown links [text](url) → text: url
+    reply = reply.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1: $2');
+
+    return reply;
+  }
+
+  // ═══════════════════════════════════════════════════════════
   // INCOMING MESSAGE HANDLER
   // ═══════════════════════════════════════════════════════════
 
@@ -571,7 +683,13 @@ export class WhatsAppService {
 
     const customerName = customer?.firstName || fromName || 'Cliente';
 
-    // 5. Execute command
+    // 5. Purge expired sessions opportunistically
+    this.purgeExpiredSessions();
+
+    // 6. Get or create conversation session for this number
+    const session = this.getSession(storeId, from);
+
+    // 7. Execute command
     switch (command) {
       case 'confirm': {
         if (!appointment) {
@@ -598,6 +716,7 @@ export class WhatsAppService {
           `🕐 *Hora:* ${appointment.startTime}\n` +
           `${appointment.professional ? `👩‍🎨 *Profesional:* ${appointment.professional.firstName}\n` : ''}` +
           `\nTe recordamos llegar 5 minutos antes. ¡Gracias! 💖`);
+        this.clearSession(storeId, from);
         this.logger.log(`Cita ${appointment.id} confirmada por WhatsApp desde ${from}`);
         break;
       }
@@ -619,6 +738,7 @@ export class WhatsAppService {
           `❌ *Cita cancelada*\n\n` +
           `Tu cita del *${cancelDateStr}* a las *${appointment.startTime}* ha sido cancelada.\n\n` +
           `¿Quieres agendar una nueva? 👇\n${bookingUrl}`);
+        this.clearSession(storeId, from);
         this.logger.log(`Cita ${appointment.id} cancelada por WhatsApp desde ${from}`);
         break;
       }
@@ -639,18 +759,23 @@ export class WhatsAppService {
         break;
       }
 
-      case 'book': {
-        await this.sendMessage(storeId, from,
-          `📅 *Agendar cita en ${storeName}*\n\n` +
-          `Puedes ver nuestros servicios, precios y disponibilidad en:\n${bookingUrl}\n\n` +
-          (storePhone ? `También puedes llamarnos: 📞 ${storePhone}\n\n` : '') +
-          `¡Con gusto te atendemos! 💅`);
+      case 'book':
+      case 'unknown': {
+        // Route to Glamy if we have tenantId, otherwise fallback to help
+        if (tenantId) {
+          const glamyReply = await this.handleWithGlamy(storeId, tenantId, from, body, session);
+          await this.sendMessage(storeId, from, glamyReply);
+        } else {
+          await this.sendMessage(storeId, from, this.getHelpMessage(storeName, storePhone, bookingUrl));
+        }
         break;
       }
 
       case 'info':
       case 'help':
       default: {
+        // Reset session on HOLA/AYUDA so user starts fresh
+        this.clearSession(storeId, from);
         await this.sendMessage(storeId, from, this.getHelpMessage(storeName, storePhone, bookingUrl));
         break;
       }
