@@ -527,14 +527,16 @@ export class WhatsAppService {
     const { command } = this.parseCommand(body);
 
     // 3. Find customer by phone in this store/tenant
-    const cleanPhone = from.replace(/[+\s\-()]/g, '');
+    // Strip @lid / @s.whatsapp.net suffixes and non-digit chars
+    const cleanPhone = from.replace(/@[\w.]+$/, '').replace(/[+\s\-()]/g, '');
+    const last10 = cleanPhone.slice(-10);
     const customer = tenantId ? await this.prisma.user.findFirst({
       where: {
         tenantId,
-        role: 'customer',
+        // No role filter — avoids enum mismatch if DB migration is pending
         OR: [
           { phone: { contains: cleanPhone } },
-          { phone: { endsWith: cleanPhone.slice(-10) } },
+          { phone: { endsWith: last10 } },
         ],
       },
       select: { id: true, firstName: true, phone: true },
