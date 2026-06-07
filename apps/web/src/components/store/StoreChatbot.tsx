@@ -268,10 +268,30 @@ export function StoreChatbot({ tenantId, slug, storeName = 'Glamorapp' }: Props)
   };
 
   const renderContent = (text: string) => {
-    const parts = text.split(/(\*\*[^*]+\*\*)/g);
+    // Split on bold (**text**), markdown links ([label](url)), and bare URLs
+    const parts = text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\(https?:\/\/[^)]+\)|https?:\/\/\S+)/g);
     return parts.map((part, i) => {
       if (part.startsWith('**') && part.endsWith('**')) {
         return <strong key={i}>{part.slice(2, -2)}</strong>;
+      }
+      // Markdown link: [label](url)
+      const mdLink = part.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
+      if (mdLink) {
+        return (
+          <a key={i} href={mdLink[2]} target="_blank" rel="noopener noreferrer"
+            className="underline text-[#EF2D8F] font-medium">
+            {mdLink[1]} 📍
+          </a>
+        );
+      }
+      // Bare URL
+      if (part.startsWith('http://') || part.startsWith('https://')) {
+        return (
+          <a key={i} href={part} target="_blank" rel="noopener noreferrer"
+            className="underline text-[#EF2D8F] font-medium break-all">
+            Ver en el mapa 📍
+          </a>
+        );
       }
       return <span key={i}>{part}</span>;
     });
