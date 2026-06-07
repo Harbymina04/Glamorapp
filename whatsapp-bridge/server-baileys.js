@@ -321,7 +321,7 @@ app.post('/api/sendText', auth, async (req, res) => {
 
 // ─── Start Bridge ────────────────────────────────────────────────
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 WhatsApp Bridge multi-sesión en puerto ${PORT}`);
   console.log(`🔑 API Key: ${API_KEY}`);
   console.log('');
@@ -335,4 +335,19 @@ app.listen(PORT, () => {
   console.log('  POST /api/sessions/:id/pair  {phone}   — código de emparejamiento');
   console.log('  POST /api/sendText  {chatId,text,sessionId}  — enviar mensaje');
   console.log('');
+
+  // Auto-restore sessions saved in AUTH_ROOT
+  if (fs.existsSync(AUTH_ROOT)) {
+    const saved = fs.readdirSync(AUTH_ROOT).filter(f =>
+      fs.statSync(path.join(AUTH_ROOT, f)).isDirectory()
+    );
+    if (saved.length > 0) {
+      console.log(`🔄 Auto-restaurando ${saved.length} sesión(es): ${saved.join(', ')}`);
+      for (const sessionId of saved) {
+        startSession(sessionId).catch(e =>
+          console.error(`[${sessionId}] Error al auto-restaurar:`, e.message)
+        );
+      }
+    }
+  }
 });
