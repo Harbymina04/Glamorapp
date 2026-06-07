@@ -118,8 +118,8 @@ export function ProductDetailClient({ id, initialProduct }: Props) {
   };
 
   if (loading) return (
-    <div className="max-w-7xl mx-auto px-4 py-12">
-      <div className="grid grid-cols-2 gap-10 animate-pulse">
+    <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10 animate-pulse">
         <div className="aspect-square bg-gray-100 rounded-2xl" />
         <div className="space-y-4">
           <div className="h-4 bg-gray-100 rounded w-1/4" />
@@ -139,11 +139,11 @@ export function ProductDetailClient({ id, initialProduct }: Props) {
   );
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-12">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+    <div className="max-w-7xl mx-auto px-4 py-5 md:py-8 space-y-8 md:space-y-12">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10">
         {/* Images */}
         <div className="space-y-3">
-          <div className="sticky top-20 space-y-3">
+          <div className="md:sticky md:top-20 space-y-3">
             <div className="aspect-square rounded-2xl bg-gradient-to-br from-pink-200 to-purple-300 flex items-center justify-center overflow-hidden">
               {product.images?.[activeImg]?.url
                 ? <img src={product.images[activeImg].url} alt={product.name} className="w-full h-full object-cover" />
@@ -168,13 +168,13 @@ export function ProductDetailClient({ id, initialProduct }: Props) {
           {product.category?.name && (
             <span className="inline-block px-3 py-1 bg-pink-50 text-[#EF2D8F] text-xs font-semibold rounded-full border border-pink-200">{product.category.name}</span>
           )}
-          <h1 className="text-3xl font-extrabold text-gray-900 leading-tight">{product.name}</h1>
+          <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 leading-tight">{product.name}</h1>
           {avgRating !== null
             ? <StarRating rating={avgRating} count={reviews.length} size="md" />
             : <div className="flex items-center gap-1.5 text-sm text-gray-400"><Star className="w-4 h-4" /> Sin calificaciones aún</div>
           }
           <div className="flex items-baseline gap-3 flex-wrap">
-            <span className={`text-4xl font-extrabold ${activeDiscount ? 'text-red-600' : 'text-gray-900'}`}>
+            <span className={`text-3xl md:text-4xl font-extrabold ${activeDiscount ? 'text-red-600' : 'text-gray-900'}`}>
               {formatCOP(effectivePrice)}
             </span>
             {activeDiscount && (

@@ -175,27 +175,27 @@ export function SalonClient({ storefront, products, services, designs, reviews, 
   return (
     <div className="bg-white min-h-screen">
       {/* Banner */}
-      <div className="relative h-64 md:h-80 overflow-hidden" style={{ background: gradient }}>
+      <div className="relative h-52 md:h-80 overflow-hidden" style={{ background: gradient }}>
         {storefront.bannerUrl && (
           <img src={storefront.bannerUrl} alt={storefront.displayName} className="w-full h-full object-cover absolute inset-0" />
         )}
         <div className="absolute inset-0 bg-black/40" />
-        <div className="relative z-10 h-full flex items-end pb-6 px-4 md:px-8 max-w-5xl mx-auto">
-          <div className="flex items-end gap-4">
-            <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl border-2 border-white/50 shadow-lg shrink-0 overflow-hidden">
+        <div className="relative z-10 h-full flex items-end pb-5 px-4 md:px-8 max-w-5xl mx-auto">
+          <div className="flex items-end gap-3 md:gap-4">
+            <div className="w-16 h-16 md:w-24 md:h-24 rounded-xl md:rounded-2xl border-2 border-white/50 shadow-lg shrink-0 overflow-hidden">
               {storefront.logoUrl
                 ? <img src={storefront.logoUrl} alt={storefront.displayName} className="w-full h-full object-cover" />
-                : <div className="w-full h-full bg-white/20 backdrop-blur flex items-center justify-center text-white text-3xl font-black">{storefront.displayName?.[0] || '✦'}</div>
+                : <div className="w-full h-full bg-white/20 backdrop-blur flex items-center justify-center text-white text-2xl md:text-3xl font-black">{storefront.displayName?.[0] || '✦'}</div>
               }
             </div>
-            <div className="pb-1">
+            <div className="pb-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-2xl md:text-3xl font-black text-white">{storefront.displayName}</h1>
-                <span className="flex items-center gap-1 bg-white/20 backdrop-blur px-2 py-0.5 rounded-full text-xs text-white font-medium">
+                <h1 className="text-xl md:text-3xl font-black text-white leading-tight">{storefront.displayName}</h1>
+                <span className="flex items-center gap-1 bg-white/20 backdrop-blur px-2 py-0.5 rounded-full text-xs text-white font-medium whitespace-nowrap">
                   <CheckCircle2 className="w-3 h-3" /> Verificado
                 </span>
               </div>
-              {storefront.tagline && <p className="text-white/80 text-sm mt-1">{storefront.tagline}</p>}
+              {storefront.tagline && <p className="text-white/80 text-xs md:text-sm mt-1 line-clamp-1">{storefront.tagline}</p>}
             </div>
           </div>
         </div>
@@ -203,34 +203,36 @@ export function SalonClient({ storefront, products, services, designs, reviews, 
 
       {/* Info bar */}
       <div className="bg-white border-b sticky top-0 z-20 shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 md:px-8 py-3 flex items-center gap-4 flex-wrap">
-          {storefront.averageRating > 0 && (
-            <StarRating rating={Number(storefront.averageRating)} count={storefront.totalReviews} size="sm" />
-          )}
-          {storefront.businessType && <span className="text-sm text-[#6B7280]">{storefront.businessType}</span>}
-          {tags.length > 0 && (
-            <div className="flex gap-1 flex-wrap">
-              {tags.map((tag: string) => (
-                <span key={tag} className="px-2 py-0.5 bg-[#FFF1F8] text-[#EF2D8F] text-xs rounded-full font-medium">{tag}</span>
-              ))}
-            </div>
-          )}
-          <div className="flex gap-2 ml-auto">
-            {storefront.instagram && (
-              <a href={`https://instagram.com/${storefront.instagram.replace('@', '')}`} target="_blank" rel="noopener noreferrer"
-                className="p-1.5 rounded-full hover:bg-[#FFF1F8] text-[#9CA3AF] hover:text-[#EF2D8F] transition-colors">
-                <Instagram className="w-4 h-4" />
-              </a>
+        <div className="max-w-5xl mx-auto px-4 md:px-8 py-2 md:py-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 md:gap-4 flex-wrap min-w-0">
+            {storefront.averageRating > 0 && (
+              <StarRating rating={Number(storefront.averageRating)} count={storefront.totalReviews} size="sm" />
             )}
+            {storefront.businessType && <span className="hidden sm:block text-sm text-[#6B7280]">{storefront.businessType}</span>}
+            {tags.length > 0 && (
+              <div className="hidden sm:flex gap-1 flex-wrap">
+                {tags.slice(0, 3).map((tag: string) => (
+                  <span key={tag} className="px-2 py-0.5 bg-[#FFF1F8] text-[#EF2D8F] text-xs rounded-full font-medium">{tag}</span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex gap-1 flex-shrink-0">
             {storefront.whatsapp && (
               <a href={`https://wa.me/${storefront.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer"
-                className="p-1.5 rounded-full hover:bg-[#FFF1F8] text-[#9CA3AF] hover:text-[#EF2D8F] transition-colors">
+                className="p-2 rounded-full hover:bg-[#FFF1F8] text-[#9CA3AF] hover:text-[#EF2D8F] transition-colors">
                 <MessageCircle className="w-4 h-4" />
+              </a>
+            )}
+            {storefront.instagram && (
+              <a href={`https://instagram.com/${storefront.instagram.replace('@', '')}`} target="_blank" rel="noopener noreferrer"
+                className="p-2 rounded-full hover:bg-[#FFF1F8] text-[#9CA3AF] hover:text-[#EF2D8F] transition-colors">
+                <Instagram className="w-4 h-4" />
               </a>
             )}
             {storefront.website && (
               <a href={storefront.website} target="_blank" rel="noopener noreferrer"
-                className="p-1.5 rounded-full hover:bg-[#FFF1F8] text-[#9CA3AF] hover:text-[#EF2D8F] transition-colors">
+                className="p-2 rounded-full hover:bg-[#FFF1F8] text-[#9CA3AF] hover:text-[#EF2D8F] transition-colors">
                 <Globe className="w-4 h-4" />
               </a>
             )}
@@ -238,19 +240,20 @@ export function SalonClient({ storefront, products, services, designs, reviews, 
         </div>
         {/* Tabs */}
         <div className="max-w-5xl mx-auto px-4 md:px-8">
-          <div className="flex gap-1 overflow-x-auto scrollbar-none">
+          <div className="flex gap-0 overflow-x-auto scrollbar-none">
             {TABS.map(tab => (
               <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
+                className={`flex items-center gap-1 px-3 md:px-4 py-2.5 md:py-3 text-xs md:text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
                   activeTab === tab.key
                     ? 'border-[#EF2D8F] text-[#EF2D8F]'
                     : 'border-transparent text-[#6B7280] hover:text-[#111827]'
                 }`}>
-                {tab.icon} {tab.label}
-                {tab.key === 'productos'   && products.length > 0  && <span className="text-xs text-[#9CA3AF]">({products.length})</span>}
-                {tab.key === 'servicios'   && services.length > 0  && <span className="text-xs text-[#9CA3AF]">({services.length})</span>}
-                {tab.key === 'diseños'     && designs.length  > 0  && <span className="text-xs text-[#9CA3AF]">({designs.length})</span>}
-                {tab.key === 'reseñas'     && reviews.length  > 0  && <span className="text-xs text-[#9CA3AF]">({reviews.length})</span>}
+                {tab.icon}
+                <span className="ml-1">{tab.label}</span>
+                {tab.key === 'productos'   && products.length > 0  && <span className="hidden sm:inline text-xs text-[#9CA3AF] ml-0.5">({products.length})</span>}
+                {tab.key === 'servicios'   && services.length > 0  && <span className="hidden sm:inline text-xs text-[#9CA3AF] ml-0.5">({services.length})</span>}
+                {tab.key === 'diseños'     && designs.length  > 0  && <span className="hidden sm:inline text-xs text-[#9CA3AF] ml-0.5">({designs.length})</span>}
+                {tab.key === 'reseñas'     && reviews.length  > 0  && <span className="hidden sm:inline text-xs text-[#9CA3AF] ml-0.5">({reviews.length})</span>}
               </button>
             ))}
           </div>
@@ -258,11 +261,11 @@ export function SalonClient({ storefront, products, services, designs, reviews, 
       </div>
 
       {/* Tab content */}
-      <div className="max-w-5xl mx-auto px-4 md:px-8 py-8">
+      <div className="max-w-5xl mx-auto px-3 md:px-8 py-5 md:py-8">
         {activeTab === 'productos' && (
           products.length === 0
             ? <EmptyTab icon={<Package className="w-8 h-8" />} text="Este salón aún no tiene productos publicados" />
-            : <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            : <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
                 {products.map(p => (
                   <ProductCard key={p.id} id={p.id} name={p.name}
                     price={Number(p.salePrice || p.price || 0)}
@@ -275,7 +278,7 @@ export function SalonClient({ storefront, products, services, designs, reviews, 
         {activeTab === 'servicios' && (
           services.length === 0
             ? <EmptyTab icon={<Scissors className="w-8 h-8" />} text="Este salón aún no tiene servicios publicados" />
-            : <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            : <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                 {services.map(s => (
                   <ServiceCard key={s.id} id={s.id} name={s.name}
                     category={s.category} price={Number(s.price || 0)}
@@ -288,7 +291,7 @@ export function SalonClient({ storefront, products, services, designs, reviews, 
         {activeTab === 'diseños' && (
           designs.length === 0
             ? <EmptyTab icon={<Palette className="w-8 h-8" />} text="Este salón aún no tiene diseños publicados" />
-            : <div className="columns-2 sm:columns-3 lg:columns-4 gap-4 space-y-4">
+            : <div className="columns-2 sm:columns-3 lg:columns-4 gap-3 md:gap-4 space-y-3 md:space-y-4">
                 {designs.map(d => (
                   <div key={d.id} className="break-inside-avoid">
                     <NailDesignCard id={d.id} name={d.name} technique={d.technique}
@@ -303,15 +306,15 @@ export function SalonClient({ storefront, products, services, designs, reviews, 
             ? <EmptyTab icon={<Star className="w-8 h-8" />} text="Aún no hay reseñas para este salón" />
             : <div className="space-y-4">
                 {storefront.averageRating > 0 && (
-                  <div className="bg-[#FFF1F8] rounded-2xl p-6 flex items-center gap-6 mb-6">
+                  <div className="bg-[#FFF1F8] rounded-2xl p-4 md:p-6 flex items-center gap-4 md:gap-6 mb-4">
                     <div className="text-center shrink-0">
-                      <p className="text-5xl font-black text-[#EF2D8F]">{Number(storefront.averageRating).toFixed(1)}</p>
+                      <p className="text-4xl md:text-5xl font-black text-[#EF2D8F]">{Number(storefront.averageRating).toFixed(1)}</p>
                       <StarRating rating={Number(storefront.averageRating)} size="sm" />
                       <p className="text-xs text-[#6B7280] mt-1">{storefront.totalReviews} reseñas</p>
                     </div>
                   </div>
                 )}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                   {reviews.map(r => <ReviewCard key={r.id} review={r} />)}
                 </div>
               </div>
@@ -319,7 +322,7 @@ export function SalonClient({ storefront, products, services, designs, reviews, 
         {activeTab === 'ubicaciones' && (
           locations.length === 0
             ? <EmptyTab icon={<MapPin className="w-8 h-8" />} text="No hay sucursales configuradas" />
-            : <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            : <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
                 {locations.map(l => <LocationCard key={l.id} store={l} />)}
               </div>
         )}

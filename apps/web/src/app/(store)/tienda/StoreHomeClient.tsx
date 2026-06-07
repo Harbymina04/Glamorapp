@@ -117,13 +117,12 @@ export function StoreHomeClient({ shops, products, designs, bannerUrl }: Props) 
     <div>
       {/* Hero */}
       <section
-        className="relative overflow-hidden py-24 px-4 text-white"
+        className="relative overflow-hidden py-16 md:py-24 px-4 text-white"
         style={bannerUrl
           ? { backgroundImage: `url(${bannerUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
           : { background: 'linear-gradient(135deg, #EF2D8F 0%, #8B5CF6 100%)' }
         }
       >
-        {/* Overlay sobre la imagen para mantener legibilidad del texto */}
         {bannerUrl && (
           <div className="absolute inset-0 bg-gradient-to-r from-[#EF2D8F]/70 to-[#8B5CF6]/70" />
         )}
@@ -132,17 +131,17 @@ export function StoreHomeClient({ shops, products, designs, bannerUrl }: Props) 
           <div className="absolute bottom-10 right-10 w-96 h-96 rounded-full bg-white blur-3xl" />
         </div>
         <div className="relative max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-white/20 backdrop-blur-sm rounded-full text-sm font-medium mb-6">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/20 backdrop-blur-sm rounded-full text-xs md:text-sm font-medium mb-4 md:mb-6">
             <Sparkles className="w-4 h-4" /> Más de 500 salones de belleza
           </div>
-          <h1 className="text-4xl md:text-5xl font-extrabold leading-tight mb-6">
+          <h1 className="text-3xl md:text-5xl font-extrabold leading-tight mb-4 md:mb-6">
             Tu belleza, a un click<br />de distancia.
           </h1>
-          <p className="text-xl text-white/80 mb-10 max-w-2xl mx-auto">
+          <p className="text-base md:text-xl text-white/80 mb-6 md:mb-10 max-w-2xl mx-auto">
             Encuentra los mejores productos, servicios y diseños de uñas de los salones de tu ciudad.
           </p>
           <Link href="/tienda/catalogo"
-            className="inline-flex items-center gap-2 px-8 py-3.5 bg-white text-[#EF2D8F] rounded-full font-bold hover:bg-gray-50 transition">
+            className="inline-flex items-center gap-2 px-6 md:px-8 py-3 md:py-3.5 bg-white text-[#EF2D8F] rounded-full font-bold hover:bg-gray-50 transition text-sm md:text-base">
             Ver catálogo <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
@@ -199,7 +198,7 @@ export function StoreHomeClient({ shops, products, designs, bannerUrl }: Props) 
 
         {/* Salones */}
         {shops.length > 0 && (
-          <section className="bg-gradient-to-br from-pink-50 to-fuchsia-50 rounded-3xl p-8">
+          <section className="bg-gradient-to-br from-pink-50 to-fuchsia-50 rounded-3xl p-5 md:p-8">
             <div className="text-center mb-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">💅 Agenda tu cita</h2>
               <p className="text-gray-500 text-sm max-w-md mx-auto">

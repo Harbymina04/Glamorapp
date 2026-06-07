@@ -41,6 +41,7 @@ function CatalogoContent() {
   const [maxPrice, setMaxPrice] = useState('');
   const [onlyFavs, setOnlyFavs] = useState(false);
   const [sort, setSort] = useState('default');
+  const [filterOpen, setFilterOpen] = useState(false);
 
   const searchTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -114,7 +115,7 @@ function CatalogoContent() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="flex items-center gap-4 mb-6">
+      <div className="flex items-center gap-2 mb-6">
         <div className="relative flex-1">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input value={search} onChange={e => handleSearch(e.target.value)}
@@ -122,11 +123,17 @@ function CatalogoContent() {
             className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30" />
         </div>
         <select value={sort} onChange={e => setSort(e.target.value)}
-          className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30">
+          className="hidden sm:block px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30">
           {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        <span className="text-sm text-gray-500 whitespace-nowrap">{filtered.length} productos</span>
+        <button onClick={() => setFilterOpen(true)}
+          className="md:hidden flex items-center gap-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition">
+          <SlidersHorizontal className="w-4 h-4" /> Filtros
+          {activeFilters.length > 0 && <span className="w-5 h-5 rounded-full bg-[#EF2D8F] text-white text-xs flex items-center justify-center">{activeFilters.length}</span>}
+        </button>
+        <span className="hidden sm:block text-sm text-gray-500 whitespace-nowrap">{filtered.length} productos</span>
       </div>
+      <span className="sm:hidden block text-xs text-gray-400 mb-3">{filtered.length} productos</span>
 
       {activeFilters.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-5">
@@ -138,8 +145,62 @@ function CatalogoContent() {
         </div>
       )}
 
+      {/* Mobile category chips */}
+      <div className="md:hidden flex gap-2 mb-4 overflow-x-auto pb-1 scrollbar-hide">
+        {CATEGORIES.map(cat => (
+          <button key={cat} onClick={() => setCategory(cat)}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition ${
+              category === cat ? 'bg-[#EF2D8F] text-white border-transparent' : 'border-gray-200 text-gray-600'
+            }`}>
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* Mobile filter drawer */}
+      {filterOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setFilterOpen(false)} />
+          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-base font-bold text-gray-900">Filtros</h3>
+              <button onClick={() => setFilterOpen(false)} className="p-1 text-gray-400"><X className="w-5 h-5" /></button>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-700 mb-3">Ordenar por</p>
+              <div className="space-y-1">
+                {SORT_OPTIONS.map(o => (
+                  <button key={o.value} onClick={() => setSort(o.value)}
+                    className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition ${sort === o.value ? 'bg-pink-50 text-[#EF2D8F] font-semibold' : 'text-gray-600 hover:bg-gray-50'}`}>
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-700 mb-3">Rango de precio</p>
+              <div className="flex gap-3">
+                <input type="number" value={minPrice} onChange={e => setMinPrice(e.target.value)} placeholder="Mínimo"
+                  className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30" />
+                <input type="number" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} placeholder="Máximo"
+                  className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30" />
+              </div>
+            </div>
+            <label className="flex items-center gap-2.5 cursor-pointer p-3 rounded-xl border border-gray-200">
+              <input type="checkbox" checked={onlyFavs} onChange={e => setOnlyFavs(e.target.checked)} className="rounded border-gray-300 text-[#EF2D8F]" />
+              <Heart className="w-4 h-4 text-gray-400" />
+              <span className="text-sm text-gray-700">Solo favoritos</span>
+            </label>
+            <button onClick={() => setFilterOpen(false)}
+              className="w-full py-3 bg-[#EF2D8F] text-white rounded-xl font-bold hover:bg-[#d4267e] transition">
+              Ver {filtered.length} productos
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex gap-6">
-        <aside className="w-64 flex-shrink-0 space-y-6">
+        <aside className="hidden md:block w-64 flex-shrink-0 space-y-6">
           <div>
             <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2"><SlidersHorizontal className="w-4 h-4" /> Categorías</h3>
             <ul className="space-y-1">
@@ -172,9 +233,9 @@ function CatalogoContent() {
           </div>
         </aside>
 
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           {loading ? (
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
               {[...Array(12)].map((_, i) => <div key={i} className="aspect-square bg-gray-100 rounded-xl animate-pulse" />)}
             </div>
           ) : filtered.length === 0 ? (
@@ -185,7 +246,7 @@ function CatalogoContent() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
                 {filtered.map(p => {
                   const basePrice = Number(p.salePrice || 0);
                   const disc = getStorefrontDiscount(
