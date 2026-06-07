@@ -20,6 +20,7 @@ const WEBHOOK_URL = process.env.WEBHOOK_URL || 'http://localhost:3001/api/v1/wha
 
 // ─── Session Manager ──────────────────────────────────────────
 const sessions = new Map(); // sessionId → { sock, qr, connected, connectionState, phone, startedAt }
+const lastMessages = new Map(); // `${sessionId}:${fromJid}` → last WAMessage (for quoted reply)
 
 function auth(req, res, next) {
   const key = req.headers['x-api-key'];
@@ -136,8 +137,11 @@ async function startSession(sessionId, phone) {
       if (msg.key.remoteJid === 'status@broadcast') continue;
       if (msg.key.remoteJid?.endsWith('@g.us')) continue; // ignorar grupos
 
-      const fromJid = msg.key.remoteJid || ''; // JID completo, ej: 1234@s.whatsapp.net o 1234@lid
-      const from = fromJid.replace(/@s\.whatsapp\.net|@lid|@c\.us/, ''); // solo dígitos
+      const fromJid = msg.key.remoteJid || '';
+      const from = fromJid.replace(/@s\.whatsapp\.net|@lid|@c\.us/, '');
+
+      // Store message for quoted reply (lets us reply to @lid contacts correctly)
+      lastMessages.set(`${sessionId}:${fromJid}`, msg);
       const body = (
         msg.message?.conversation ||
         msg.message?.extendedTextMessage?.text ||
@@ -307,12 +311,16 @@ app.post('/api/sendText', auth, async (req, res) => {
   if (!s.connected) return res.status(503).json({ error: `Sesión '${sessionId}' no conectada (${s.connectionState})` });
 
   try {
-    // Use JID as-is if it already has a suffix, otherwise default to @s.whatsapp.net
     const jid = chatId.includes('@') ? chatId : `${chatId}@s.whatsapp.net`;
-    // detectLinks: false prevents Baileys from trying to import link-preview-js
-    // which would crash the connection if the message contains URLs
-    const msg = await s.sock.sendMessage(jid, { text, detectLinks: false });
-    res.json({ success: true, id: msg.key.id, sessionId, jid });
+
+    // Use quoted reply when we have the original message — this is the only
+    // reliable way to reply to @lid contacts (WhatsApp rejects direct sends to @lid)
+    const quotedMsg = lastMessages.get(`${sessionId}:${jid}`);
+    const sendOptions = quotedMsg ? { quoted: quotedMsg } : {};
+
+    const sent = await s.sock.sendMessage(jid, { text }, sendOptions);
+    console.log(`[${sessionId}] ✉️ Enviado a ${jid} (quoted: ${!!quotedMsg})`);
+    res.json({ success: true, id: sent.key.id, sessionId, jid, quoted: !!quotedMsg });
   } catch (e) {
     console.error(`[${sessionId}] Error enviando a ${chatId}:`, e.message);
     res.status(500).json({ error: e.message });
