@@ -257,6 +257,11 @@ export class StorefrontChatService {
     let tenantId = params.tenantId;
     let storeName = 'Glamorapp';
     let storeDescription = '';
+    let storeAddress: string | null = null;
+    let storeCity: string | null = null;
+    let storePhone: string | null = null;
+    let storeLat: number | null = null;
+    let storeLng: number | null = null;
 
     if (!tenantId && params.slug) {
       const sf = await this.prisma.storefront.findFirst({
@@ -275,10 +280,29 @@ export class StorefrontChatService {
       }
     }
 
+    // Fetch store location info
+    if (tenantId) {
+      const store = await this.prisma.store.findFirst({
+        where: { tenantId, isActive: true },
+        select: { address: true, city: true, phone: true, latitude: true, longitude: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (store) {
+        storeAddress = (store as any).address ?? null;
+        storeCity    = (store as any).city    ?? null;
+        storePhone   = (store as any).phone   ?? null;
+        storeLat     = store.latitude  ? Number(store.latitude)  : null;
+        storeLng     = store.longitude ? Number(store.longitude) : null;
+      }
+    }
+
     const activeDiscounts = tenantId ? await this.getActiveStorefrontDiscounts(tenantId) : [];
     // Enrich discounts with product names so Glami can mention them by name
     const enrichedDiscounts = await this.enrichDiscountsWithProductNames(activeDiscounts);
-    const systemPrompt = this.buildSystemPrompt(storeName, storeDescription, params.cart, enrichedDiscounts);
+    const systemPrompt = this.buildSystemPrompt(
+      storeName, storeDescription, params.cart, enrichedDiscounts,
+      { address: storeAddress, city: storeCity, phone: storePhone, lat: storeLat, lng: storeLng },
+    );
 
     // ── Build initial messages (OpenAI format) ────────────────────────
     const messages: any[] = [
@@ -636,7 +660,21 @@ export class StorefrontChatService {
     description: string,
     cart?: Array<{ productId: string; name: string; price: number; qty: number }>,
     activeDiscounts?: any[],
+    location?: { address: string | null; city: string | null; phone: string | null; lat: number | null; lng: number | null },
   ): string {
+    // Build Google Maps link if coords available, else search link
+    let locationSection = '';
+    if (location && (location.address || location.city)) {
+      const addressText = [location.address, location.city].filter(Boolean).join(', ');
+      const mapsUrl = location.lat && location.lng
+        ? `https://www.google.com/maps?q=${location.lat},${location.lng}`
+        : `https://www.google.com/maps/search/${encodeURIComponent(addressText + ' ' + storeName)}`;
+      locationSection = `\nUBICACIÓN DE LA TIENDA:
+Dirección: ${addressText}${location.phone ? `\nTeléfono: ${location.phone}` : ''}
+Enlace Google Maps: ${mapsUrl}
+Cuando el cliente pregunte por la dirección o ubicación, proporciona la dirección y el enlace de Google Maps directamente en tu respuesta.\n`;
+    }
+
     const cartSection = cart && cart.length > 0
       ? `\nCARRITO ACTUAL DEL CLIENTE:\n${cart.map(i =>
           `- ${i.name} x${i.qty} = $${(i.price * i.qty).toLocaleString('es-CO')} COP (ID: ${i.productId})`
@@ -668,7 +706,7 @@ export class StorefrontChatService {
 
     return `Eres Glamy, la asistente virtual inteligente de ${storeName}${description ? ` — "${description}"` : ''}.
 
-${discountSection}Tienes herramientas para:
+${locationSection}${discountSection}Tienes herramientas para:
 - buscar_productos: ver el catálogo real con precios y stock
 - buscar_servicios: ver servicios del salón
 - agregar_al_carrito: agregar productos al carrito del cliente
