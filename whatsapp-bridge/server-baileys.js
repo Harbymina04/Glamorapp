@@ -21,6 +21,7 @@ const WEBHOOK_URL = process.env.WEBHOOK_URL || 'http://localhost:3001/api/v1/wha
 // ─── Session Manager ──────────────────────────────────────────
 const sessions = new Map(); // sessionId → { sock, qr, connected, connectionState, phone, startedAt }
 const lastMessages = new Map(); // `${sessionId}:${fromJid}` → last WAMessage (for quoted reply)
+const lidToPhone = new Map();   // `${sessionId}:${lid@lid}` → `phone@s.whatsapp.net`
 
 function auth(req, res, next) {
   const key = req.headers['x-api-key'];
@@ -84,6 +85,17 @@ async function startSession(sessionId, phone) {
 
   sessionData.sock = sock;
   sock.ev.on('creds.update', saveCreds);
+
+  // Build @lid → phone JID mapping from contact events
+  sock.ev.on('contacts.upsert', (contacts) => {
+    for (const c of contacts) {
+      if (c.lid && c.id) {
+        // c.lid = '173426534785223@lid', c.id = '573001234567@s.whatsapp.net'
+        lidToPhone.set(`${sessionId}:${c.lid}`, c.id);
+        console.log(`[${sessionId}] 📇 LID mapeado: ${c.lid} → ${c.id}`);
+      }
+    }
+  });
 
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
@@ -311,16 +323,24 @@ app.post('/api/sendText', auth, async (req, res) => {
   if (!s.connected) return res.status(503).json({ error: `Sesión '${sessionId}' no conectada (${s.connectionState})` });
 
   try {
-    const jid = chatId.includes('@') ? chatId : `${chatId}@s.whatsapp.net`;
+    const rawJid = chatId.includes('@') ? chatId : `${chatId}@s.whatsapp.net`;
 
-    // Use quoted reply when we have the original message — this is the only
-    // reliable way to reply to @lid contacts (WhatsApp rejects direct sends to @lid)
-    const quotedMsg = lastMessages.get(`${sessionId}:${jid}`);
+    // Resolve @lid → @s.whatsapp.net using the contacts map built at runtime
+    // Sending to @lid directly crashes the stream (xml-not-well-formed)
+    const resolvedJid = rawJid.endsWith('@lid')
+      ? (lidToPhone.get(`${sessionId}:${rawJid}`) || rawJid)
+      : rawJid;
+
+    if (resolvedJid !== rawJid) {
+      console.log(`[${sessionId}] 🔀 @lid resuelto: ${rawJid} → ${resolvedJid}`);
+    }
+
+    const quotedMsg = lastMessages.get(`${sessionId}:${rawJid}`);
     const sendOptions = quotedMsg ? { quoted: quotedMsg } : {};
 
-    const sent = await s.sock.sendMessage(jid, { text }, sendOptions);
-    console.log(`[${sessionId}] ✉️ Enviado a ${jid} (quoted: ${!!quotedMsg})`);
-    res.json({ success: true, id: sent.key.id, sessionId, jid, quoted: !!quotedMsg });
+    const sent = await s.sock.sendMessage(resolvedJid, { text }, sendOptions);
+    console.log(`[${sessionId}] ✉️ Enviado a ${resolvedJid} (quoted: ${!!quotedMsg})`);
+    res.json({ success: true, id: sent.key.id, sessionId, jid: resolvedJid, quoted: !!quotedMsg });
   } catch (e) {
     console.error(`[${sessionId}] Error enviando a ${chatId}:`, e.message);
     res.status(500).json({ error: e.message });
