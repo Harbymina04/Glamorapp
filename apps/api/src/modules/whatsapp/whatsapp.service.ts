@@ -482,6 +482,141 @@ export class WhatsAppService {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // INCOMING MESSAGE HANDLER
+  // ═══════════════════════════════════════════════════════════
+
+  /**
+   * Process a message received from a customer via WhatsApp.
+   * Called by the webhook controller with the payload from the bridge.
+   */
+  async handleIncomingMessage(payload: {
+    sessionId: string;
+    from: string;
+    fromName: string;
+    body: string;
+    timestamp: number;
+  }): Promise<void> {
+    const { sessionId, from, fromName, body } = payload;
+
+    // 1. Resolve storeId and tenantId from sessionId
+    const store = await this.prisma.store.findFirst({
+      where: this.multiSession
+        ? { whatsappSessionId: sessionId }
+        : undefined, // single session: any store won't work well; skip in that case
+      select: { id: true, tenantId: true, name: true },
+    });
+
+    if (!store && this.multiSession) {
+      this.logger.warn(`No store found for sessionId ${sessionId} — ignoring message`);
+      return;
+    }
+
+    const storeId  = store?.id  || sessionId;
+    const tenantId = store?.tenantId;
+
+    // 2. Parse command
+    const { command } = this.parseCommand(body);
+
+    // 3. Find customer by phone in this store/tenant
+    const cleanPhone = from.replace(/[+\s\-()]/g, '');
+    const customer = tenantId ? await this.prisma.user.findFirst({
+      where: {
+        tenantId,
+        role: 'customer',
+        OR: [
+          { phone: { contains: cleanPhone } },
+          { phone: { endsWith: cleanPhone.slice(-10) } },
+        ],
+      },
+      select: { id: true, firstName: true, phone: true },
+    }) : null;
+
+    // 4. Find latest active appointment for this customer
+    const appointment = customer ? await this.prisma.appointment.findFirst({
+      where: {
+        storeId,
+        customerId: customer.id,
+        status: { in: ['pending', 'confirmed'] },
+        date: { gte: new Date() },
+      },
+      include: {
+        service: { select: { name: true } },
+        professional: { select: { firstName: true } },
+      },
+      orderBy: { date: 'asc' },
+    }) : null;
+
+    const customerName = customer?.firstName || fromName || 'Cliente';
+
+    // 5. Execute command
+    switch (command) {
+      case 'confirm': {
+        if (!appointment) {
+          await this.sendMessage(storeId, from,
+            `Hola ${customerName} 👋\n\nNo encontramos una cita pendiente asociada a este número.\n\nSi necesitas agendar una cita, visita nuestro sitio web o escríbenos *AYUDA*.`);
+          break;
+        }
+        if (appointment.status === 'confirmed') {
+          const dateStr = new Date(appointment.date).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
+          await this.sendMessage(storeId, from,
+            `✅ Tu cita del *${dateStr}* a las *${appointment.startTime}* ya estaba confirmada.\n\n¡Te esperamos! 💅`);
+          break;
+        }
+        // Update appointment status
+        await this.prisma.appointment.update({
+          where: { id: appointment.id },
+          data: { status: 'confirmed', confirmedAt: new Date() },
+        });
+        const dateStr = new Date(appointment.date).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
+        await this.sendMessage(storeId, from,
+          `✅ *¡Cita confirmada!*\n\n` +
+          `📋 *Servicio:* ${appointment.service?.name || 'Tu servicio'}\n` +
+          `📅 *Fecha:* ${dateStr}\n` +
+          `🕐 *Hora:* ${appointment.startTime}\n` +
+          `${appointment.professional ? `👩‍🎨 *Profesional:* ${appointment.professional.firstName}\n` : ''}` +
+          `\nTe recordamos llegar 5 minutos antes. ¡Gracias! 💖`);
+        this.logger.log(`Cita ${appointment.id} confirmada por WhatsApp desde ${from}`);
+        break;
+      }
+
+      case 'cancel': {
+        if (!appointment) {
+          await this.sendMessage(storeId, from,
+            `Hola ${customerName} 👋\n\nNo encontramos una cita activa para cancelar.\n\nEscríbenos *AYUDA* para ver las opciones disponibles.`);
+          break;
+        }
+        await this.prisma.appointment.update({
+          where: { id: appointment.id },
+          data: { status: 'cancelled', cancelledAt: new Date(), cancelReason: 'Cancelado por cliente vía WhatsApp' },
+        });
+        const dateStr = new Date(appointment.date).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
+        await this.sendMessage(storeId, from,
+          `❌ *Cita cancelada*\n\n` +
+          `Tu cita del *${dateStr}* a las *${appointment.startTime}* ha sido cancelada.\n\n` +
+          `¿Deseas reagendar? Escríbenos *REAGENDAR* y te ayudamos con una nueva fecha. 🗓️`);
+        this.logger.log(`Cita ${appointment.id} cancelada por WhatsApp desde ${from}`);
+        break;
+      }
+
+      case 'reagendar': {
+        const msg = appointment
+          ? `🔄 *Reagendar cita*\n\nPara cambiar tu cita del *${new Date(appointment.date).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })}*, contáctanos directamente:\n\n📞 Llámanos o visita nuestro sitio para elegir una nueva fecha.\n\n¡Con gusto te atendemos! 😊`
+          : `Hola ${customerName} 👋\n\nNo encontramos una cita activa para reagendar.\n\nEscríbenos *AYUDA* para ver las opciones.`;
+        await this.sendMessage(storeId, from, msg);
+        break;
+      }
+
+      case 'book':
+      case 'info':
+      case 'help':
+      default: {
+        await this.sendMessage(storeId, from, this.getHelpMessage());
+        break;
+      }
+    }
+  }
+
   /**
    * Update store's WhatsApp number and generate a sessionId if missing
    */

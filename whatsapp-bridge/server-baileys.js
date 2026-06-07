@@ -16,6 +16,7 @@ app.use(express.json());
 const PORT = 8082;
 const API_KEY = 'glamorapp_wa_2026';
 const AUTH_ROOT = '/tmp/baileys-auth';
+const WEBHOOK_URL = process.env.WEBHOOK_URL || 'http://localhost:3001/api/v1/whatsapp/webhook';
 
 // ─── Session Manager ──────────────────────────────────────────
 const sessions = new Map(); // sessionId → { sock, qr, connected, connectionState, phone, startedAt }
@@ -121,6 +122,41 @@ async function startSession(sessionId, phone) {
       } else {
         sessionData.connectionState = 'logged_out';
         console.log(`[${sessionId}] ⚠️ Sesión cerrada permanentemente. Borra ${authDir} para reiniciar.`);
+      }
+    }
+  });
+
+  // ─── Incoming messages → forward to backend webhook ──────────
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (type !== 'notify') return; // only real-time messages
+
+    for (const msg of messages) {
+      // Skip messages sent by us, status updates, and non-text messages
+      if (msg.key.fromMe) continue;
+      if (msg.key.remoteJid === 'status@broadcast') continue;
+
+      const from = msg.key.remoteJid?.replace('@s.whatsapp.net', '') || '';
+      const body = (
+        msg.message?.conversation ||
+        msg.message?.extendedTextMessage?.text ||
+        msg.message?.imageMessage?.caption ||
+        ''
+      ).trim();
+
+      if (!body) continue;
+
+      const fromName = msg.pushName || from;
+      console.log(`[${sessionId}] 📩 Mensaje de ${from} (${fromName}): ${body.substring(0, 80)}`);
+
+      // Forward to backend webhook
+      try {
+        await fetch(WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Api-Key': API_KEY },
+          body: JSON.stringify({ sessionId, from, fromName, body, timestamp: Date.now() }),
+        });
+      } catch (e) {
+        console.error(`[${sessionId}] Error enviando webhook:`, e.message);
       }
     }
   });
