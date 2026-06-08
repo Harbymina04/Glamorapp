@@ -72,6 +72,7 @@ const CROSS = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke
 export default function LandingPage() {
   const [billingMode, setBillingMode] = useState<"m" | "y">("m");
   const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [plans, setPlans] = useState<ApiPlan[]>([]);
   const DEFAULT_VIDEO = "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1&mute=1&rel=0&modestbranding=1&loop=1&playlist=dQw4w9WgXcQ";
   const [videoSrc, setVideoSrc] = useState(DEFAULT_VIDEO);
@@ -118,7 +119,22 @@ export default function LandingPage() {
             <Link className="btn btn-ghost" href="/auth/login">Iniciar sesión</Link>
             <Link className="btn btn-primary" href="/auth/register">Registrarse</Link>
           </div>
+          <button className={menuOpen ? "hamburger open" : "hamburger"} onClick={() => setMenuOpen(v => !v)} aria-label="Menú">
+            <span /><span /><span />
+          </button>
         </nav>
+      </div>
+
+      {/* Mobile menu */}
+      <div className={menuOpen ? "mobile-menu open" : "mobile-menu"}>
+        <a href="#modulos" onClick={() => setMenuOpen(false)}>Módulos</a>
+        <a href="#ia" onClick={() => setMenuOpen(false)}>IA Glamy</a>
+        <a href="#planes" onClick={() => setMenuOpen(false)}>Planes</a>
+        <a href="#recursos" onClick={() => setMenuOpen(false)}>Recursos</a>
+        <div className="mobile-ctas">
+          <Link className="btn btn-ghost" href="/auth/login" onClick={() => setMenuOpen(false)}>Iniciar sesión</Link>
+          <Link className="btn btn-primary" href="/auth/register" onClick={() => setMenuOpen(false)}>Registrarse gratis</Link>
+        </div>
       </div>
 
       {/* ===== HERO ===== */}
