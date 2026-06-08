@@ -34,11 +34,8 @@ export class WhatsAppWebhookController {
 
     this.logger.log(`Webhook: ${payload.fromJid || payload.from} → "${payload.body.substring(0, 60)}" [session: ${payload.sessionId}]`);
 
-    // Process async — respond 200 immediately so bridge doesn't retry
-    this.whatsapp.handleIncomingMessage(payload).catch(err =>
-      this.logger.error(`Error procesando mensaje de ${payload.from}: ${err.message}`),
-    );
-
-    return { ok: true };
+    // Bot responses temporarily disabled — incoming messages are logged only
+    // Re-enable by removing the early return below when the bridge is ready
+    return { ok: true, note: 'bot_responses_disabled' };
   }
 }
