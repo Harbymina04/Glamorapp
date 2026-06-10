@@ -1,16 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
-import { StorefrontChatService, ChatMessage } from '../storefront/storefront-chat.service';
-
-// ─── Conversation session (in-memory, TTL 30 min) ─────────────────────────────
-interface WaSession {
-  history: ChatMessage[];
-  cart: Array<{ productId: string; name: string; price: number; qty: number }>;
-  lastActivity: number; // ms timestamp
-}
-
-const WA_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 export interface WhatsAppMessage {
   to: string;           // phone number with country code
@@ -33,15 +23,12 @@ export class WhatsAppService {
   private bridgeUrl: string;
   private bridgeKey: string;
   private enabled: boolean;
-  private multiSession: boolean;
 
-  // In-memory conversation store: key = `${storeId}:${phone}`
-  private readonly sessions = new Map<string, WaSession>();
+  private multiSession: boolean;
 
   constructor(
     private config: ConfigService,
     private prisma: PrismaService,
-    private glamyChat: StorefrontChatService,
   ) {
     this.bridgeUrl = this.config.get('WHATSAPP_BRIDGE_URL') || 'http://localhost:8081';
     this.bridgeKey = this.config.get('WHATSAPP_BRIDGE_API_KEY') || 'glamorapp_wa_2026';
@@ -101,15 +88,12 @@ export class WhatsAppService {
 
     const sessionId = await this.ensureSession(storeId);
     const cleanPhone = to.replace(/[+\s\-()]/g, '');
-    // If 'to' already contains a JID domain (@lid, @s.whatsapp.net, etc.) preserve it as-is
-    // to avoid creating malformed JIDs like "123@lid@s.whatsapp.net"
-    const chatId = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@s.whatsapp.net`;
 
     try {
       const res = await this.bridgeFetch('/api/sendText', {
         method: 'POST',
         body: JSON.stringify({
-          chatId,
+          chatId: `${cleanPhone}@s.whatsapp.net`,
           text: text,
           sessionId: sessionId,
         }),
@@ -122,11 +106,7 @@ export class WhatsAppService {
       }
 
       const data = await res.json();
-      if (data.success === false) {
-        this.logger.warn(`WhatsApp send skipped for ${chatId}: ${data.reason || 'unknown reason'}`);
-        return false;
-      }
-      this.logger.log(`WhatsApp sent to ${chatId} via session ${sessionId} (id: ${data.id})`);
+      this.logger.log(`WhatsApp sent to ${cleanPhone} via session ${sessionId} (id: ${data.id})`);
       return true;
     } catch (e: any) {
       this.logger.error(`WhatsApp send error: ${e.message}`);
@@ -295,26 +275,27 @@ export class WhatsAppService {
   }
 
   /**
-   * Get help/info response message with real store data
+   * Get help/info response message
    */
-  getHelpMessage(storeName?: string, storePhone?: string | null, bookingUrl?: string): string {
-    const name = storeName || 'el salón';
-    const url  = bookingUrl || 'https://glamorapp.co/tienda';
+  getHelpMessage(): string {
     return [
-      `💅 *${name} — Asistente WhatsApp*`,
+      `💅 *Glamorapp — Asistente Virtual*`,
       ``,
-      `¡Hola! Puedo ayudarte con lo siguiente:`,
+      `¡Hola! Soy el asistente de Glamorapp. Puedes:`,
       ``,
-      `📅 *AGENDAR* — Ver servicios y agendar tu cita`,
-      `✅ *CONFIRMAR* — Confirmar tu cita pendiente`,
+      `📅 *AGENDAR* — Agendar una nueva cita`,
+      `   Ej: \"AGENDAR Manicure para el viernes\"`,
+      ``,
+      `✅ *CONFIRMAR* — Confirmar tu cita`,
+      `   Ej: \"CONFIRMAR\"`,
+      ``,
       `❌ *CANCELAR* — Cancelar tu cita`,
-      `🔄 *REAGENDAR* — Cambiar la fecha de tu cita`,
+      `   Ej: \"CANCELAR\"`,
       ``,
-      `🌐 *Agenda en línea:*`,
-      url,
-      ...(storePhone ? [``, `📞 *Teléfono:* ${storePhone}`] : []),
+      `🔄 *REAGENDAR* — Cambiar fecha/hora`,
+      `   Ej: \"REAGENDAR para el sábado\"`,
       ``,
-      `_Responde con una de las palabras en negrita para continuar._`,
+      `📞 ¿Prefieres hablar? Llámanos al +52 55 1234 5678`,
     ].join('\n');
   }
 
@@ -498,297 +479,6 @@ export class WhatsAppService {
       return { success: true, code: data.code, ...data };
     } catch (e: any) {
       return { success: false, error: e.message };
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  // CONVERSATION SESSION HELPERS
-  // ═══════════════════════════════════════════════════════════
-
-  private sessionKey(storeId: string, phone: string) {
-    return `${storeId}:${phone}`;
-  }
-
-  private getSession(storeId: string, phone: string): WaSession {
-    const key = this.sessionKey(storeId, phone);
-    const existing = this.sessions.get(key);
-    const now = Date.now();
-
-    if (existing && now - existing.lastActivity < WA_SESSION_TTL_MS) {
-      existing.lastActivity = now;
-      return existing;
-    }
-
-    // New or expired session
-    const session: WaSession = { history: [], cart: [], lastActivity: now };
-    this.sessions.set(key, session);
-    return session;
-  }
-
-  private clearSession(storeId: string, phone: string) {
-    this.sessions.delete(this.sessionKey(storeId, phone));
-  }
-
-  /** Purge expired sessions (called opportunistically) */
-  private purgeExpiredSessions() {
-    const now = Date.now();
-    for (const [key, s] of this.sessions) {
-      if (now - s.lastActivity > WA_SESSION_TTL_MS) this.sessions.delete(key);
-    }
-  }
-
-  /**
-   * Route the message to Glamy (StorefrontChatService) and return
-   * a WhatsApp-friendly plain-text response.
-   */
-  private async handleWithGlamy(
-    storeId: string,
-    tenantId: string,
-    from: string,
-    body: string,
-    session: WaSession,
-  ): Promise<string> {
-    if (!this.glamyChat) {
-      return 'Lo siento, el asistente de ventas no está disponible en este momento.';
-    }
-
-    // Push user message to history
-    session.history.push({ role: 'user', content: body });
-    if (session.history.length > 20) session.history = session.history.slice(-20);
-
-    let reply: string;
-    try {
-      const result = await this.glamyChat.chat({
-        tenantId,
-        message: body,
-        history: session.history.slice(0, -1), // exclude current message (already added)
-        cart: session.cart,
-      });
-
-      reply = result.reply;
-
-      // Process actions to update in-memory cart
-      for (const action of result.actions ?? []) {
-        if (action.type === 'add_to_cart') {
-          for (const item of action.items) {
-            const existing = session.cart.find(c => c.productId === item.id);
-            if (existing) {
-              existing.qty += 1;
-            } else {
-              session.cart.push({ productId: item.id, name: item.name, price: item.price, qty: 1 });
-            }
-          }
-        }
-        if (action.type === 'order_created') {
-          // Order confirmed → clear cart and session (use phone digits as key)
-          this.clearSession(storeId, from);
-          return reply;
-        }
-      }
-
-      // Push assistant reply to history
-      session.history.push({ role: 'assistant', content: reply });
-
-    } catch (e: any) {
-      this.logger.error(`Glamy error for ${from}: ${e.message}`);
-      reply = 'Lo siento, ocurrió un error. Por favor intenta de nuevo en un momento.';
-    }
-
-    // Format for WhatsApp: remove markdown links [text](url) → text: url
-    reply = reply.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1: $2');
-
-    return reply;
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  // INCOMING MESSAGE HANDLER
-  // ═══════════════════════════════════════════════════════════
-
-  /**
-   * Process a message received from a customer via WhatsApp.
-   * Called by the webhook controller with the payload from the bridge.
-   */
-  async handleIncomingMessage(payload: {
-    sessionId: string;
-    from: string;
-    fromJid?: string;   // full JID with suffix (@s.whatsapp.net or @lid)
-    fromName: string;
-    body: string;
-    timestamp: number;
-  }): Promise<void> {
-    const { sessionId, from, fromName, body } = payload;
-    // Use fromJid for sending so @lid contacts get the message correctly
-    const replyTo = payload.fromJid || from;
-
-    // 1. Resolve storeId and tenantId from sessionId
-    const storeIdFromSession = sessionId.startsWith('store_')
-      ? sessionId.replace('store_', '')
-      : null;
-
-    const store = this.multiSession ? await this.prisma.store.findFirst({
-      where: {
-        OR: [
-          { whatsappSessionId: sessionId },
-          ...(storeIdFromSession ? [{ id: storeIdFromSession }] : []),
-        ],
-      },
-      select: { id: true, tenantId: true, name: true, phone: true, slug: true },
-    }) : null;
-
-    if (!store && this.multiSession) {
-      this.logger.warn(`No store found for sessionId ${sessionId} — ignoring message`);
-      return;
-    }
-
-    const storeId  = store?.id  || sessionId;
-    const tenantId = store?.tenantId;
-
-    // 1b. Fetch storefront slug for booking link
-    const APP_URL = this.config.get('NEXT_PUBLIC_APP_URL') || 'https://glamorapp.co';
-    const storefront = tenantId ? await this.prisma.storefront.findFirst({
-      where: { tenantId },
-      select: { slug: true, displayName: true },
-    }) : null;
-
-    const bookingUrl = storefront?.slug
-      ? `${APP_URL}/tienda/${storefront.slug}`
-      : `${APP_URL}/tienda`;
-
-    const storePhone  = store?.phone || null;
-    const storeName   = storefront?.displayName || store?.name || 'el salón';
-
-    // 2. Parse command
-    const { command } = this.parseCommand(body);
-
-    // 3. Find customer by phone in this store/tenant
-    // Strip @lid / @s.whatsapp.net suffixes and non-digit chars
-    const cleanPhone = from.replace(/@[\w.]+$/, '').replace(/[+\s\-()]/g, '');
-    const last10 = cleanPhone.slice(-10);
-    const customer = tenantId ? await this.prisma.user.findFirst({
-      where: {
-        tenantId,
-        // No role filter — avoids enum mismatch if DB migration is pending
-        OR: [
-          { phone: { contains: cleanPhone } },
-          { phone: { endsWith: last10 } },
-        ],
-      },
-      select: { id: true, firstName: true, phone: true },
-    }) : null;
-
-    // 4. Find latest active appointment for this customer
-    const appointment = customer ? await this.prisma.appointment.findFirst({
-      where: {
-        storeId,
-        customerId: customer.id,
-        status: { in: ['pending', 'confirmed'] },
-        date: { gte: new Date() },
-      },
-      include: {
-        service: { select: { name: true } },
-        professional: { select: { firstName: true } },
-      },
-      orderBy: { date: 'asc' },
-    }) : null;
-
-    const customerName = customer?.firstName || fromName || 'Cliente';
-
-    // 5. Purge expired sessions opportunistically
-    this.purgeExpiredSessions();
-
-    // 6. Get or create conversation session for this number
-    const session = this.getSession(storeId, from);
-
-    // 7. Execute command
-    switch (command) {
-      case 'confirm': {
-        if (!appointment) {
-          await this.sendMessage(storeId, replyTo,
-            `Hola ${customerName} 👋\n\nNo encontramos una cita pendiente asociada a este número.\n\nSi necesitas agendar una cita, visita nuestro sitio web o escríbenos *AYUDA*.`);
-          break;
-        }
-        if (appointment.status === 'confirmed') {
-          const dateStr = new Date(appointment.date).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
-          await this.sendMessage(storeId, replyTo,
-            `✅ Tu cita del *${dateStr}* a las *${appointment.startTime}* ya estaba confirmada.\n\n¡Te esperamos! 💅`);
-          break;
-        }
-        // Update appointment status
-        await this.prisma.appointment.update({
-          where: { id: appointment.id },
-          data: { status: 'confirmed', confirmedAt: new Date() },
-        });
-        const dateStr = new Date(appointment.date).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
-        await this.sendMessage(storeId, replyTo,
-          `✅ *¡Cita confirmada!*\n\n` +
-          `📋 *Servicio:* ${appointment.service?.name || 'Tu servicio'}\n` +
-          `📅 *Fecha:* ${dateStr}\n` +
-          `🕐 *Hora:* ${appointment.startTime}\n` +
-          `${appointment.professional ? `👩‍🎨 *Profesional:* ${appointment.professional.firstName}\n` : ''}` +
-          `\nTe recordamos llegar 5 minutos antes. ¡Gracias! 💖`);
-        this.clearSession(storeId, from);
-        this.logger.log(`Cita ${appointment.id} confirmada por WhatsApp desde ${from}`);
-        break;
-      }
-
-      case 'cancel': {
-        if (!appointment) {
-          await this.sendMessage(storeId, replyTo,
-            `Hola ${customerName} 👋\n\nNo encontramos una cita activa para cancelar.\n\n` +
-            `Para agendar una nueva cita visita:\n${bookingUrl}\n\n` +
-            `Escribe *AYUDA* para ver todas las opciones.`);
-          break;
-        }
-        await this.prisma.appointment.update({
-          where: { id: appointment.id },
-          data: { status: 'cancelled', cancelledAt: new Date(), cancelReason: 'Cancelado por cliente vía WhatsApp' },
-        });
-        const cancelDateStr = new Date(appointment.date).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
-        await this.sendMessage(storeId, replyTo,
-          `❌ *Cita cancelada*\n\n` +
-          `Tu cita del *${cancelDateStr}* a las *${appointment.startTime}* ha sido cancelada.\n\n` +
-          `¿Quieres agendar una nueva? 👇\n${bookingUrl}`);
-        this.clearSession(storeId, from);
-        this.logger.log(`Cita ${appointment.id} cancelada por WhatsApp desde ${from}`);
-        break;
-      }
-
-      case 'reagendar': {
-        if (appointment) {
-          const reagDateStr = new Date(appointment.date).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
-          await this.sendMessage(storeId, replyTo,
-            `🔄 *Reagendar cita*\n\n` +
-            `Tienes una cita el *${reagDateStr}* a las *${appointment.startTime}*.\n\n` +
-            `Para elegir una nueva fecha y hora agenda directamente en:\n${bookingUrl}\n\n` +
-            (storePhone ? `O llámanos: 📞 ${storePhone}` : ''));
-        } else {
-          await this.sendMessage(storeId, replyTo,
-            `Hola ${customerName} 👋\n\nNo encontramos una cita activa para reagendar.\n\n` +
-            `Puedes agendar una nueva aquí:\n${bookingUrl}`);
-        }
-        break;
-      }
-
-      case 'book':
-      case 'unknown': {
-        // Route to Glamy if we have tenantId, otherwise fallback to help
-        if (tenantId) {
-          const glamyReply = await this.handleWithGlamy(storeId, tenantId, from, body, session);
-          await this.sendMessage(storeId, replyTo, glamyReply);
-        } else {
-          await this.sendMessage(storeId, replyTo, this.getHelpMessage(storeName, storePhone, bookingUrl));
-        }
-        break;
-      }
-
-      case 'info':
-      case 'help':
-      default: {
-        // Reset session on HOLA/AYUDA so user starts fresh
-        this.clearSession(storeId, from);
-        await this.sendMessage(storeId, replyTo, this.getHelpMessage(storeName, storePhone, bookingUrl));
-        break;
-      }
     }
   }
 
