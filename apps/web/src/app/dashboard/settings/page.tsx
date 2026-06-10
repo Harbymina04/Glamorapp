@@ -472,6 +472,21 @@ export default function SettingsPage() {
     setWaLoading(false);
   };
 
+  const handleResetSession = async () => {
+    if (!confirm('¿Seguro que deseas reiniciar la sesión? Deberás escanear el QR de nuevo.')) return;
+    setWaLoading(true);
+    setWaQrError('');
+    setWaQrUrl(null);
+    try {
+      const currentToken = useAuthStore.getState().token;
+      await api.post('/whatsapp/bridge/session/reset', {}, { token: currentToken! });
+      await fetchWaStatus();
+    } catch (e: any) {
+      setWaQrError(e.message || 'Error al reiniciar sesión');
+    }
+    setWaLoading(false);
+  };
+
   const fetchQr = async () => {
     setWaLoading(true);
     setWaQrError('');
@@ -1011,12 +1026,28 @@ export default function SettingsPage() {
                       Iniciar sesión
                     </button>
                   )}
+                  {(waStatus?.status === 'logged_out' || waStatus?.status === 'error') && (
+                    <button
+                      onClick={handleResetSession}
+                      disabled={waLoading}
+                      className="flex items-center gap-2 h-9 px-4 rounded-lg border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50 transition disabled:opacity-50"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Reiniciar sesión
+                    </button>
+                  )}
                   {waStatus?.connected && (
                     <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium">
                       <Wifi className="w-4 h-4" /> WhatsApp conectado
                     </span>
                   )}
                 </div>
+                {(waStatus?.status === 'logged_out') && (
+                  <div className="flex items-start gap-2 p-3 mb-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <span>El dispositivo fue desvinculado de WhatsApp. Haz clic en <strong>Reiniciar sesión</strong> para generar un nuevo QR.</span>
+                  </div>
+                )}
 
                 {/* QR Code Section */}
                 <div className="border-t border-border-primary pt-4">

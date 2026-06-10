@@ -53,6 +53,16 @@ export class WhatsAppBridgeController {
   }
 
   /**
+   * Reset store's WhatsApp session — clears saved credentials and starts fresh QR.
+   * Use when the device was unlinked from WhatsApp (code 401 / logged_out).
+   */
+  @Post('session/reset')
+  @Roles('store_admin', 'tenant_admin')
+  async resetSession(@Request() req: any) {
+    return this.whatsapp.resetStoreSession(req.user.storeId);
+  }
+
+  /**
    * Get store's QR code as base64 (for inline display)
    */
   @Get('session/qr')

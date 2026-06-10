@@ -483,6 +483,24 @@ export class WhatsAppService {
   }
 
   /**
+   * Reset a store's session — clears saved credentials and restarts with fresh QR.
+   * Call this when the device was unlinked from WhatsApp (status: logged_out / 401).
+   */
+  async resetStoreSession(storeId: string) {
+    const sessionId = await this.resolveSessionId(storeId);
+    try {
+      const res = await this.bridgeFetch(`/api/sessions/${sessionId}/reset`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        return { error: err.error || `Bridge responded ${res.status}` };
+      }
+      return await res.json();
+    } catch (e: any) {
+      return { error: e.message };
+    }
+  }
+
+  /**
    * Update store's WhatsApp number and generate a sessionId if missing
    */
   async updateStoreWhatsApp(storeId: string, whatsappNumber: string) {
