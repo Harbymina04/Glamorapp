@@ -1026,7 +1026,7 @@ export default function SettingsPage() {
                       Iniciar sesión
                     </button>
                   )}
-                  {(waStatus?.status === 'logged_out' || waStatus?.status === 'error') && (
+                  {!waStatus?.connected && (
                     <button
                       onClick={handleResetSession}
                       disabled={waLoading}
