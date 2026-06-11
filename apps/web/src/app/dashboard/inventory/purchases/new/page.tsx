@@ -13,6 +13,8 @@ interface CartItem {
   productSku: string;
   quantity: number;
   unitPrice: number;
+  ivaRate: number;
+  isIvaExcluded: boolean;
   stock: number;
 }
 
@@ -30,7 +32,6 @@ function NewPurchaseForm() {
   const [selectedSupplier, setSelectedSupplier] = useState(prefilledSupplierId);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [notes, setNotes] = useState('');
-  const [ivaPercent, setIvaPercent] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [productSearch, setProductSearch] = useState('');
@@ -52,12 +53,14 @@ function NewPurchaseForm() {
         const prod = prods.find((p: any) => p.id === prefilledProductId);
         if (prod) {
           setCart([{
-            productId: prod.id,
-            productName: prod.name,
-            productSku: prod.sku || '',
-            quantity: Math.max(1, (prod.minStock || 5) - (prod.currentStock || 0)),
-            unitPrice: Number(prod.costPrice) || 0,
-            stock: prod.currentStock,
+            productId:    prod.id,
+            productName:  prod.name,
+            productSku:   prod.sku || '',
+            quantity:     Math.max(1, (prod.minStock || 5) - (prod.currentStock || 0)),
+            unitPrice:    Number(prod.costPrice) || 0,
+            ivaRate:      Number(prod.ivaRate ?? 19),
+            isIvaExcluded: prod.isIvaExcluded ?? false,
+            stock:        prod.currentStock,
           }]);
         }
       }
@@ -88,15 +91,16 @@ function NewPurchaseForm() {
 
   const addToCart = (product: any) => {
     if (cart.find(i => i.productId === product.id)) return;
-    // Use supplier price if available, otherwise fall back to cost price
     const unitPrice = supplierPrices[product.id] ?? Number(product.costPrice) ?? 0;
     setCart(prev => [...prev, {
-      productId: product.id,
-      productName: product.name,
-      productSku: product.sku || '',
-      quantity: 1,
+      productId:    product.id,
+      productName:  product.name,
+      productSku:   product.sku || '',
+      quantity:     1,
       unitPrice,
-      stock: product.currentStock,
+      ivaRate:      Number(product.ivaRate ?? 19),
+      isIvaExcluded: product.isIvaExcluded ?? false,
+      stock:        product.currentStock,
     }]);
     setProductSearch('');
     setShowProductList(false);
@@ -112,8 +116,11 @@ function NewPurchaseForm() {
     ));
   };
 
-  const subtotal = cart.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
-  const ivaAmount = subtotal * (ivaPercent / 100);
+  const subtotal  = cart.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+  const ivaAmount = cart.reduce((s, i) => {
+    if (i.isIvaExcluded) return s;
+    return s + i.quantity * i.unitPrice * (i.ivaRate / 100);
+  }, 0);
   const total = subtotal + ivaAmount;
 
   const handleSave = async () => {
@@ -125,12 +132,13 @@ function NewPurchaseForm() {
     try {
       await api.post('/purchases', {
         supplierId: selectedSupplier,
-        ivaPercent,
         notes: notes.trim() || undefined,
         items: cart.map(i => ({
-          productId: i.productId,
-          quantity: i.quantity,
-          unitPrice: i.unitPrice,
+          productId:    i.productId,
+          quantity:     i.quantity,
+          unitPrice:    i.unitPrice,
+          ivaRate:      i.ivaRate,
+          isIvaExcluded: i.isIvaExcluded,
         })),
       }, { token: token! });
       router.push('/dashboard/inventory/purchases');
@@ -237,40 +245,44 @@ function NewPurchaseForm() {
                 <thead>
                   <tr className="bg-surface-primary/50 border-b border-border-primary">
                     <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Producto</th>
-                    <th className="text-center px-3 py-2 text-xs font-semibold text-muted-foreground w-24">Cantidad</th>
+                    <th className="text-center px-3 py-2 text-xs font-semibold text-muted-foreground w-20">Cant.</th>
                     <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground w-28">Precio unit.</th>
-                    <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground w-28">Subtotal</th>
+                    <th className="text-center px-3 py-2 text-xs font-semibold text-muted-foreground w-24">IVA</th>
+                    <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground w-28">Total</th>
                     <th className="w-10"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {cart.map(item => (
+                  {cart.map(item => {
+                    const lineIva = item.isIvaExcluded ? 0 : item.quantity * item.unitPrice * (item.ivaRate / 100);
+                    return (
                     <tr key={item.productId}>
                       <td className="px-3 py-2">
                         <p className="text-sm font-medium text-foreground">{item.productName}</p>
                         <p className="text-xs text-muted-foreground">{item.productSku}</p>
                       </td>
                       <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.quantity}
+                        <input type="number" min="1" value={item.quantity}
                           onChange={e => updateCartItem(item.productId, 'quantity', parseInt(e.target.value) || 1)}
                           className="w-full h-8 text-center rounded border border-border-primary text-sm focus:outline-none focus:ring-1 focus:ring-glamor-primary/30"
                         />
                       </td>
                       <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.unitPrice}
+                        <input type="number" min="0" step="0.01" value={item.unitPrice}
                           onChange={e => updateCartItem(item.productId, 'unitPrice', parseFloat(e.target.value) || 0)}
                           className="w-full h-8 text-right rounded border border-border-primary text-sm focus:outline-none focus:ring-1 focus:ring-glamor-primary/30"
                         />
                       </td>
+                      <td className="px-3 py-2 text-center">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${item.isIvaExcluded ? 'bg-gray-100 text-gray-500' : 'bg-blue-50 text-blue-700'}`}>
+                          {item.isIvaExcluded ? 'Excluido' : `${item.ivaRate}%`}
+                        </span>
+                        {!item.isIvaExcluded && lineIva > 0 && (
+                          <p className="text-[10px] text-blue-600 mt-0.5">{formatCurrency(lineIva)}</p>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-right text-sm font-medium text-foreground">
-                        {formatCurrency(item.quantity * item.unitPrice)}
+                        {formatCurrency(item.quantity * item.unitPrice + lineIva)}
                       </td>
                       <td className="px-1 py-2">
                         <button onClick={() => removeFromCart(item.productId)} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600">
@@ -278,45 +290,25 @@ function NewPurchaseForm() {
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
-        {/* IVA Selector */}
-        <div>
-          <label className={labelClass}>IVA de la compra</label>
-          <div className="flex gap-2">
-            {[0, 19].map(rate => (
-              <button
-                key={rate}
-                type="button"
-                onClick={() => setIvaPercent(rate)}
-                className={`h-9 px-4 rounded-lg text-sm font-medium border transition ${
-                  ivaPercent === rate
-                    ? 'bg-glamor-primary text-white border-glamor-primary'
-                    : 'bg-white text-foreground border-border-primary hover:bg-surface-hover'
-                }`}
-              >
-                {rate === 0 ? 'Sin IVA' : `IVA ${rate}%`}
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Totals */}
         {cart.length > 0 && (
           <div className="flex justify-end">
-            <div className="bg-surface-primary/30 rounded-lg px-4 py-3 min-w-[220px] space-y-1">
+            <div className="bg-surface-primary/30 rounded-lg px-4 py-3 min-w-[240px] space-y-1">
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Subtotal:</span>
+                <span className="text-muted-foreground">Subtotal (sin IVA):</span>
                 <span className="font-medium text-foreground">{formatCurrency(subtotal)}</span>
               </div>
-              {ivaPercent > 0 && (
+              {ivaAmount > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">IVA ({ivaPercent}%):</span>
+                  <span className="text-muted-foreground">IVA descontable:</span>
                   <span className="font-medium text-blue-600">{formatCurrency(ivaAmount)}</span>
                 </div>
               )}

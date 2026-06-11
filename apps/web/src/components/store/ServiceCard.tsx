@@ -68,7 +68,8 @@ export function ServiceCard({
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ storeId, serviceId: id, date, startTime: time, endTime, price, notes: notes || null }),
+          // price lo calcula el servidor desde el servicio (no se envía)
+          body: JSON.stringify({ storeId, serviceId: id, date, startTime: time, endTime, notes: notes || undefined }),
         }
       );
       if (!res.ok) { const err = await res.json(); throw new Error(err.message || 'Error al agendar'); }

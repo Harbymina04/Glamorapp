@@ -78,8 +78,8 @@ export default function TenantUsersPage() {
 
   const createUser = async () => {
     setFormError('');
-    if (form.password.length < 8) {
-      setFormError('La contraseña debe tener al menos 8 caracteres.');
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(form.password)) {
+      setFormError('La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.');
       return;
     }
     setSaving(true);
@@ -99,8 +99,8 @@ export default function TenantUsersPage() {
   const resetPassword = async () => {
     setPwdError('');
     if (!resetUserId || !newPassword) return;
-    if (newPassword.length < 8) {
-      setPwdError('La contraseña debe tener al menos 8 caracteres.');
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(newPassword)) {
+      setPwdError('La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.');
       return;
     }
     try {
@@ -214,7 +214,7 @@ export default function TenantUsersPage() {
                 <input className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="usuario@email.com" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Contraseña <span className="font-normal">(mín. 8 caracteres)</span></label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Contraseña <span className="font-normal">(mín. 8: mayúscula, minúscula y número)</span></label>
                 <input className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="••••••••" type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
               </div>
               <div>
@@ -255,7 +255,7 @@ export default function TenantUsersPage() {
             <h3 className="text-lg font-bold mb-1">Cambiar Contraseña</h3>
             <p className="text-sm text-muted-foreground mb-4">Ingresa la nueva contraseña para este usuario.</p>
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Nueva contraseña <span className="font-normal">(mín. 8 caracteres)</span></label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Nueva contraseña <span className="font-normal">(mín. 8: mayúscula, minúscula y número)</span></label>
               <input
                 className="w-full px-3 py-2 border rounded-lg text-sm mb-1"
                 placeholder="••••••••"

@@ -208,7 +208,7 @@ export class PaymentsService {
         await this.plans.activateSubscriptionFromPayment(reference);
         this.logger.log(`Subscription activated via payment: ${reference}`);
       } else {
-        await this.handleApprovedTransaction(reference);
+        await this.handleApprovedTransaction(reference, tx.amount_in_cents);
       }
     } else if (status === 'DECLINED' || status === 'VOIDED' || status === 'ERROR') {
       if (!reference.startsWith('SUB|')) {
@@ -232,7 +232,7 @@ export class PaymentsService {
     return expected === checksum;
   }
 
-  private async handleApprovedTransaction(orderNumber: string) {
+  private async handleApprovedTransaction(orderNumber: string, amountInCents?: number) {
     const order = await this.prisma.storefrontOrder.findFirst({
       where: { orderNumber },
     });
@@ -244,6 +244,21 @@ export class PaymentsService {
 
     if (order.status === 'confirmed' || order.status === 'completed') {
       this.logger.log(`Webhook: order ${orderNumber} already ${order.status}, skipping`);
+      return;
+    }
+
+    // Verify the amount actually paid matches the order's authoritative total.
+    // Wompi reports amount_in_cents; order.total is in COP. Reject underpayment
+    // so a tampered/short PSE charge can't confirm a full-value order.
+    const expectedCents = Math.round(Number(order.total) * 100);
+    if (typeof amountInCents === 'number' && Number.isFinite(amountInCents) && amountInCents < expectedCents) {
+      this.logger.error(
+        `Webhook: order ${orderNumber} amount mismatch — paid ${amountInCents} < expected ${expectedCents}. NOT confirming.`,
+      );
+      await this.prisma.storefrontOrder.update({
+        where: { id: order.id },
+        data: { paymentStatus: 'AMOUNT_MISMATCH' },
+      });
       return;
     }
 

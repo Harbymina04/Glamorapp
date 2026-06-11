@@ -82,7 +82,8 @@ export class PayoutsController {
   @UseInterceptors(FileInterceptor('file', {
     limits: { fileSize: 2 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {
-      cb(null, /image\/(jpeg|jpg|png|webp|svg\+xml)/.test(file.mimetype));
+      // SVG excluido a propósito (riesgo de XSS al servirse público).
+      cb(null, /image\/(jpeg|jpg|png|gif|webp)/.test(file.mimetype));
     },
   }))
   async uploadLogo(@UploadedFile() file: Express.Multer.File, @Request() req: any) {

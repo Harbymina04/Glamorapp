@@ -122,7 +122,10 @@ export default function UsersPage() {
     if (!form.lastName.trim()) return setFormError('El apellido es requerido');
     if (!form.email.trim()) return setFormError('El email es requerido');
     if (!editingId && !form.password.trim()) return setFormError('La contraseña es requerida');
-    if (!editingId && form.password.length < 6) return setFormError('La contraseña debe tener al menos 6 caracteres');
+    // Misma política que el backend: 8+ caracteres con mayúscula, minúscula y número.
+    if (form.password && !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(form.password)) {
+      return setFormError('La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número');
+    }
 
     setSaving(true);
     setFormError('');
@@ -372,7 +375,7 @@ export default function UsersPage() {
                   </label>
                   <input type="password" className={inputClass} value={form.password}
                     onChange={e => setForm(prev => ({ ...prev, password: e.target.value }))}
-                    placeholder={editingId ? '•••••• (dejar vacío para no cambiar)' : 'Mínimo 6 caracteres'} />
+                    placeholder={editingId ? '•••••• (dejar vacío para no cambiar)' : 'Mín. 8: mayúscula, minúscula y número'} />
                 </div>
                 <div>
                   <label className={labelClass}>

@@ -106,6 +106,8 @@ export default function CheckoutPage() {
           qty: i.qty,
           price: i.price,
         }));
+        // subtotal/total are recomputed server-side from authoritative
+        // product prices — do not send them (rejected by validation).
         createdOrder = await storeApi.post('/storefront/public/orders', {
           tenantId,
           buyerName: form.name,
@@ -113,8 +115,6 @@ export default function CheckoutPage() {
           buyerEmail: form.email || undefined,
           buyerNotes: form.notes || undefined,
           items: orderItems,
-          subtotal,
-          total: subtotal,
           paymentMethod,
         });
       }

@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { SkipSubscriptionCheck } from '../../common/decorators/skip-subscription.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { TenantCreateUserDto, TenantResetPasswordDto } from './dto/tenant-user.dto';
 
 @ApiTags('Tenant Admin')
 @SkipSubscriptionCheck()
@@ -57,13 +58,13 @@ export class TenantController {
   }
 
   @Post('users')
-  async createUser(@Request() req: any, @Body() dto: any) {
+  async createUser(@Request() req: any, @Body() dto: TenantCreateUserDto) {
     return this.service.createUser(req.user.tenantId, dto);
   }
 
   @Post('users/:id/reset-password')
-  async resetPassword(@Request() req: any, @Param('id') id: string, @Body('password') password: string) {
-    return this.service.resetUserPassword(req.user.tenantId, id, password);
+  async resetPassword(@Request() req: any, @Param('id') id: string, @Body() dto: TenantResetPasswordDto) {
+    return this.service.resetUserPassword(req.user.tenantId, id, dto.password);
   }
 
   @Put('users/:id/toggle')

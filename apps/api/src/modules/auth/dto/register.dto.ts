@@ -1,4 +1,5 @@
 import { IsEmail, IsString, MinLength, MaxLength, IsOptional, Matches } from 'class-validator';
+import { IsStrongPassword } from '../../../common/decorators/is-strong-password.decorator';
 
 export class RegisterDto {
   @IsString()
@@ -24,11 +25,7 @@ export class RegisterDto {
   @IsEmail()
   email: string;
 
-  @IsString()
-  @MinLength(8)
-  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/, {
-    message: 'La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número',
-  })
+  @IsStrongPassword()
   password: string;
 
   @IsString()

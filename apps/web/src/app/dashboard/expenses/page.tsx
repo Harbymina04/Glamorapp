@@ -52,6 +52,8 @@ interface ExpenseForm {
   expenseDate: string;
   dueDate: string;
   notes: string;
+  ivaRate: string;
+  isIvaExcluded: boolean;
 }
 
 const emptyForm: ExpenseForm = {
@@ -63,6 +65,8 @@ const emptyForm: ExpenseForm = {
   expenseDate: new Date().toISOString().split('T')[0],
   dueDate: '',
   notes: '',
+  ivaRate: '19',
+  isIvaExcluded: false,
 };
 
 // ─── Page ───────────────────────────────────────────────────────────
@@ -147,10 +151,18 @@ function ExpensesPage() {
       expenseDate: e.expenseDate?.split('T')[0] || '',
       dueDate: e.dueDate?.split('T')[0] || '',
       notes: e.notes || '',
+      ivaRate: String(e.ivaRate ?? '0'),
+      isIvaExcluded: e.isIvaExcluded ?? false,
     });
     setFormError('');
     setShowModal(true);
   };
+
+  const ivaAmount = (() => {
+    const amt  = parseFloat(form.amount) || 0;
+    const rate = parseFloat(form.ivaRate) || 0;
+    return form.isIvaExcluded ? 0 : amt * (rate / 100);
+  })();
 
   const handleSave = async () => {
     if (!form.concept.trim()) return setFormError('El concepto es requerido');
@@ -169,6 +181,9 @@ function ExpensesPage() {
         expenseDate: new Date(form.expenseDate).toISOString(),
         dueDate: form.dueDate ? new Date(form.dueDate).toISOString() : null,
         notes: form.notes.trim() || null,
+        ivaRate: form.isIvaExcluded ? 0 : parseFloat(form.ivaRate) || 0,
+        ivaAmount: form.isIvaExcluded ? 0 : ivaAmount,
+        isIvaExcluded: form.isIvaExcluded,
       };
 
       if (editingId) {
@@ -366,7 +381,7 @@ function ExpensesPage() {
                 <div>
                   <label className={labelClass}>
                     <DollarSign className="w-3.5 h-3.5 inline mr-1 text-muted-foreground" />
-                    Monto *
+                    Monto total (con IVA) *
                   </label>
                   <input type="number" step="0.01" min="0" className={inputClass} value={form.amount}
                     onChange={e => setForm(prev => ({ ...prev, amount: e.target.value }))}
@@ -383,6 +398,38 @@ function ExpensesPage() {
                       <option key={m.value} value={m.value}>{m.label}</option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              {/* IVA */}
+              <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                <p className="text-xs font-semibold text-blue-800 mb-2">IVA del gasto (IVA descontable)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelClass}>Tarifa IVA</label>
+                    <select className={inputClass}
+                      value={form.isIvaExcluded ? 'excluded' : form.ivaRate}
+                      onChange={e => {
+                        if (e.target.value === 'excluded') {
+                          setForm(prev => ({ ...prev, isIvaExcluded: true, ivaRate: '0' }));
+                        } else {
+                          setForm(prev => ({ ...prev, isIvaExcluded: false, ivaRate: e.target.value }));
+                        }
+                      }}>
+                      <option value="0">0% — Sin IVA</option>
+                      <option value="5">5%</option>
+                      <option value="19">19%</option>
+                      <option value="excluded">Excluido</option>
+                    </select>
+                  </div>
+                  {!form.isIvaExcluded && ivaAmount > 0 && (
+                    <div className="flex items-end pb-1">
+                      <div className="text-xs text-blue-700">
+                        <p>IVA incluido en el monto:</p>
+                        <p className="text-lg font-bold text-blue-800">${ivaAmount.toLocaleString('es-CO', { minimumFractionDigits: 0 })}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

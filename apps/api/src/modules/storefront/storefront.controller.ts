@@ -22,6 +22,9 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { SkipSubscriptionCheck } from '../../common/decorators/skip-subscription.decorator';
+import { CreatePublicOrderDto } from './dto/public-order.dto';
+import { CreatePublicReviewDto } from './dto/public-review.dto';
+import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 
 @ApiTags('Storefront')
 @SkipSubscriptionCheck()
@@ -104,13 +107,15 @@ export class StorefrontController {
 
   @Post('public/orders')
   @HttpCode(HttpStatus.CREATED)
-  createPublicOrder(@Body() dto: any) {
+  @Throttle({ default: { ttl: 60_000, limit: 10 } }) // 10 pedidos/min por IP
+  createPublicOrder(@Body() dto: CreatePublicOrderDto) {
     return this.service.createOrder(dto);
   }
 
   @Post('public/reviews')
   @HttpCode(HttpStatus.CREATED)
-  createPublicReview(@Body() dto: any) {
+  @Throttle({ default: { ttl: 3_600_000, limit: 10 } }) // 10 reseñas/hora por IP
+  createPublicReview(@Body() dto: CreatePublicReviewDto) {
     return this.service.createReview(dto);
   }
 
@@ -243,7 +248,7 @@ export class StorefrontController {
   @ApiBearerAuth()
   @Get('orders')
   getOrders(@Request() req: any, @Query() query: any) {
-    return this.service.getOrders(req.user.tenantId, query);
+    return this.service.getOrders(req.user.tenantId, req.user.storeId, req.user.role, query);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -251,7 +256,7 @@ export class StorefrontController {
   @ApiBearerAuth()
   @Get('orders/:id')
   getOrder(@Request() req: any, @Param('id') id: string) {
-    return this.service.getOrder(req.user.tenantId, id);
+    return this.service.getOrder(req.user.tenantId, id, req.user.storeId, req.user.role);
   }
 
   /**
@@ -291,9 +296,9 @@ export class StorefrontController {
   updateOrderStatus(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { status: string },
+    @Body() dto: UpdateOrderStatusDto,
   ) {
-    return this.service.updateOrderStatus(req.user.tenantId, id, body.status);
+    return this.service.updateOrderStatus(req.user.tenantId, id, dto.status);
   }
 
   // Reviews

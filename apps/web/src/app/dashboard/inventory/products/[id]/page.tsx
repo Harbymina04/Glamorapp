@@ -47,7 +47,8 @@ export default function ProductDetailPage() {
   const [productName, setProductName] = useState('');
   const [form, setForm] = useState({
     name: '', sku: '', description: '', categoryId: '', brandId: '',
-    salePrice: '', costPrice: '', currentStock: '0', minStock: '5', unitOfMeasure: 'unit',
+    salePrice: '', costPrice: '', currentStock: '0', minStock: '5', maxStock: '0', unitOfMeasure: 'unit',
+    ivaRate: '19', isIvaExcluded: 'false',
   });
 
   // Proveedores tab state
@@ -72,8 +73,10 @@ export default function ProductDetailPage() {
         name: p.name || '', sku: p.sku || '', description: p.description || '',
         categoryId: p.categoryId || '', brandId: p.brandId || '',
         salePrice: String(p.salePrice || ''), costPrice: String(p.costPrice || ''),
-        currentStock: String(p.currentStock ?? '0'), minStock: String(p.minStock ?? '5'),
+        currentStock: String(p.currentStock ?? '0'), minStock: String(p.minStock ?? '5'), maxStock: String(p.maxStock ?? '0'),
         unitOfMeasure: p.unitOfMeasure || 'unit',
+        ivaRate: String(p.ivaRate ?? '19'),
+        isIvaExcluded: String(p.isIvaExcluded ?? 'false'),
       });
       setImages(p.images || []);
       setCategories(Array.isArray(cats) ? cats : cats?.data || []);
@@ -158,7 +161,9 @@ export default function ProductDetailPage() {
         categoryId, brandId,
         salePrice: parseFloat(form.salePrice) || 0,
         costPrice: parseFloat(form.costPrice) || undefined,
-        minStock: parseInt(form.minStock) || 5, unitOfMeasure: form.unitOfMeasure || 'unit',
+        minStock: parseInt(form.minStock) || 5, maxStock: parseInt(form.maxStock) || 0, unitOfMeasure: form.unitOfMeasure || 'unit',
+        ivaRate: form.isIvaExcluded === 'true' ? 0 : parseFloat(form.ivaRate) || 19,
+        isIvaExcluded: form.isIvaExcluded === 'true',
       }, { token: token! });
       setProductName(form.name.trim());
       setError('');
@@ -294,7 +299,51 @@ export default function ProductDetailPage() {
             <div><label className={labelClass}>Stock actual</label><input type="number" min="0" className={inputClass} value={form.currentStock} onChange={e => handleChange('currentStock', e.target.value)} disabled /></div>
           </div>
 
-          <div><label className={labelClass}>Stock mínimo (alerta)</label><input type="number" min="0" className={`${inputClass} w-40`} value={form.minStock} onChange={e => handleChange('minStock', e.target.value)} placeholder="5" /></div>
+          <div className="flex gap-4">
+            <div><label className={labelClass}>Stock mínimo (alerta)</label><input type="number" min="0" className={`${inputClass} w-40`} value={form.minStock} onChange={e => handleChange('minStock', e.target.value)} placeholder="5" /></div>
+            <div><label className={labelClass}>Stock máximo (0 = sin límite)</label><input type="number" min="0" className={`${inputClass} w-40`} value={form.maxStock} onChange={e => handleChange('maxStock', e.target.value)} placeholder="0" /></div>
+          </div>
+
+          {/* IVA Colombia */}
+          <div className="p-4 rounded-lg bg-blue-50 border border-blue-200 space-y-3">
+            <span className="text-sm font-semibold text-blue-800">Configuración IVA (Colombia)</span>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={labelClass}>Tarifa IVA</label>
+                <select
+                  className={inputClass}
+                  value={form.isIvaExcluded === 'true' ? 'excluded' : form.ivaRate}
+                  onChange={e => {
+                    if (e.target.value === 'excluded') {
+                      handleChange('isIvaExcluded', 'true');
+                      handleChange('ivaRate', '0');
+                    } else {
+                      handleChange('isIvaExcluded', 'false');
+                      handleChange('ivaRate', e.target.value);
+                    }
+                  }}
+                >
+                  <option value="19">19% — Tarifa general (servicios, cosméticos)</option>
+                  <option value="5">5% — Tarifa diferencial</option>
+                  <option value="0">0% — Exento</option>
+                  <option value="excluded">Excluido de IVA</option>
+                </select>
+              </div>
+              <div className="flex items-end pb-1">
+                <div className="text-xs text-blue-700 space-y-1">
+                  <p><strong>Gravado 19%:</strong> Servicios de belleza, cosméticos</p>
+                  <p><strong>Exento 0%:</strong> Puede recuperar IVA de compras</p>
+                  <p><strong>Excluido:</strong> No aplica IVA, no recupera</p>
+                </div>
+              </div>
+            </div>
+            {form.isIvaExcluded !== 'true' && form.ivaRate && Number(form.salePrice) > 0 && (
+              <div className="text-xs text-blue-600 bg-white/60 rounded px-3 py-2">
+                Precio sin IVA: <strong>${(Number(form.salePrice) / (1 + Number(form.ivaRate) / 100)).toLocaleString('es-CO', { minimumFractionDigits: 0 })}</strong>
+                {' · '}IVA incluido: <strong>${(Number(form.salePrice) - Number(form.salePrice) / (1 + Number(form.ivaRate) / 100)).toLocaleString('es-CO', { minimumFractionDigits: 0 })}</strong>
+              </div>
+            )}
+          </div>
 
           <div className="flex justify-end gap-3 pt-2">
             <button onClick={() => router.back()} className="h-10 px-4 rounded-lg border border-border-primary text-sm font-medium text-muted-foreground hover:bg-surface-hover transition">Cancelar</button>

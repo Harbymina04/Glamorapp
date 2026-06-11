@@ -29,7 +29,10 @@ export default function NewProductPage() {
     costPrice: '',
     currentStock: '0',
     minStock: '5',
+    maxStock: '0',
     unitOfMeasure: 'unit',
+    ivaRate: '19',
+    isIvaExcluded: 'false',
   });
 
   useEffect(() => {
@@ -131,7 +134,10 @@ export default function NewProductPage() {
         costPrice: parseFloat(form.costPrice) || undefined,
         currentStock: parseInt(form.currentStock) || 0,
         minStock: parseInt(form.minStock) || 5,
+        maxStock: parseInt(form.maxStock) || 0,
         unitOfMeasure: form.unitOfMeasure || 'unit',
+        ivaRate: form.isIvaExcluded === 'true' ? 0 : parseFloat(form.ivaRate) || 19,
+        isIvaExcluded: form.isIvaExcluded === 'true',
       }, { token: token! });
 
       const productId = product.id;
@@ -256,6 +262,7 @@ export default function NewProductPage() {
           <div>
             <label className={labelClass}>Precio venta *</label>
             <input type="number" step="0.01" min="0" className={inputClass} value={form.salePrice} onChange={e => handleChange('salePrice', e.target.value)} placeholder="0.00" />
+            <p className="text-xs text-muted-foreground mt-1">Precio incluye IVA (se muestra al cliente)</p>
           </div>
           <div>
             <label className={labelClass}>Precio costo</label>
@@ -267,9 +274,58 @@ export default function NewProductPage() {
           </div>
         </div>
 
-        <div>
-          <label className={labelClass}>Stock mínimo (alerta)</label>
-          <input type="number" min="0" className={`${inputClass} w-40`} value={form.minStock} onChange={e => handleChange('minStock', e.target.value)} placeholder="5" />
+        {/* IVA Colombia */}
+        <div className="p-4 rounded-lg bg-blue-50 border border-blue-200 space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-blue-800">Configuración IVA (Colombia)</span>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={labelClass}>Tarifa IVA</label>
+              <select
+                className={inputClass}
+                value={form.isIvaExcluded === 'true' ? 'excluded' : form.ivaRate}
+                onChange={e => {
+                  if (e.target.value === 'excluded') {
+                    handleChange('isIvaExcluded', 'true');
+                    handleChange('ivaRate', '0');
+                  } else {
+                    handleChange('isIvaExcluded', 'false');
+                    handleChange('ivaRate', e.target.value);
+                  }
+                }}
+              >
+                <option value="19">19% — Tarifa general (servicios, cosméticos)</option>
+                <option value="5">5% — Tarifa diferencial</option>
+                <option value="0">0% — Exento</option>
+                <option value="excluded">Excluido de IVA</option>
+              </select>
+            </div>
+            <div className="flex items-end pb-1">
+              <div className="text-xs text-blue-700 space-y-1">
+                <p><strong>Gravado 19%:</strong> Servicios de belleza, cosméticos</p>
+                <p><strong>Exento 0%:</strong> Puede recuperar IVA de compras</p>
+                <p><strong>Excluido:</strong> No aplica IVA, no recupera</p>
+              </div>
+            </div>
+          </div>
+          {form.isIvaExcluded !== 'true' && form.ivaRate && Number(form.salePrice) > 0 && (
+            <div className="text-xs text-blue-600 bg-white/60 rounded px-3 py-2">
+              Precio sin IVA: <strong>${(Number(form.salePrice) / (1 + Number(form.ivaRate) / 100)).toLocaleString('es-CO', { minimumFractionDigits: 0 })}</strong>
+              {' · '}IVA incluido: <strong>${(Number(form.salePrice) - Number(form.salePrice) / (1 + Number(form.ivaRate) / 100)).toLocaleString('es-CO', { minimumFractionDigits: 0 })}</strong>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-4">
+          <div>
+            <label className={labelClass}>Stock mínimo (alerta)</label>
+            <input type="number" min="0" className={`${inputClass} w-40`} value={form.minStock} onChange={e => handleChange('minStock', e.target.value)} placeholder="5" />
+          </div>
+          <div>
+            <label className={labelClass}>Stock máximo (0 = sin límite)</label>
+            <input type="number" min="0" className={`${inputClass} w-40`} value={form.maxStock} onChange={e => handleChange('maxStock', e.target.value)} placeholder="0" />
+          </div>
         </div>
 
         <div className="flex justify-end gap-3 pt-2">

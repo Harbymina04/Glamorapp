@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { addMonths, addYears } from '../../common/utils/date';
 
 @Injectable()
 export class PlansService {
@@ -113,14 +114,16 @@ export class PlansService {
     });
 
     // Create new subscription
+    const billingCycle = data.billingCycle || 'monthly';
+    const now = new Date();
     const sub = await this.prisma.subscription.create({
       data: {
         tenantId,
         planId: data.planId,
         status: 'active',
-        billingCycle: data.billingCycle || 'monthly',
-        currentPeriodStart: new Date(),
-        currentPeriodEnd: new Date(Date.now() + 30 * 86400000),
+        billingCycle,
+        currentPeriodStart: now,
+        currentPeriodEnd: billingCycle === 'yearly' ? addYears(now, 1) : addMonths(now, 1),
       },
       include: { plan: true },
     });
@@ -241,8 +244,8 @@ export class PlansService {
 
     const now = new Date();
     const periodEnd = billingCycle === 'yearly'
-      ? new Date(now.getFullYear() + 1, now.getMonth(), now.getDate())
-      : new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
+      ? addYears(now, 1)
+      : addMonths(now, 1);
 
     // Cancel existing subscriptions and create/update active one
     await this.prisma.subscription.updateMany({

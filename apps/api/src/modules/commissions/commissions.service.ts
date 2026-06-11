@@ -1,9 +1,29 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class CommissionsService {
   constructor(private prisma: PrismaService) {}
+
+  /**
+   * Anula las comisiones PENDIENTES de una venta (al cancelarla). Las comisiones
+   * ya pagadas se conservan (no se revierten automáticamente). Acepta un cliente
+   * de transacción para correr atómicamente dentro de la cancelación.
+   * Devuelve cuántas comisiones se anularon.
+   */
+  async voidSaleCommissions(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    storeId: string,
+    saleId: string,
+  ): Promise<number> {
+    const res = await tx.commission.updateMany({
+      where: { saleId, tenantId, storeId, status: 'pending' },
+      data: { status: 'cancelled' },
+    });
+    return res.count;
+  }
 
   // ─── Auto-create commissions when a sale completes ─────────────
   // Called by SalesService after complete(). Only processes service items.

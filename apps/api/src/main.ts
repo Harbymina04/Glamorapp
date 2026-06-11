@@ -12,9 +12,22 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api/v1');
 
-  // Serve uploaded files as public static assets at /uploads/*
+  // Serve uploaded files (public images only) as static assets at /uploads/*.
+  // Hardened so a stored file can never be interpreted/executed as HTML/JS:
+  //  - nosniff: el navegador respeta el Content-Type y no lo "adivina"
+  //  - CSP default-src 'none' + sandbox: aunque se sirviera HTML, no ejecuta scripts
+  //  - index/dotfiles: sin listado de directorios ni archivos ocultos
   const uploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
-  app.useStaticAssets(uploadDir, { prefix: '/uploads' });
+  app.useStaticAssets(uploadDir, {
+    prefix: '/uploads',
+    index: false,
+    dotfiles: 'deny',
+    setHeaders: (res) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; sandbox");
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    },
+  });
 
   // Security headers
   app.use(helmet({

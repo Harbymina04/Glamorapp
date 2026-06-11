@@ -1,13 +1,35 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import { PaginatedResponse } from '../../common/dto/response.dto';
 import { getPaginationParams } from '../../common/utils/pagination';
+import { UserRole } from '@prisma/client';
+import { BCRYPT_ROUNDS } from '../../common/constants/security';
+
+/**
+ * Roles que cada rol puede asignar al crear/editar usuarios.
+ * Previene escalación de privilegios (p. ej. que un store_admin se cree
+ * un superadmin o tenant_admin). superadmin y customer nunca son
+ * asignables a través de este endpoint multi-tenant.
+ */
+const ASSIGNABLE_ROLES: Partial<Record<UserRole, UserRole[]>> = {
+  tenant_admin: ['tenant_admin', 'store_admin', 'cashier', 'professional', 'financial', 'readonly'],
+  store_admin: ['cashier', 'professional', 'financial', 'readonly'],
+};
 
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
+
+  /** Lanza si actorRole no puede asignar targetRole. */
+  private assertCanAssignRole(actorRole: string, targetRole?: UserRole) {
+    if (!targetRole) return;
+    const allowed = ASSIGNABLE_ROLES[actorRole as UserRole] ?? [];
+    if (!allowed.includes(targetRole)) {
+      throw new ForbiddenException(`No tienes permiso para asignar el rol "${targetRole}".`);
+    }
+  }
 
   async findAll(tenantId: string, query: any, storeId?: string | null) {
     const { skip, take } = getPaginationParams(query.page || 1, query.limit || 10);
@@ -43,7 +65,10 @@ export class UsersService {
     return safe;
   }
 
-  async create(tenantId: string, dto: CreateUserDto) {
+  async create(tenantId: string, dto: CreateUserDto, actorRole: string) {
+    // Prevent privilege escalation via the role field
+    this.assertCanAssignRole(actorRole, dto.role ?? ('cashier' as UserRole));
+
     // Validate plan user limit
     const sub = await this.prisma.subscription.findFirst({
       where: { tenantId, status: { in: ['active', 'trial'] } },
@@ -58,7 +83,7 @@ export class UsersService {
       }
     }
 
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
     return this.prisma.user.create({
       data: {
         tenantId,
@@ -75,11 +100,17 @@ export class UsersService {
     });
   }
 
-  async update(tenantId: string, id: string, dto: UpdateUserDto) {
-    await this.findOne(tenantId, id);
+  async update(tenantId: string, id: string, dto: UpdateUserDto, actorRole: string) {
+    const target = await this.findOne(tenantId, id);
+
+    // Can't edit a user whose current role is above what the actor may assign
+    this.assertCanAssignRole(actorRole, target.role);
+    // Can't promote the user into a role the actor may not assign
+    this.assertCanAssignRole(actorRole, dto.role);
+
     const data: any = { ...dto };
     if (dto.password) {
-      data.passwordHash = await bcrypt.hash(dto.password, 10);
+      data.passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
       delete data.password;
     }
     return this.prisma.user.update({

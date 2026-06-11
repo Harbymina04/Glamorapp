@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as XLSX from 'xlsx';
+import { BCRYPT_ROUNDS } from '../../common/constants/security';
 
 export type ImportEntity = 'products' | 'services' | 'customers' | 'users' | 'nail-designs';
 
@@ -320,7 +321,7 @@ export class ImportService {
 
   private async saveUser(tenantId: string, storeId: string, row: Record<string, any>) {
     const bcrypt = await import('bcrypt');
-    const passwordHash = await bcrypt.hash(String(row.contrasena), 10);
+    const passwordHash = await bcrypt.hash(String(row.contrasena), BCRYPT_ROUNDS);
     const validRoles = ['professional', 'receptionist', 'store_admin'];
     const role = validRoles.includes(String(row.rol)) ? String(row.rol) : 'professional';
     return this.prisma.user.create({

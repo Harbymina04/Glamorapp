@@ -1,8 +1,65 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CreatePublicOrderDto } from './dto/public-order.dto';
+import { CreatePublicReviewDto } from './dto/public-review.dto';
+
+// Campos seguros para exponer en endpoints públicos (anónimos). Se OMITEN a
+// propósito: costPrice, minStock, maxStock, supplierId y comisiones (datos
+// confidenciales de costo/margen). currentStock sí es público (disponibilidad).
+const PUBLIC_PRODUCT_FIELDS = {
+  id: true, tenantId: true, storeId: true,
+  name: true, description: true, storeDescription: true,
+  sku: true, barcode: true, imageUrl: true,
+  salePrice: true, ivaRate: true, isIvaExcluded: true,
+  currentStock: true, unitOfMeasure: true, size: true,
+  status: true, isFeatured: true, isStoreVisible: true,
+  storeSortOrder: true, catalogViews: true, categoryId: true, brandId: true,
+  createdAt: true,
+} as const;
+
+const PUBLIC_SERVICE_FIELDS = {
+  id: true, tenantId: true, storeId: true,
+  name: true, description: true, storeDescription: true,
+  category: true, price: true, durationMinutes: true,
+  color: true, ivaRate: true, isStoreVisible: true,
+} as const;
+
+const PUBLIC_NAIL_DESIGN_FIELDS = {
+  id: true, tenantId: true, storeId: true,
+  name: true, imageUrl: true, category: true, technique: true,
+  suggestedPrice: true, isFavorite: true, isStoreVisible: true,
+} as const;
+
+/** Devuelve solo las claves permitidas de un objeto (anti mass-assignment). */
+function pick<T extends Record<string, any>>(obj: T, keys: readonly string[]): Partial<T> {
+  const out: any = {};
+  for (const k of keys) if (obj?.[k] !== undefined) out[k] = obj[k];
+  return out;
+}
+
+// Campos editables por el admin del comercio. Se EXCLUYEN identidad y métricas
+// (id, tenantId, slug de store, averageRating, totalReviews, etc.).
+const STOREFRONT_EDITABLE = [
+  'displayName', 'slug', 'tagline', 'description', 'logoUrl', 'bannerUrl',
+  'galleryUrls', 'businessType', 'tags', 'publicEmail', 'publicPhone', 'whatsapp',
+  'instagram', 'facebook', 'tiktok', 'website', 'acceptsOrders', 'acceptsAppointments',
+  'acceptsDelivery', 'deliveryFee', 'deliveryRadiusKm', 'minOrderAmount',
+  'advancePaymentPercent', 'isActive',
+] as const;
+
+// Solo campos de presentación/ubicación del storefront (NO config POS/facturación
+// como currency, timezone, folios, taxInclusive, etc.).
+const STORE_LOCATION_EDITABLE = [
+  'isStoreVisible', 'latitude', 'longitude', 'neighborhood', 'acceptsPickup',
+  'acceptsOnlineAppointments', 'address', 'city', 'state', 'country', 'zipCode',
+  'phone', 'email', 'slogan', 'logoUrl', 'businessHours',
+] as const;
+
+const SERVICE_VISIBILITY_EDITABLE = ['isStoreVisible', 'storeDescription'] as const;
 
 @Injectable()
 export class StorefrontService {
+  private readonly logger = new Logger(StorefrontService.name);
   constructor(private prisma: PrismaService) {}
 
   // ── My Storefront (admin) ──────────────────────────────────
@@ -29,11 +86,12 @@ export class StorefrontService {
   }
 
   async upsertStorefront(tenantId: string, dto: any) {
+    const data = pick(dto, STOREFRONT_EDITABLE);
     const existing = await this.prisma.storefront.findFirst({ where: { tenantId } });
     if (existing) {
-      return this.prisma.storefront.update({ where: { id: existing.id }, data: dto });
+      return this.prisma.storefront.update({ where: { id: existing.id }, data });
     }
-    return this.prisma.storefront.create({ data: { tenantId, ...dto } });
+    return this.prisma.storefront.create({ data: { tenantId, ...data } });
   }
 
   async activateStorefront(tenantId: string) {
@@ -51,16 +109,22 @@ export class StorefrontService {
     today.setHours(0, 0, 0, 0);
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
+    // Order filter: always include null-storeId orders + current store's orders
+    const orderWhere = {
+      tenantId,
+      OR: [{ storeId }, { storeId: null }],
+    };
+
     const [visibleProducts, visibleServices, ordersToday, pendingOrders, monthOrders] =
       await Promise.all([
-        this.prisma.product.count({ where: { tenantId, isStoreVisible: true } }),
-        this.prisma.service.count({ where: { tenantId, isStoreVisible: true } }),
+        this.prisma.product.count({ where: { tenantId, storeId, isStoreVisible: true } }),
+        this.prisma.service.count({ where: { tenantId, storeId, isStoreVisible: true } }),
         this.prisma.storefrontOrder.count({
-          where: { tenantId, createdAt: { gte: today } },
+          where: { ...orderWhere, createdAt: { gte: today } },
         }),
-        this.prisma.storefrontOrder.count({ where: { tenantId, status: 'pending' } }),
+        this.prisma.storefrontOrder.count({ where: { ...orderWhere, status: 'pending' } }),
         this.prisma.storefrontOrder.aggregate({
-          where: { tenantId, createdAt: { gte: monthStart } },
+          where: { ...orderWhere, createdAt: { gte: monthStart } },
           _sum: { total: true },
           _count: true,
         }),
@@ -140,7 +204,7 @@ export class StorefrontService {
       where: { id: serviceId, tenantId },
     });
     if (!s) throw new NotFoundException('Service not found');
-    return this.prisma.service.update({ where: { id: serviceId }, data: dto });
+    return this.prisma.service.update({ where: { id: serviceId }, data: pick(dto, SERVICE_VISIBILITY_EDITABLE) });
   }
 
   // ── Store (sucursal) visibility ────────────────────────────
@@ -154,7 +218,7 @@ export class StorefrontService {
   async updateStoreVisibility(tenantId: string, storeId: string, dto: any) {
     const s = await this.prisma.store.findFirst({ where: { id: storeId, tenantId } });
     if (!s) throw new NotFoundException('Store not found');
-    return this.prisma.store.update({ where: { id: storeId }, data: dto });
+    return this.prisma.store.update({ where: { id: storeId }, data: pick(dto, STORE_LOCATION_EDITABLE) });
   }
 
   // ── Commerce config ───────────────────────────────────────
@@ -167,14 +231,22 @@ export class StorefrontService {
   }
 
   // ── Orders ────────────────────────────────────────────────
-  async getOrders(tenantId: string, query: any) {
+  async getOrders(tenantId: string, userStoreId: string, userRole: string, query: any) {
+    const isTenantAdmin = ['tenant_admin', 'superadmin'].includes(userRole);
     const where: any = { tenantId };
+
     if (query.status && query.status !== 'all') where.status = query.status;
-    // Include orders with storeId = null (came through storefront without explicit store)
-    // alongside orders explicitly assigned to the requested store
-    if (query.storeId) {
-      where.OR = [{ storeId: query.storeId }, { storeId: null }];
+
+    if (isTenantAdmin) {
+      // Tenant admin can filter by a specific store or see all
+      if (query.storeId) where.storeId = query.storeId;
+      // else: no store filter — sees all stores del tenant
+    } else {
+      // store_admin / cashier: solo los pedidos de SU sucursal (todo pedido nuevo
+      // tiene storeId; ya no se exponen pedidos sin sucursal a otras tiendas).
+      where.storeId = userStoreId;
     }
+
     if (query.from) where.createdAt = { ...(where.createdAt || {}), gte: new Date(query.from) };
     if (query.to)
       where.createdAt = {
@@ -182,7 +254,7 @@ export class StorefrontService {
         lte: new Date(query.to + 'T23:59:59'),
       };
 
-    const page = parseInt(query.page || '1');
+    const page  = parseInt(query.page  || '1');
     const limit = parseInt(query.limit || '20');
 
     const [data, total] = await Promise.all([
@@ -202,18 +274,25 @@ export class StorefrontService {
    * Called after the cashier processes "Cobrar en POS".
    */
   async linkSaleToOrder(tenantId: string, orderId: string, saleId: string) {
-    const order = await this.getOrder(tenantId, orderId);
+    await this.getOrder(tenantId, orderId);
+
+    // Validar que la venta pertenezca al mismo tenant (evita escritura cross-tenant)
+    const sale = await this.prisma.sale.findFirst({
+      where: { id: saleId, tenantId },
+      select: { id: true },
+    });
+    if (!sale) throw new NotFoundException('Venta no encontrada');
 
     await this.prisma.storefrontOrder.update({
       where: { id: orderId },
       data: { saleId, status: 'delivered' } as any,
     });
 
-    // Also set storefrontOrderId on the sale for bidirectional link
-    await this.prisma.sale.update({
-      where: { id: saleId },
+    // Vínculo bidireccional — acotado por tenantId
+    await this.prisma.sale.updateMany({
+      where: { id: saleId, tenantId },
       data: { storefrontOrderId: orderId } as any,
-    }).catch(() => {}); // non-fatal
+    });
 
     return { success: true, orderId, saleId };
   }
@@ -251,57 +330,103 @@ export class StorefrontService {
     };
   }
 
-  async getOrder(tenantId: string, orderId: string) {
-    const o = await this.prisma.storefrontOrder.findFirst({
-      where: { id: orderId, tenantId },
-    });
+  async getOrder(tenantId: string, orderId: string, userStoreId?: string, userRole?: string) {
+    const isTenantAdmin = !userRole || ['tenant_admin', 'superadmin'].includes(userRole);
+    const where: any = { id: orderId, tenantId };
+    if (!isTenantAdmin && userStoreId) {
+      where.storeId = userStoreId;
+    }
+    const o = await this.prisma.storefrontOrder.findFirst({ where });
     if (!o) throw new NotFoundException('Order not found');
     return o;
   }
+
+  // Máquina de estados de pedidos. Los estados terminales (delivered/cancelled)
+  // no permiten más transiciones por este endpoint (revertir requiere un flujo
+  // de devolución / cancelación de la venta asociada).
+  private static readonly ORDER_TRANSITIONS: Record<string, string[]> = {
+    pending:   ['confirmed', 'cancelled'],
+    confirmed: ['preparing', 'cancelled'],
+    preparing: ['ready', 'cancelled'],
+    ready:     ['delivered', 'cancelled'],
+    delivered: [],
+    cancelled: [],
+  };
+
+  // Estados en los que el stock ya fue descontado (al confirmar) y, por tanto,
+  // debe restaurarse si el pedido se cancela (solo pagos online).
+  private static readonly STOCK_DEDUCTED_STATUSES = ['confirmed', 'preparing', 'ready'];
 
   async updateOrderStatus(tenantId: string, orderId: string, status: string) {
     const order = await this.getOrder(tenantId, orderId);
     const previousStatus = order.status;
 
-    // Calculate commission on first confirmation (if not already set by webhook)
-    const feeUpdate: any = {};
-    if (status === 'confirmed' && previousStatus !== 'confirmed' && Number(order.platformFee) === 0) {
-      const cfg = await this.prisma.platformConfig
-        .findUnique({ where: { id: '00000000-0000-0000-0000-000000000001' } })
-        .catch(() => null);
-      const rate       = Number(cfg?.commissionRate ?? 0.03);
-      const total      = Number(order.total);
-      feeUpdate.platformFee  = Math.round(total * rate * 100) / 100;
-      feeUpdate.tenantPayout = Math.round((total - feeUpdate.platformFee) * 100) / 100;
+    if (previousStatus === status) return order; // no-op idempotente
+
+    const allowed = StorefrontService.ORDER_TRANSITIONS[previousStatus] ?? [];
+    if (!allowed.includes(status)) {
+      throw new BadRequestException(`Transición de estado inválida: ${previousStatus} → ${status}`);
     }
 
-    const updated = await this.prisma.storefrontOrder.update({
-      where: { id: orderId },
-      data: { status, ...feeUpdate },
-    });
-
+    const isStorePayment = order.paymentMethod === 'store';
     const items = Array.isArray(order.items) ? order.items as any[] : [];
 
-    // ── Deduct stock when order is confirmed ──────────────────
-    if (status === 'confirmed' && previousStatus !== 'confirmed') {
-      await this.adjustStock(tenantId, order.storeId, orderId, items, 'deduct');
+    // ── Confirmación: atómica e idempotente ───────────────────
+    if (status === 'confirmed') {
+      const feeUpdate: any = {};
+      if (Number(order.platformFee) === 0) {
+        const cfg = await this.prisma.platformConfig
+          .findUnique({ where: { id: '00000000-0000-0000-0000-000000000001' } })
+          .catch(() => null);
+        const rate  = Number(cfg?.commissionRate ?? 0.03);
+        const total = Number(order.total);
+        feeUpdate.platformFee  = Math.round(total * rate * 100) / 100;
+        feeUpdate.tenantPayout = Math.round((total - feeUpdate.platformFee) * 100) / 100;
+      }
 
-      // ── Create Sale record for non-store-payment orders ──────
-      // PSE / card / nequi = already paid → auto-create completed sale
-      // store = cashier will process manually via POS
-      if (order.paymentMethod !== 'store') {
+      // Guard atómico: solo una llamada gana la transición pending→confirmed.
+      // Webhooks de Wompi reintentados/concurrentes no duplican stock ni venta.
+      const transition = await this.prisma.storefrontOrder.updateMany({
+        where: { id: orderId, tenantId, status: previousStatus },
+        data: { status, ...feeUpdate },
+      });
+      if (transition.count === 0) {
+        return this.prisma.storefrontOrder.findUnique({ where: { id: orderId } });
+      }
+
+      // Efectos secundarios solo para pagos online (PSE/tarjeta/nequi). En pagos
+      // "en tienda" el stock lo descuenta la venta POS al cobrar → no aquí (#1).
+      if (!isStorePayment) {
+        await this.adjustStock(tenantId, order.storeId, orderId, items, 'deduct');
         await this.createOnlineSale(order, items).catch(err =>
-          console.warn(`[Storefront] Could not create online sale for order ${orderId}: ${err.message}`),
+          this.logger.warn(`No se pudo crear la venta online del pedido ${orderId}: ${err.message}`),
         );
       }
+
+      return this.prisma.storefrontOrder.findUnique({ where: { id: orderId } });
     }
 
-    // ── Restore stock when order is cancelled after being confirmed ──
-    if (status === 'cancelled' && previousStatus === 'confirmed') {
+    // ── Otras transiciones (delivered / cancelled) ────────────
+    const transition = await this.prisma.storefrontOrder.updateMany({
+      where: { id: orderId, tenantId, status: previousStatus },
+      data: { status },
+    });
+    if (transition.count === 0) {
+      return this.prisma.storefrontOrder.findUnique({ where: { id: orderId } });
+    }
+
+    // Restaurar stock al cancelar un pedido cuyo stock ya se descontó al
+    // confirmar (confirmed/preparing/ready). Solo pagos online; los "store" no
+    // descontaron en la confirmación (lo hace la venta POS).
+    if (
+      status === 'cancelled' &&
+      StorefrontService.STOCK_DEDUCTED_STATUSES.includes(previousStatus) &&
+      !isStorePayment
+    ) {
       await this.adjustStock(tenantId, order.storeId, orderId, items, 'restore');
     }
 
-    return updated;
+    return this.prisma.storefrontOrder.findUnique({ where: { id: orderId } });
   }
 
   /**
@@ -323,24 +448,50 @@ export class StorefrontService {
     });
     if (!systemUser) return;
 
-    // Build sale items from storefront order items
-    const saleItems = items
-      .filter(i => i.productId && i.qty > 0)
-      .map((i: any) => ({
+    // Build sale items from storefront order items.
+    // El precio del storefront es IVA-incluido → se desagrega el IVA por
+    // producto para no subreportar impuestos (consistente con el reporte de IVA,
+    // que lee unit_price como base imponible e iva_amount como el IVA).
+    const productItems = items.filter(i => i.productId && i.qty > 0);
+    if (productItems.length === 0) return;
+
+    const ivaConfigs = await this.prisma.product.findMany({
+      where: { id: { in: productItems.map(i => i.productId) } },
+      select: { id: true, ivaRate: true, isIvaExcluded: true },
+    });
+    const ivaById = new Map(ivaConfigs.map(p => [p.id, p]));
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+
+    let subtotal = 0;
+    let taxAmount = 0;
+    const saleItems = productItems.map((i: any) => {
+      const cfg = ivaById.get(i.productId);
+      const rate = cfg?.isIvaExcluded ? 0 : Number(cfg?.ivaRate ?? 19);
+      const basePerUnit = rate > 0 ? round2(Number(i.price) / (1 + rate / 100)) : Number(i.price);
+      const lineBase = round2(basePerUnit * i.qty);
+      const lineTotal = round2(Number(i.price) * i.qty);
+      const lineIva = round2(lineTotal - lineBase);
+      subtotal += lineBase;
+      taxAmount += lineIva;
+      return {
         productId: i.productId,
         itemType: 'product',
         name: i.name,
         quantity: i.qty,
-        unitPrice: i.price,
+        unitPrice: basePerUnit,
         discountAmount: 0,
-        total: i.price * i.qty,
+        ivaRate: rate,
+        ivaAmount: lineIva,
+        total: lineTotal,
         commissionRate: 0,
         commissionAmount: 0,
-      }));
+      };
+    });
 
-    if (saleItems.length === 0) return;
-
-    const subtotal = saleItems.reduce((s: number, i: any) => s + i.total, 0);
+    subtotal = round2(subtotal);
+    taxAmount = round2(taxAmount);
+    const total = round2(subtotal + taxAmount);
+    const taxPercent = subtotal > 0 ? round2((taxAmount / subtotal) * 100) : 0;
 
     // Generate sale number
     const count = await this.prisma.sale.count({ where: { tenantId: order.tenantId, storeId: order.storeId } });
@@ -358,16 +509,16 @@ export class StorefrontService {
         subtotal,
         discountPercent: 0,
         discountAmount: 0,
-        taxPercent: 0,
-        taxAmount: 0,
-        total: subtotal,
+        taxPercent,
+        taxAmount,
+        total,
         notes: `Pedido online ${order.orderNumber} — ${order.paymentMethod?.toUpperCase()}`,
         completedAt: new Date(),
         items: { create: saleItems },
         payments: {
           create: [{
             method: order.paymentMethod === 'pse' ? 'transfer' : 'other',
-            amount: subtotal,
+            amount: total,
             reference: order.paymentTransactionId || order.orderNumber,
           }],
         },
@@ -398,26 +549,39 @@ export class StorefrontService {
 
       const product = await this.prisma.product.findFirst({
         where: { id: item.productId, tenantId },
+        select: { id: true, storeId: true },
       });
       if (!product) continue;
 
       const qty = Math.abs(Number(item.qty));
       const delta = direction === 'deduct' ? -qty : qty;
-      const newStock = product.currentStock + delta;
 
-      await this.prisma.$transaction([
-        this.prisma.product.update({
+      // Incremento atómico + lectura del resultado para registrar prev/new exactos.
+      await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.product.update({
           where: { id: item.productId },
           data: { currentStock: { increment: delta } },
-        }),
-        this.prisma.inventoryMovement.create({
+          select: { currentStock: true },
+        });
+        const newStock = updated.currentStock;
+
+        // El pedido ya está pagado (PSE): no se bloquea, pero se avisa el backorder.
+        if (direction === 'deduct' && newStock < 0) {
+          this.logger.warn(
+            `Backorder: producto ${item.productId} quedó en ${newStock} al confirmar pedido ${orderId}`,
+          );
+        }
+
+        await tx.inventoryMovement.create({
           data: {
             tenantId,
             storeId: storeId ?? product.storeId,
             productId: item.productId,
             movementType: direction === 'deduct' ? 'exit' : 'entry',
-            quantity: qty,
-            previousStock: product.currentStock,
+            // Convención de signo consistente con POS/transferencias:
+            // salidas negativas, entradas positivas.
+            quantity: delta,
+            previousStock: newStock - delta,
             newStock,
             referenceType: 'storefront_order',
             referenceId: orderId,
@@ -425,27 +589,76 @@ export class StorefrontService {
               ? `Venta online — pedido ${orderId.slice(-6).toUpperCase()}`
               : `Cancelación pedido online — ${orderId.slice(-6).toUpperCase()}`,
           },
-        }),
-      ]);
+        });
+      });
     }
   }
 
-  async createOrder(dto: any) {
+  async createOrder(dto: CreatePublicOrderDto) {
     const orderNumber = `GA-${Date.now().toString().slice(-6)}`;
 
-    // Auto-assign storeId if not provided: use the tenant's first active store
-    let storeId = dto.storeId ?? null;
-    if (!storeId && dto.tenantId) {
-      const store = await this.prisma.store.findFirst({
+    // Resolver la sucursal del pedido. Si el cliente envía storeId, debe ser una
+    // sucursal ACTIVA del MISMO tenant (evita asignar un store ajeno); si no,
+    // se usa la primera sucursal activa. Todo pedido queda con storeId (nunca null).
+    let storeId: string | null;
+    if (dto.storeId) {
+      const s = await this.prisma.store.findFirst({
+        where: { id: dto.storeId, tenantId: dto.tenantId, isActive: true },
+        select: { id: true },
+      });
+      storeId = s?.id ?? null;
+    } else {
+      const s = await this.prisma.store.findFirst({
         where: { tenantId: dto.tenantId, isActive: true },
         orderBy: { createdAt: 'asc' },
         select: { id: true },
       });
-      storeId = store?.id ?? null;
+      storeId = s?.id ?? null;
+    }
+    if (!storeId) {
+      throw new BadRequestException('La tienda no está disponible para recibir pedidos en este momento.');
     }
 
+    if (!Array.isArray(dto.items) || dto.items.length === 0) {
+      throw new BadRequestException('El pedido no contiene items.');
+    }
+
+    // Recompute prices server-side from authoritative product data.
+    // Never trust client-sent price/subtotal/total (mass-assignment / price tampering).
+    const productIds = [...new Set(dto.items.map((i: any) => i.productId).filter(Boolean))];
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds }, tenantId: dto.tenantId, deletedAt: null },
+      select: { id: true, name: true, salePrice: true },
+    });
+    const priceById = new Map(products.map(p => [p.id, p]));
+
+    let subtotal = 0;
+    const items = dto.items.map((i: any) => {
+      const product = priceById.get(i.productId);
+      if (!product) {
+        throw new BadRequestException(`Producto inválido en el pedido: ${i.productId}`);
+      }
+      const qty = Math.max(1, Math.floor(Number(i.qty) || 0));
+      const price = Number(product.salePrice);
+      subtotal += price * qty;
+      return { productId: product.id, name: product.name, qty, price };
+    });
+
     return this.prisma.storefrontOrder.create({
-      data: { ...dto, storeId, orderNumber },
+      data: {
+        tenantId: dto.tenantId,
+        storeId,
+        orderNumber,
+        buyerName: dto.buyerName,
+        buyerEmail: dto.buyerEmail ?? null,
+        buyerPhone: dto.buyerPhone ?? null,
+        buyerNotes: dto.buyerNotes ?? null,
+        items,
+        subtotal,
+        total: subtotal,
+        paymentMethod: dto.paymentMethod ?? 'store',
+        status: 'pending', // server-controlled — payment confirmed via webhook
+      },
     });
   }
 
@@ -501,8 +714,20 @@ export class StorefrontService {
     });
   }
 
-  async createReview(dto: any) {
-    return this.prisma.storefrontReview.create({ data: dto });
+  async createReview(dto: CreatePublicReviewDto) {
+    return this.prisma.storefrontReview.create({
+      data: {
+        tenantId: dto.tenantId,
+        storeId: dto.storeId ?? null,
+        reviewerName: dto.reviewerName,
+        reviewerEmail: dto.reviewerEmail ?? null,
+        rating: dto.rating,
+        comment: dto.comment ?? null,
+        productId: dto.productId ?? null,
+        serviceId: dto.serviceId ?? null,
+        isVerified: false, // server-controlled — never set by the public client
+      },
+    });
   }
 
   // ── Public endpoints (no auth) ───────────────────────────
@@ -546,7 +771,8 @@ export class StorefrontService {
   async getPublicProduct(id: string) {
     const product = await this.prisma.product.findFirst({
       where: { id, isStoreVisible: true, deletedAt: null },
-      include: {
+      select: {
+        ...PUBLIC_PRODUCT_FIELDS,
         category: { select: { id: true, name: true } },
         images:   { take: 4, orderBy: { sortOrder: 'asc' } },
         brand:    { select: { name: true } },
@@ -565,7 +791,8 @@ export class StorefrontService {
 
     return this.prisma.product.findMany({
       where,
-      include: {
+      select: {
+        ...PUBLIC_PRODUCT_FIELDS,
         category: { select: { name: true } },
         images: { take: 1 },
       },
@@ -578,7 +805,9 @@ export class StorefrontService {
   async getPublicServices(query: any) {
     const where: any = { isStoreVisible: true };
     if (query.tenantId) where.tenantId = query.tenantId;
-    return this.prisma.service.findMany({ where, take: 30, orderBy: { name: 'asc' } });
+    return this.prisma.service.findMany({
+      where, take: 30, orderBy: { name: 'asc' }, select: PUBLIC_SERVICE_FIELDS,
+    });
   }
 
   async getPublicNailDesigns(query: any) {
@@ -588,6 +817,7 @@ export class StorefrontService {
       where,
       take: 30,
       orderBy: { createdAt: 'desc' },
+      select: PUBLIC_NAIL_DESIGN_FIELDS,
     });
   }
 }

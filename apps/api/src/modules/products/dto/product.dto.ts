@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsBoolean, IsUUID, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsBoolean, IsUUID, MaxLength, Min, Max } from 'class-validator';
 import { ProductStatus } from '@prisma/client';
 
 export class CreateProductDto {
@@ -46,12 +46,26 @@ export class CreateProductDto {
   minStock?: number;
 
   @IsOptional()
+  @IsNumber()
+  maxStock?: number;
+
+  @IsOptional()
   @IsString()
   unitOfMeasure?: string;
 
   @IsOptional()
   @IsString()
   size?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  ivaRate?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isIvaExcluded?: boolean;
 }
 
 export class UpdateProductDto {
@@ -97,6 +111,10 @@ export class UpdateProductDto {
   minStock?: number;
 
   @IsOptional()
+  @IsNumber()
+  maxStock?: number;
+
+  @IsOptional()
   @IsString()
   unitOfMeasure?: string;
 
@@ -114,4 +132,14 @@ export class UpdateProductDto {
   @IsOptional()
   @IsBoolean()
   isCatalogVisible?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  ivaRate?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isIvaExcluded?: boolean;
 }

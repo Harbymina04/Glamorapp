@@ -1,6 +1,11 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
+import { BCRYPT_ROUNDS } from '../../common/constants/security';
+import { TenantCreateUserDto } from './dto/tenant-user.dto';
+
+/** Roles que un tenant_admin puede asignar (nunca superadmin). */
+const TENANT_ASSIGNABLE_ROLES = ['store_admin', 'cashier', 'professional', 'financial', 'readonly'];
 
 @Injectable()
 export class TenantService {
@@ -134,7 +139,13 @@ export class TenantService {
     });
   }
 
-  async createUser(tenantId: string, dto: { email: string; password: string; firstName: string; lastName: string; role: string; storeId: string; phone?: string }) {
+  async createUser(tenantId: string, dto: TenantCreateUserDto) {
+    // Prevent privilege escalation — a tenant_admin can't mint superadmin/tenant_admin
+    const role = dto.role ?? ('cashier' as any);
+    if (!TENANT_ASSIGNABLE_ROLES.includes(role)) {
+      throw new ForbiddenException(`No tienes permiso para asignar el rol "${role}".`);
+    }
+
     // Verify store belongs to tenant
     const store = await this.prisma.store.findFirst({ where: { id: dto.storeId, tenantId } });
     if (!store) throw new BadRequestException('Sucursal no encontrada');
@@ -153,7 +164,7 @@ export class TenantService {
       }
     }
 
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
 
     return this.prisma.user.create({
       data: {
@@ -164,7 +175,7 @@ export class TenantService {
         firstName: dto.firstName,
         lastName: dto.lastName,
         phone: dto.phone,
-        role: dto.role as any,
+        role: role as any,
       },
       select: { id: true, email: true, firstName: true, lastName: true, role: true },
     });
@@ -176,7 +187,7 @@ export class TenantService {
     });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
-    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     return this.prisma.user.update({
       where: { id: userId },
       data: { passwordHash },

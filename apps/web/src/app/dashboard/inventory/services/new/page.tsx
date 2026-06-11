@@ -28,6 +28,8 @@ export default function NewServicePage() {
     price: '',
     durationMinutes: '60',
     color: '#EF2D8F',
+    ivaRate: '19',
+    isIvaExcluded: 'false',
   });
 
   const handleChange = (field: string, value: string) => {
@@ -47,6 +49,8 @@ export default function NewServicePage() {
         price: parseFloat(form.price),
         durationMinutes: parseInt(form.durationMinutes) || 60,
         color: form.color,
+        ivaRate: form.isIvaExcluded === 'true' ? 0 : parseFloat(form.ivaRate) || 19,
+        isIvaExcluded: form.isIvaExcluded === 'true',
       }, { token: token! });
 
       router.push('/dashboard/inventory/services');
@@ -122,6 +126,7 @@ export default function NewServicePage() {
           <div>
             <label className={labelClass}>Precio *</label>
             <input type="number" step="0.01" min="0" className={inputClass} value={form.price} onChange={e => handleChange('price', e.target.value)} placeholder="0.00" />
+            <p className="text-xs text-muted-foreground mt-1">Precio incluye IVA</p>
           </div>
           <div>
             <label className={labelClass}>Color</label>
@@ -129,6 +134,40 @@ export default function NewServicePage() {
               <input type="color" value={form.color} onChange={e => handleChange('color', e.target.value)} className="w-10 h-10 rounded-lg border border-border-primary cursor-pointer p-0.5" />
               <input className={inputClass} value={form.color} onChange={e => handleChange('color', e.target.value)} placeholder="#EF2D8F" />
             </div>
+          </div>
+        </div>
+
+        {/* IVA Colombia */}
+        <div className="p-4 rounded-lg bg-blue-50 border border-blue-200 space-y-3">
+          <span className="text-sm font-semibold text-blue-800">Configuración IVA (Colombia)</span>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={labelClass}>Tarifa IVA</label>
+              <select
+                className={inputClass}
+                value={form.isIvaExcluded === 'true' ? 'excluded' : form.ivaRate}
+                onChange={e => {
+                  if (e.target.value === 'excluded') {
+                    handleChange('isIvaExcluded', 'true'); handleChange('ivaRate', '0');
+                  } else {
+                    handleChange('isIvaExcluded', 'false'); handleChange('ivaRate', e.target.value);
+                  }
+                }}
+              >
+                <option value="19">19% — Servicios de belleza (tarifa general)</option>
+                <option value="5">5% — Tarifa diferencial</option>
+                <option value="0">0% — Exento</option>
+                <option value="excluded">Excluido de IVA</option>
+              </select>
+            </div>
+            {form.isIvaExcluded !== 'true' && form.ivaRate && Number(form.price) > 0 && (
+              <div className="flex items-end pb-1">
+                <div className="text-xs text-blue-600 bg-white/60 rounded px-3 py-2 w-full">
+                  Base gravable: <strong>${(Number(form.price) / (1 + Number(form.ivaRate) / 100)).toLocaleString('es-CO', { minimumFractionDigits: 0 })}</strong>
+                  <br />IVA incluido: <strong>${(Number(form.price) - Number(form.price) / (1 + Number(form.ivaRate) / 100)).toLocaleString('es-CO', { minimumFractionDigits: 0 })}</strong>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

@@ -23,14 +23,20 @@ export class ReportsController {
   sales(@TenantId() t: string, @StoreId() s: string, @Query() q: any) { return this.service.sales(t, s, q); }
 
   @Get('appointments')
-  appointments(@TenantId() t: string, @StoreId() s: string) { return this.service.appointments(t, s); }
+  appointments(@TenantId() t: string, @StoreId() s: string, @Query() q: any) { return this.service.appointments(t, s, q); }
 
   @Get('products')
   topProducts(@TenantId() t: string, @StoreId() s: string, @Query('limit') limit: number) { return this.service.topProducts(t, s, limit); }
+
+  @Get('top-selling')
+  topSelling(@TenantId() t: string, @StoreId() s: string, @Query() q: any) { return this.service.topSelling(t, s, q); }
 
   @Get('inventory')
   inventory(@TenantId() t: string, @StoreId() s: string) { return this.service.inventoryReport(t, s); }
 
   @Get('expenses')
-  expenses(@TenantId() t: string, @StoreId() s: string) { return this.service.expensesReport(t, s); }
+  expenses(@TenantId() t: string, @StoreId() s: string, @Query() q: any) { return this.service.expensesReport(t, s, q); }
+
+  @Get('iva')
+  ivaReport(@TenantId() t: string, @StoreId() s: string, @Query() q: any) { return this.service.ivaReport(t, s, q); }
 }

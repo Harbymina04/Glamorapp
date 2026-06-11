@@ -3,6 +3,25 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PaginatedResponse } from '../../common/dto/response.dto';
 import { getPaginationParams } from '../../common/utils/pagination';
 
+// Campos editables por el usuario. Se EXCLUYEN los gestionados por el servidor:
+// stats financieras (totalSpent, totalPurchases, averageTicket, totalAppointments,
+// lastPurchaseAt, lastAppointmentAt), loyaltyPoints, customerNumber, tenantId,
+// storeId, deletedAt — para evitar mass-assignment.
+const CUSTOMER_EDITABLE = [
+  'firstName', 'lastName', 'email', 'phone', 'avatarUrl',
+  'segment', 'loyaltyTier', 'tags', 'source', 'notes', 'isActive',
+] as const;
+
+/** Toma solo los campos editables permitidos y normaliza dateOfBirth a Date. */
+function buildCustomerData(dto: any): Record<string, any> {
+  const data: Record<string, any> = {};
+  for (const k of CUSTOMER_EDITABLE) if (dto?.[k] !== undefined) data[k] = dto[k];
+  if (dto?.dateOfBirth !== undefined) {
+    data.dateOfBirth = dto.dateOfBirth ? new Date(dto.dateOfBirth) : null;
+  }
+  return data;
+}
+
 // Customers are tenant-level entities.
 // storeId on customer = "origin store" (where they were first registered).
 // Queries can be scoped by store via the sales/appointments relations.
@@ -111,15 +130,21 @@ export class CustomersService {
   }
 
   async create(tenantId: string, storeId: string, dto: any) {
-    // Check duplicate phone at tenant level
+    // Duplicados a nivel tenant (teléfono y email)
     if (dto.phone) {
       const existing = await this.prisma.customer.findFirst({
         where: { tenantId, phone: dto.phone, deletedAt: null },
       });
       if (existing) {
-        throw new ConflictException(
-          `A customer with phone ${dto.phone} already exists in this company (store: ${existing.storeId})`,
-        );
+        throw new ConflictException(`Ya existe un cliente con el teléfono ${dto.phone} en esta empresa`);
+      }
+    }
+    if (dto.email) {
+      const existing = await this.prisma.customer.findFirst({
+        where: { tenantId, email: dto.email, deletedAt: null },
+      });
+      if (existing) {
+        throw new ConflictException(`Ya existe un cliente con el email ${dto.email} en esta empresa`);
       }
     }
 
@@ -130,25 +155,31 @@ export class CustomersService {
     return this.prisma.customer.create({
       data: {
         tenantId,
-        storeId, // origin store
+        storeId, // origin store (forzado por el servidor, no por el cliente)
         customerNumber,
-        ...dto,
-      },
+        ...buildCustomerData(dto),
+      } as any,
     });
   }
 
   async update(tenantId: string, id: string, dto: any) {
     await this.findOne(tenantId, id);
 
-    // If updating phone, check uniqueness at tenant level
+    // Unicidad de teléfono y email a nivel tenant
     if (dto.phone) {
       const conflict = await this.prisma.customer.findFirst({
         where: { tenantId, phone: dto.phone, deletedAt: null, NOT: { id } },
       });
-      if (conflict) throw new ConflictException(`Phone ${dto.phone} already used by another customer`);
+      if (conflict) throw new ConflictException(`El teléfono ${dto.phone} ya está en uso por otro cliente`);
+    }
+    if (dto.email) {
+      const conflict = await this.prisma.customer.findFirst({
+        where: { tenantId, email: dto.email, deletedAt: null, NOT: { id } },
+      });
+      if (conflict) throw new ConflictException(`El email ${dto.email} ya está en uso por otro cliente`);
     }
 
-    return this.prisma.customer.update({ where: { id }, data: dto });
+    return this.prisma.customer.update({ where: { id, tenantId }, data: buildCustomerData(dto) });
   }
 
   async remove(tenantId: string, id: string) {

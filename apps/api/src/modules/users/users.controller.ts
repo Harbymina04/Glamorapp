@@ -45,14 +45,14 @@ export class UsersController {
     if (req.user.role === 'store_admin') {
       dto.storeId = req.user.storeId;
     }
-    return this.usersService.create(tenantId, dto);
+    return this.usersService.create(tenantId, dto, req.user.role);
   }
 
   @Put(':id')
   @Roles('store_admin', 'tenant_admin')
   @Audit('users', 'update', 'Usuario actualizado', { entityIdFrom: 'param' })
-  update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateUserDto) {
-    return this.usersService.update(tenantId, id, dto);
+  update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateUserDto, @Request() req: any) {
+    return this.usersService.update(tenantId, id, dto, req.user.role);
   }
 
   @Delete(':id')

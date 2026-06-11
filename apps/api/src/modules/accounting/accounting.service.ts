@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getPaginationParams } from '../../common/utils/pagination';
 import { PaginatedResponse } from '../../common/dto/response.dto';
@@ -436,6 +437,24 @@ export class AccountingService {
     return this.prisma.accountingTransaction.update({ where: { id }, data: { status: 'voided' } });
   }
 
+  /**
+   * Anula los asientos contables de una venta (al cancelarla). Acepta un cliente
+   * de transacción para ejecutarse atómicamente dentro del flujo de cancelación.
+   * Devuelve cuántos asientos se anularon.
+   */
+  async voidSaleTransaction(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    storeId: string,
+    saleId: string,
+  ): Promise<number> {
+    const res = await tx.accountingTransaction.updateMany({
+      where: { saleId, tenantId, storeId, status: { not: 'voided' } },
+      data: { status: 'voided' },
+    });
+    return res.count;
+  }
+
   async reconcileTransaction(tenantId: string, storeId: string | null, role: string, id: string, userId: string) {
     if (!isTenantAdmin(role)) throw new ForbiddenException('Only tenant admins can reconcile transactions');
     await this.getTransaction(tenantId, storeId, role, id);
@@ -619,6 +638,9 @@ export class AccountingService {
     const existing = await this.prisma.accountingTransaction.findFirst({ where: { expenseId } });
     if (existing) return existing;
 
+    const ivaAmount = Number((expense as any).ivaAmount ?? 0);
+    const baseAmount = Number(expense.amount) - ivaAmount;
+
     return this.prisma.accountingTransaction.create({
       data: {
         tenantId,
@@ -627,10 +649,11 @@ export class AccountingService {
         category: 'operational_expense',
         description: expense.concept,
         expenseId,
-        grossAmount: Number(expense.amount),
-        taxAmount: 0,
+        grossAmount: baseAmount,
+        taxAmount: ivaAmount,
         retentionAmount: 0,
         netAmount: Number(expense.amount),
+        ivaAmount,
         transactionDate: expense.expenseDate,
         createdBy: userId,
       },
@@ -832,7 +855,7 @@ export class AccountingService {
     };
   }
 
-  async exportAccountantReport(tenantId: string, role: string, from: string, to: string): Promise<Buffer> {
+  async exportAccountantReport(tenantId: string, storeId: string, role: string, from: string, to: string): Promise<Buffer> {
     if (!isTenantAdmin(role)) throw new ForbiddenException('Only tenant admins can export accounting reports');
 
     const dateFrom = new Date(from);
@@ -870,7 +893,12 @@ export class AccountingService {
 
     // ── Sheet 2: Gastos (expenses) ──────────────────────────────
     const expenses = await this.prisma.expense.findMany({
-      where: { tenantId, isVoided: false, expenseDate: { gte: dateFrom, lte: dateTo } },
+      where: {
+        tenantId,
+        ...(storeId ? { storeId } : {}),
+        isVoided: false,
+        expenseDate: { gte: dateFrom, lte: dateTo },
+      },
       include: { category: true },
       orderBy: { expenseDate: 'asc' },
     });

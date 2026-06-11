@@ -30,11 +30,20 @@ export class ExpensesService {
   }
 
   async create(tenantId: string, storeId: string, userId: string, dto: any) {
+    // Validate IVA fields
+    if (dto.ivaAmount === undefined && dto.ivaRate !== undefined && !dto.isIvaExcluded) {
+      const amount = parseFloat(dto.amount) || 0;
+      const rate   = parseFloat(dto.ivaRate) || 0;
+      dto.ivaAmount = amount * (rate / 100);
+    }
+
     const expense = await this.prisma.expense.create({ data: { tenantId, storeId, createdBy: userId, ...dto } });
 
-    // Auto-register expense transaction in accounting (fire-and-forget — never blocks the response)
-    this.accounting.registerExpenseTransaction(tenantId, storeId, expense.id, userId)
-      .catch(err => this.logger.warn(`Accounting auto-register failed for expense ${expense.id}: ${err.message}`));
+    try {
+      await this.accounting.registerExpenseTransaction(tenantId, storeId, expense.id, userId);
+    } catch (err: any) {
+      this.logger.warn(`Accounting auto-register failed for expense ${expense.id}: ${err.message}`);
+    }
 
     return expense;
   }

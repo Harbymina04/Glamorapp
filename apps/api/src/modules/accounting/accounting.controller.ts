@@ -223,7 +223,7 @@ export class AccountingController {
     @Query('to') to: string,
     @Res() res: Response,
   ) {
-    const buffer = await this.service.exportAccountantReport(req.user.tenantId, this.role(req), from, to);
+    const buffer = await this.service.exportAccountantReport(req.user.tenantId, req.user.storeId, this.role(req), from, to);
     const filename = `glamorapp-contabilidad-${from}-${to}.xlsx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

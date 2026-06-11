@@ -15,6 +15,7 @@ import { CustomerRegisterDto } from './dto/customer-register.dto';
 import { v4 as uuidv4 } from 'uuid';
 import { getEffectiveScopes } from '../../common/constants/role-scopes';
 import { DEFAULT_AGENTS, DEFAULT_EXPENSE_CATEGORIES } from '../../common/constants/default-agents';
+import { BCRYPT_ROUNDS } from '../../common/constants/security';
 
 @Injectable()
 export class AuthService {
@@ -110,7 +111,7 @@ export class AuthService {
         },
       });
 
-      const passwordHash = await bcrypt.hash(dto.password, 12);
+      const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
 
       const user = await tx.user.create({
         data: {
@@ -213,7 +214,7 @@ export class AuthService {
     });
     if (existing) throw new ConflictException('Este email ya tiene una cuenta en la plataforma');
 
-    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
     const user = await this.prisma.user.create({
       data: {
         tenantId: null,
@@ -447,7 +448,7 @@ export class AuthService {
       throw new UnauthorizedException('El token ha expirado. Solicita uno nuevo.');
     }
 
-    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
 
     await this.prisma.$transaction([
       this.prisma.user.update({

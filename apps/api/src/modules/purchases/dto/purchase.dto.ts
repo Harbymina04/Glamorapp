@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsArray, ValidateNested, IsNumber, IsDateString, Min, IsUUID } from 'class-validator';
+import { IsString, IsOptional, IsArray, ValidateNested, IsNumber, IsDateString, Min, Max, IsUUID, IsBoolean, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class PurchaseItemDto {
@@ -12,16 +12,21 @@ export class PurchaseItemDto {
   @IsNumber()
   @Min(0)
   unitPrice: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  ivaRate?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isIvaExcluded?: boolean;
 }
 
 export class CreatePurchaseDto {
   @IsUUID()
   supplierId: string;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  ivaPercent?: number;
 
   @IsOptional()
   @IsString()
@@ -61,4 +66,20 @@ export class ReceivePurchaseDto {
   @ValidateNested({ each: true })
   @Type(() => ReceiveItemDto)
   items: ReceiveItemDto[];
+}
+
+export class MarkPaidDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  paymentMethod?: string;
+
+  @IsOptional()
+  @IsDateString()
+  paymentDate?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string;
 }

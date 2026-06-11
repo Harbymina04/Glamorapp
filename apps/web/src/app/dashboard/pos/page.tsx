@@ -46,6 +46,8 @@ function POSContent() {
             unitPrice: item.unitPrice,
             quantity: item.quantity,
             discountAmount: 0,
+            ivaRate: Number(item.ivaRate ?? 19),
+            isIvaExcluded: item.isIvaExcluded ?? false,
           });
         });
       })
@@ -150,16 +152,8 @@ function POSContent() {
       .catch(() => {});
   }, [token]);
 
-  // Load IVA rate from tenant tax config
-  useEffect(() => {
-    if (!token) return;
-    api.get('/accounting/tax-rates', { token })
-      .then((rates: any[]) => {
-        const defaultIva = (rates || []).find((r: any) => r.taxType === 'iva' && r.isDefault);
-        if (defaultIva) cart.setTaxPercent(Number(defaultIva.rate));
-      })
-      .catch(() => {});
-  }, [token]);
+  // Tax rates are now per-product — this effect is kept only as a no-op fallback
+  // to avoid breaking any code that references it. IVA is calculated per item in the cart.
 
   // Load active discount campaigns
   useEffect(() => {
@@ -228,6 +222,9 @@ function POSContent() {
     setError('');
 
     const unitPrice = selectedTab === 'products' ? Number(item.salePrice) : Number(item.price);
+    // IVA per product: stored in product.ivaRate, services default to 19% in Colombia
+    const ivaRate = selectedTab === 'products' ? Number(item.ivaRate ?? 19) : 19;
+    const isIvaExcluded = selectedTab === 'products' ? (item.isIvaExcluded ?? false) : false;
 
     // Apply campaign discount automatically
     const applicable = getApplicableDiscount(
@@ -250,6 +247,8 @@ function POSContent() {
       unitPrice,
       quantity:               1,
       discountAmount,
+      ivaRate,
+      isIvaExcluded,
       appliedDiscountPercent: discountPct,
       discountId:             applicable?.id,
       categoryId:             item.categoryId ?? undefined,
@@ -291,10 +290,10 @@ function POSContent() {
     try {
       const sale = await api.post('/sales', {
         customerId: cart.customerId || undefined, discountPercent: cart.discountPercent,
-        taxPercent: cart.taxPercent,
         items: cart.items.map(i => ({
           productId: i.productId, serviceId: i.serviceId, itemType: i.itemType,
           name: i.name, quantity: i.quantity, unitPrice: i.unitPrice, discountAmount: i.discountAmount,
+          ivaRate: i.ivaRate, isIvaExcluded: i.isIvaExcluded,
           // Include performer for service items
           performedBy: i.itemType === 'service' ? (performers[i.id]?.userId || undefined) : undefined,
         })),
@@ -408,12 +407,49 @@ function POSContent() {
 
   const handlePrint = () => {
     if (!lastSale) return;
-    const now = new Date().toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+    const now = new Date().toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' });
     const pm = lastSale.payments || [];
     const paymentLabels: Record<string, string> = { cash: 'Efectivo', card: 'Tarjeta', transfer: 'Transferencia' };
-    const win = window.open('', '_blank', 'width=300,height=600');
+
+    // Build IVA breakdown from sale items (group by ivaRate)
+    const ivaMap = new Map<number, { base: number; amount: number }>();
+    (lastSale.items || []).forEach((i: any) => {
+      const rate = Number(i.ivaRate ?? 19);
+      const amount = Number(i.ivaAmount ?? 0);
+      const base = Number(i.total) - amount;
+      const prev = ivaMap.get(rate) ?? { base: 0, amount: 0 };
+      ivaMap.set(rate, { base: prev.base + base, amount: prev.amount + amount });
+    });
+    const ivaRows = Array.from(ivaMap.entries())
+      .sort((a, b) => b[0] - a[0])
+      .map(([rate, v]) =>
+        `<div class="row" style="font-size:11px"><span>IVA ${rate}% (base $${v.base.toLocaleString('es-CO', {minimumFractionDigits:0})})</span><span>$${v.amount.toLocaleString('es-CO', {minimumFractionDigits:0})}</span></div>`
+      ).join('');
+
+    const win = window.open('', '_blank', 'width=300,height=700');
     if (win) {
-      win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Ticket ${lastSale.saleNumber}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;font-size:12px;width:80mm;padding:8px}.center{text-align:center}.bold{font-weight:bold}.line{border-top:1px dashed #000;margin:6px 0}.row{display:flex;justify-content:space-between;margin:2px 0}@media print{body{-webkit-print-color-adjust:exact}}</style></head><body><div class="center bold" style="font-size:14px">💅 Glamorapp</div><div class="center" style="font-size:11px">Beauty Studio</div><div class="line"></div><div class="center bold">${lastSale.saleNumber}</div><div class="center" style="font-size:11px">${now}</div>${lastSale.customer?`<div class="center" style="font-size:11px">Cliente: ${lastSale.customer.firstName} ${lastSale.customer.lastName}</div>`:''}<div class="center" style="font-size:11px">Atendió: ${user?.firstName||''} ${user?.lastName||''}</div><div class="line"></div>${lastSale.items?.map((i:any)=>`<div class="row"><span>${i.name} x${i.quantity}</span><span>$${Number(i.total).toFixed(2)}</span></div>`).join('')}<div class="line"></div><div class="row"><span>Subtotal</span><span>$${Number(lastSale.subtotal).toFixed(2)}</span></div>${Number(lastSale.discountAmount)>0?`<div class="row"><span>Descuento (${lastSale.discountPercent}%)</span><span>-$${Number(lastSale.discountAmount).toFixed(2)}</span></div>`:''}<div class="row"><span>IVA</span><span>$${Number(lastSale.taxAmount).toFixed(2)}</span></div><div class="row bold"><span>TOTAL</span><span>$${Number(lastSale.total).toFixed(2)}</span></div><div class="line"></div>${pm.map((p:any)=>`<div class="row" style="font-size:11px"><span>${paymentLabels[p.paymentMethod]||p.paymentMethod}</span><span>$${Number(p.amount).toFixed(2)}</span></div>`).join('')}<div class="line"></div><div class="center" style="font-size:11px">¡Gracias por tu compra!</div></body></html>`);
+      win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Ticket ${lastSale.saleNumber}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;font-size:12px;width:80mm;padding:8px}.center{text-align:center}.bold{font-weight:bold}.line{border-top:1px dashed #000;margin:6px 0}.row{display:flex;justify-content:space-between;margin:2px 0}@media print{body{-webkit-print-color-adjust:exact}}</style></head><body>
+<div class="center bold" style="font-size:14px">Glamorapp</div>
+<div class="center" style="font-size:11px">Beauty Studio</div>
+<div class="line"></div>
+<div class="center bold">${lastSale.saleNumber}</div>
+<div class="center" style="font-size:11px">${now}</div>
+${lastSale.customer ? `<div class="center" style="font-size:11px">Cliente: ${lastSale.customer.firstName} ${lastSale.customer.lastName}</div>` : ''}
+<div class="center" style="font-size:11px">Atendió: ${user?.firstName || ''} ${user?.lastName || ''}</div>
+<div class="line"></div>
+${(lastSale.items || []).map((i: any) => `<div class="row"><span>${i.name} x${i.quantity}</span><span>$${Number(i.unitPrice * i.quantity - (i.discountAmount || 0)).toLocaleString('es-CO', {minimumFractionDigits:0})}</span></div>`).join('')}
+<div class="line"></div>
+<div class="row"><span>Subtotal (sin IVA)</span><span>$${(Number(lastSale.subtotal) - Number(lastSale.taxAmount)).toLocaleString('es-CO', {minimumFractionDigits:0})}</span></div>
+${Number(lastSale.discountAmount) > 0 ? `<div class="row"><span>Descuento (${lastSale.discountPercent}%)</span><span>-$${Number(lastSale.discountAmount).toLocaleString('es-CO', {minimumFractionDigits:0})}</span></div>` : ''}
+${ivaRows}
+<div class="row bold"><span>TOTAL</span><span>$${Number(lastSale.total).toLocaleString('es-CO', {minimumFractionDigits:0})}</span></div>
+<div class="line"></div>
+${pm.map((p: any) => `<div class="row" style="font-size:11px"><span>${paymentLabels[p.paymentMethod] || p.paymentMethod}</span><span>$${Number(p.amount).toLocaleString('es-CO', {minimumFractionDigits:0})}</span></div>`).join('')}
+<div class="line"></div>
+<div class="center" style="font-size:10px">Documento equivalente POS</div>
+<div class="center" style="font-size:10px">Precios incluyen IVA</div>
+<div class="center" style="font-size:11px">¡Gracias por tu preferencia!</div>
+</body></html>`);
       win.document.close(); win.focus(); setTimeout(() => { win.print(); win.close(); }, 500);
     }
   };
@@ -865,7 +901,7 @@ function POSContent() {
           </div>
           <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
           <div className="flex justify-between text-sm"><span className="text-muted-foreground">Descuento</span><span className="text-red-500">-{formatCurrency(discount)}</span></div>
-          <div className="flex justify-between text-sm"><span className="text-muted-foreground">IVA ({cart.taxPercent}%)</span><span>{formatCurrency(tax)}</span></div>
+          <div className="flex justify-between text-sm"><span className="text-muted-foreground">IVA</span><span>{formatCurrency(tax)}</span></div>
           <div className="flex justify-between text-lg font-bold pt-2 border-t border-border-primary"><span>Total</span><span className="text-glamor-primary">{formatCurrency(total)}</span></div>
           {/* Notes */}
           <input value={saleNotes} onChange={e => setSaleNotes(e.target.value)} placeholder="Notas de venta (opcional)" className="w-full h-8 px-2 rounded-lg border border-border-primary text-xs bg-white focus:outline-none focus:ring-2 focus:ring-glamor-primary/20" />

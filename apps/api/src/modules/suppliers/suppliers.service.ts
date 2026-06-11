@@ -32,13 +32,35 @@ export class SuppliersService {
     return s;
   }
 
+  private async nextSupplierNumber(tenantId: string, storeId: string): Promise<string> {
+    const last = await this.prisma.supplier.findFirst({
+      where: { tenantId, storeId, supplierNumber: { startsWith: 'PROV-' } },
+      orderBy: { supplierNumber: 'desc' },
+      select: { supplierNumber: true },
+    });
+    const lastNum = last ? parseInt(last.supplierNumber.slice(5), 10) : 0;
+    const num = (Number.isFinite(lastNum) ? lastNum : 0) + 1;
+    return `PROV-${String(num).padStart(3, '0')}`;
+  }
+
   async create(tenantId: string, storeId: string, dto: any) {
-    const count = await this.prisma.supplier.count({ where: { tenantId, storeId } });
-    const supplierNumber = `PROV-${String(count + 1).padStart(3, '0')}`;
-    return this.prisma.supplier.create({ data: { tenantId, storeId, supplierNumber, ...dto } });
+    if (dto.creditLimit !== undefined && Number(dto.creditLimit) < 0)
+      throw new BadRequestException('El límite de crédito no puede ser negativo');
+    // Reintenta ante colisión rara del folio bajo concurrencia (@@unique → P2002)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const supplierNumber = await this.nextSupplierNumber(tenantId, storeId);
+      try {
+        return await this.prisma.supplier.create({ data: { tenantId, storeId, supplierNumber, ...dto } });
+      } catch (e: any) {
+        if (e?.code === 'P2002' && attempt < 2) continue;
+        throw e;
+      }
+    }
   }
 
   async update(tenantId: string, storeId: string, id: string, dto: any) {
+    if (dto.creditLimit !== undefined && Number(dto.creditLimit) < 0)
+      throw new BadRequestException('El límite de crédito no puede ser negativo');
     await this.findOne(tenantId, storeId, id);
     return this.prisma.supplier.update({ where: { id }, data: dto });
   }
@@ -139,15 +161,11 @@ export class SuppliersService {
 
   async createContact(tenantId: string, storeId: string, supplierId: string, dto: any) {
     await this.findOne(tenantId, storeId, supplierId);
-    // If this is primary, unset others
-    if (dto.isPrimary) {
-      await this.prisma.supplierContact.updateMany({
-        where: { supplierId },
-        data: { isPrimary: false },
-      });
-    }
-    return this.prisma.supplierContact.create({
-      data: { tenantId, storeId, supplierId, ...dto },
+    return this.prisma.$transaction(async (tx) => {
+      if (dto.isPrimary) {
+        await tx.supplierContact.updateMany({ where: { supplierId }, data: { isPrimary: false } });
+      }
+      return tx.supplierContact.create({ data: { tenantId, storeId, supplierId, ...dto } });
     });
   }
 
@@ -156,14 +174,15 @@ export class SuppliersService {
       where: { id: contactId, tenantId, storeId },
     });
     if (!contact) throw new NotFoundException('Contacto no encontrado');
-
-    if (dto.isPrimary) {
-      await this.prisma.supplierContact.updateMany({
-        where: { supplierId: contact.supplierId, id: { not: contactId } },
-        data: { isPrimary: false },
-      });
-    }
-    return this.prisma.supplierContact.update({ where: { id: contactId }, data: dto });
+    return this.prisma.$transaction(async (tx) => {
+      if (dto.isPrimary) {
+        await tx.supplierContact.updateMany({
+          where: { supplierId: contact.supplierId, id: { not: contactId } },
+          data: { isPrimary: false },
+        });
+      }
+      return tx.supplierContact.update({ where: { id: contactId }, data: dto });
+    });
   }
 
   async deleteContact(tenantId: string, storeId: string, contactId: string) {
@@ -263,22 +282,29 @@ export class SuppliersService {
     });
   }
 
+  private async findSupplierProductOwned(tenantId: string, storeId: string, spId: string) {
+    const sp = await this.prisma.supplierProduct.findFirst({
+      where: { id: spId },
+      include: { supplier: { select: { tenantId: true, storeId: true } } },
+    });
+    if (!sp || sp.supplier.tenantId !== tenantId || sp.supplier.storeId !== storeId)
+      throw new NotFoundException('Producto de proveedor no encontrado');
+    return sp;
+  }
+
   async updateSupplierProduct(tenantId: string, storeId: string, spId: string, dto: any) {
-    const sp = await this.prisma.supplierProduct.findFirst({ where: { id: spId } });
-    if (!sp) throw new NotFoundException('Producto de proveedor no encontrado');
+    await this.findSupplierProductOwned(tenantId, storeId, spId);
     return this.prisma.supplierProduct.update({ where: { id: spId }, data: dto });
   }
 
   async removeSupplierProduct(tenantId: string, storeId: string, spId: string) {
-    const sp = await this.prisma.supplierProduct.findFirst({ where: { id: spId } });
-    if (!sp) throw new NotFoundException('Producto de proveedor no encontrado');
+    await this.findSupplierProductOwned(tenantId, storeId, spId);
     return this.prisma.supplierProduct.delete({ where: { id: spId } });
   }
 
-  async updateProductPrice(tenantId: string, storeId: string, spId: string, dto: any) {
-    const sp = await this.prisma.supplierProduct.findFirst({ where: { id: spId } });
-    if (!sp) throw new NotFoundException('Producto de proveedor no encontrado');
-    if (!dto.newPrice || dto.newPrice <= 0) throw new BadRequestException('El precio debe ser mayor a 0');
+  async updateProductPrice(tenantId: string, storeId: string, spId: string, dto: any, userId?: string) {
+    const sp = await this.findSupplierProductOwned(tenantId, storeId, spId);
+    if (!dto.newPrice || Number(dto.newPrice) <= 0) throw new BadRequestException('El precio debe ser mayor a 0');
 
     const previousPrice = sp.supplierPrice;
 
@@ -288,7 +314,7 @@ export class SuppliersService {
         supplierProductId: spId,
         price: dto.newPrice,
         previousPrice: previousPrice,
-        changedByUserId: dto.userId || null,
+        changedByUserId: userId || null, // usuario autenticado, no del body (auditoría)
         reason: dto.reason || 'Actualización de precio',
         effectiveDate: new Date(),
       },
@@ -316,11 +342,10 @@ export class SuppliersService {
   }
 
   async getPriceHistory(tenantId: string, storeId: string, spId: string) {
-    const sp = await this.prisma.supplierProduct.findFirst({ where: { id: spId } });
-    if (!sp) throw new NotFoundException('Producto de proveedor no encontrado');
+    await this.findSupplierProductOwned(tenantId, storeId, spId);
     return this.prisma.supplierProductPrice.findMany({
       where: { supplierProductId: spId },
-      orderBy: { effectiveDate: 'desc' },
+      orderBy: [{ effectiveDate: 'desc' }, { createdAt: 'desc' }],
     });
   }
 

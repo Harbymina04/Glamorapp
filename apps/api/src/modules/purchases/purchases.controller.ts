@@ -13,6 +13,8 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { PurchasesService } from './purchases.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { ScopesGuard } from '../../common/guards/scopes.guard';
+import { RequireScope } from '../../common/decorators/require-scope.decorator';
 import { TenantId, StoreId } from '../../common/decorators/tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
@@ -20,6 +22,7 @@ import {
   CreatePurchaseDto,
   UpdatePurchaseDto,
   ReceivePurchaseDto,
+  MarkPaidDto,
 } from './dto/purchase.dto';
 import { SubscriptionGuard } from '../../common/guards/subscription.guard';
 import { PlanModuleGuard } from '../../common/guards/plan-module.guard';
@@ -27,7 +30,7 @@ import { RequirePlanModule } from '../../common/decorators/require-plan-module.d
 
 @ApiTags('Purchases')
 @Controller('purchases')
-@UseGuards(JwtAuthGuard, TenantGuard, SubscriptionGuard, PlanModuleGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, ScopesGuard, SubscriptionGuard, PlanModuleGuard)
 @RequirePlanModule('purchases')
 @ApiBearerAuth()
 export class PurchasesController {
@@ -38,6 +41,7 @@ export class PurchasesController {
   // ===================================================================
 
   @Get()
+  @RequireScope('purchases', 'view')
   findAll(
     @TenantId() t: string,
     @StoreId() s: string,
@@ -53,6 +57,7 @@ export class PurchasesController {
   }
 
   @Get(':id')
+  @RequireScope('purchases', 'view')
   findOne(
     @TenantId() t: string,
     @StoreId() s: string,
@@ -62,6 +67,7 @@ export class PurchasesController {
   }
 
   @Post()
+  @RequireScope('purchases', 'create')
   create(
     @TenantId() t: string,
     @StoreId() s: string,
@@ -72,6 +78,7 @@ export class PurchasesController {
   }
 
   @Put(':id')
+  @RequireScope('purchases', 'edit')
   update(
     @TenantId() t: string,
     @StoreId() s: string,
@@ -86,6 +93,7 @@ export class PurchasesController {
   // ===================================================================
 
   @Post(':id/receive')
+  @RequireScope('purchases', 'edit')
   receive(
     @TenantId() t: string,
     @StoreId() s: string,
@@ -97,17 +105,19 @@ export class PurchasesController {
   }
 
   @Patch(':id/mark-paid')
+  @RequireScope('purchases', 'edit')
   markAsPaid(
     @TenantId() t: string,
     @StoreId() s: string,
     @Param('id') id: string,
     @CurrentUser('id') userId: string,
-    @Body() d: { paymentMethod?: string; paymentDate?: string; notes?: string },
+    @Body() d: MarkPaidDto,
   ) {
     return this.service.markAsPaid(t, s, id, d, userId);
   }
 
   @Post(':id/cancel')
+  @RequireScope('purchases', 'edit')
   cancel(
     @TenantId() t: string,
     @StoreId() s: string,

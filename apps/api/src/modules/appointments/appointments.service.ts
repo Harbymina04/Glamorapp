@@ -1,12 +1,36 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { EmailService } from '../email/email.service';
 import { PaginatedResponse } from '../../common/dto/response.dto';
 import { getPaginationParams } from '../../common/utils/pagination';
 
+/** Suma minutos a una hora "HH:mm" y devuelve "HH:mm" (24h). */
+function addMinutes(hhmm: string, minutes: number): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  const total = h * 60 + m + minutes;
+  const eh = Math.floor(total / 60) % 24;
+  const em = ((total % 60) + 60) % 60;
+  return `${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}`;
+}
+
+/** Normaliza una fecha (string|Date) a "YYYY-MM-DD" para claves de bloqueo. */
+function dateKey(d: string | Date): string {
+  return (typeof d === 'string' ? new Date(d) : d).toISOString().slice(0, 10);
+}
+
 @Injectable()
 export class AppointmentsService {
+  // Transiciones válidas de estado de una cita.
+  private static readonly STATUS_TRANSITIONS: Record<string, string[]> = {
+    pending:     ['confirmed', 'in_progress', 'completed', 'cancelled', 'no_show'],
+    confirmed:   ['in_progress', 'completed', 'cancelled', 'no_show'],
+    in_progress: ['completed', 'cancelled'],
+    completed:   [],
+    cancelled:   [],
+    no_show:     [],
+  };
   constructor(
     private prisma: PrismaService,
     private whatsapp: WhatsAppService,
@@ -65,12 +89,43 @@ export class AppointmentsService {
   }
 
   async create(tenantId: string, storeId: string, dto: any) {
-    // Validate no time conflicts
-    await this.checkOverlap(tenantId, storeId, dto.professionalId, dto.date, dto.startTime, dto.endTime);
+    // Validar que el servicio pertenezca a esta tienda y obtener precio/duración
+    const service = await this.prisma.service.findFirst({
+      where: { id: dto.serviceId, tenantId, storeId },
+      select: { id: true, price: true, durationMinutes: true },
+    });
+    if (!service) throw new BadRequestException('Servicio no encontrado en esta tienda');
 
-    const appointment = await this.prisma.appointment.create({
-      data: { tenantId, storeId, ...dto, date: new Date(dto.date) },
-      include: { customer: { select: { id: true, firstName: true, lastName: true, phone: true, email: true } }, service: true, professional: { select: { id: true, firstName: true } } },
+    if (dto.professionalId) await this.assertProfessional(tenantId, storeId, dto.professionalId);
+    if (dto.customerId) await this.assertCustomer(tenantId, dto.customerId);
+    if (dto.nailDesignId) await this.assertNailDesign(tenantId, storeId, dto.nailDesignId);
+
+    const startTime = dto.startTime;
+    const endTime = dto.endTime ?? addMinutes(startTime, service.durationMinutes);
+    const price = dto.price ?? Number(service.price);
+
+    // Crear con verificación de solape atómica (lock por profesional+día)
+    const appointment = await this.prisma.$transaction(async (tx) => {
+      if (dto.professionalId) {
+        await this.lockProfessionalDay(tx, dto.professionalId, dto.date);
+        await this.checkOverlap(tx, tenantId, storeId, dto.professionalId, dto.date, startTime, endTime);
+      }
+      return tx.appointment.create({
+        data: {
+          tenantId, storeId,
+          serviceId: dto.serviceId,
+          customerId: dto.customerId ?? null,
+          professionalId: dto.professionalId ?? null,
+          nailDesignId: dto.nailDesignId ?? null,
+          date: new Date(dto.date),
+          startTime, endTime,
+          notes: dto.notes ?? null,
+          price,
+          status: 'pending',
+          originChannel: 'manual',
+        },
+        include: { customer: { select: { id: true, firstName: true, lastName: true, phone: true, email: true } }, service: true, professional: { select: { id: true, firstName: true } } },
+      });
     });
 
     // Send WhatsApp notification
@@ -103,23 +158,50 @@ export class AppointmentsService {
   }
 
   async update(tenantId: string, storeId: string, id: string, dto: any) {
-    await this.findOne(tenantId, storeId, id);
+    const current = await this.findOne(tenantId, storeId, id);
 
-    // Validate no time conflicts
-    if (dto.date || dto.startTime || dto.endTime || dto.professionalId) {
-      const existing = await this.prisma.appointment.findUnique({ where: { id, tenantId, storeId }, select: { date: true, startTime: true, endTime: true, professionalId: true } });
-      const date = dto.date || String(existing!.date).split('T')[0];
-      const startTime = dto.startTime || existing!.startTime;
-      const endTime = dto.endTime || existing!.endTime;
-      const professionalId = dto.professionalId || existing!.professionalId;
-      await this.checkOverlap(tenantId, storeId, professionalId, date, startTime, endTime, id);
+    // Validar referencias cambiadas (que pertenezcan a esta tienda/tenant)
+    if (dto.serviceId) {
+      const svc = await this.prisma.service.findFirst({ where: { id: dto.serviceId, tenantId, storeId }, select: { id: true } });
+      if (!svc) throw new BadRequestException('Servicio no encontrado en esta tienda');
     }
+    if (dto.professionalId) await this.assertProfessional(tenantId, storeId, dto.professionalId);
+    if (dto.customerId) await this.assertCustomer(tenantId, dto.customerId);
+    if (dto.nailDesignId) await this.assertNailDesign(tenantId, storeId, dto.nailDesignId);
 
-    return this.prisma.appointment.update({ where: { id, tenantId, storeId }, data: dto });
+    // Construir data explícito (sin status/tenantId/storeId — anti mass-assignment)
+    const data: any = {};
+    for (const k of ['serviceId', 'customerId', 'professionalId', 'nailDesignId', 'startTime', 'endTime', 'notes', 'price'] as const) {
+      if (dto[k] !== undefined) data[k] = dto[k];
+    }
+    if (dto.date !== undefined) data.date = new Date(dto.date);
+
+    const needsOverlap = dto.date || dto.startTime || dto.endTime || dto.professionalId;
+
+    return this.prisma.$transaction(async (tx) => {
+      if (needsOverlap) {
+        const date = dto.date ?? current.date;
+        const startTime = dto.startTime ?? current.startTime;
+        const endTime = dto.endTime ?? current.endTime;
+        const professionalId = dto.professionalId ?? current.professionalId;
+        if (professionalId) {
+          await this.lockProfessionalDay(tx, professionalId, date);
+          await this.checkOverlap(tx, tenantId, storeId, professionalId, date, startTime, endTime, id);
+        }
+      }
+      return tx.appointment.update({ where: { id, tenantId, storeId }, data });
+    });
   }
 
   async updateStatus(tenantId: string, storeId: string, id: string, status: string, reason?: string) {
     const a = await this.findOne(tenantId, storeId, id);
+
+    if (a.status === status) return a; // no-op idempotente
+    const allowed = AppointmentsService.STATUS_TRANSITIONS[a.status] ?? [];
+    if (!allowed.includes(status)) {
+      throw new BadRequestException(`Transición de estado inválida: ${a.status} → ${status}`);
+    }
+
     const updates: any = { status };
     if (status === 'confirmed') updates.confirmedAt = new Date();
     if (status === 'completed') updates.completedAt = new Date();
@@ -175,9 +257,39 @@ export class AppointmentsService {
     return updated;
   }
 
+  // ── Validación de referencias (pertenencia a tienda/tenant) ────────────────
+
+  private async assertProfessional(tenantId: string, storeId: string, professionalId: string) {
+    const p = await this.prisma.user.findFirst({
+      where: { id: professionalId, tenantId, isActive: true, deletedAt: null, OR: [{ storeId }, { storeId: null }] },
+      select: { id: true },
+    });
+    if (!p) throw new BadRequestException('Profesional no válido para esta tienda');
+  }
+
+  private async assertCustomer(tenantId: string, customerId: string) {
+    const c = await this.prisma.customer.findFirst({ where: { id: customerId, tenantId, deletedAt: null }, select: { id: true } });
+    if (!c) throw new BadRequestException('Cliente no encontrado');
+  }
+
+  private async assertNailDesign(tenantId: string, storeId: string, nailDesignId: string) {
+    const d = await this.prisma.nailDesign.findFirst({ where: { id: nailDesignId, tenantId, storeId }, select: { id: true } });
+    if (!d) throw new BadRequestException('Diseño no encontrado en esta tienda');
+  }
+
+  /**
+   * Lock de transacción por (profesional, día): serializa las reservas
+   * concurrentes del mismo profesional para evitar doble-booking por TOCTOU.
+   * Se libera automáticamente al terminar la transacción.
+   */
+  private async lockProfessionalDay(tx: Prisma.TransactionClient, professionalId: string, date: string | Date) {
+    await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', `${professionalId}:${dateKey(date)}`);
+  }
+
   private async checkOverlap(
+    client: Prisma.TransactionClient | PrismaService,
     tenantId: string, storeId: string, professionalId: string,
-    date: string, startTime: string, endTime: string, excludeId?: string,
+    date: string | Date, startTime: string, endTime: string, excludeId?: string,
   ) {
     const where: any = {
       tenantId, storeId,
@@ -190,7 +302,7 @@ export class AppointmentsService {
     };
     if (excludeId) where.id = { not: excludeId };
 
-    const conflict = await this.prisma.appointment.findFirst({
+    const conflict = await client.appointment.findFirst({
       where,
       include: {
         customer: { select: { firstName: true, lastName: true } },
@@ -208,15 +320,20 @@ export class AppointmentsService {
   }
 
   async getAvailableSlots(tenantId: string, storeId: string, date: string, professionalId: string, duration: number) {
-    // Simplified: return morning/afternoon slots
     const existing = await this.prisma.appointment.findMany({
       where: { tenantId, storeId, professionalId, date: new Date(date), status: { notIn: ['cancelled', 'no_show'] } },
       select: { startTime: true, endTime: true },
     });
 
-    const busySlots = existing.map(a => a.startTime);
+    const dur = Number(duration) > 0 ? Number(duration) : 60;
     const allSlots = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
-    return allSlots.filter(s => !busySlots.includes(s));
+
+    // Una franja está libre si, considerando la duración pedida, no se solapa
+    // con ninguna cita existente (overlap: existing.start < slotEnd && existing.end > slot).
+    return allSlots.filter((slot) => {
+      const slotEnd = addMinutes(slot, dur);
+      return !existing.some(a => a.startTime < slotEnd && a.endTime > slot);
+    });
   }
 
   async getWeekSummary(tenantId: string, storeId: string) {
@@ -252,9 +369,29 @@ export class AppointmentsService {
     // Resolve store + tenant
     const store = await this.prisma.store.findUnique({
       where: { id: dto.storeId },
-      select: { id: true, tenantId: true, isActive: true },
+      select: { id: true, tenantId: true, isActive: true, acceptsOnlineAppointments: true },
     });
     if (!store || !store.isActive) throw new NotFoundException('Tienda no encontrada');
+    if (!store.acceptsOnlineAppointments) {
+      throw new BadRequestException('Esta tienda no acepta reservas en línea.');
+    }
+
+    // El servicio debe pertenecer a la tienda y ser visible/booqueable
+    const service = await this.prisma.service.findFirst({
+      where: { id: dto.serviceId, tenantId: store.tenantId, storeId: store.id, isStoreVisible: true },
+      select: { id: true, price: true, durationMinutes: true },
+    });
+    if (!service) throw new BadRequestException('Servicio no disponible para reserva en línea');
+
+    if (dto.professionalId) await this.assertProfessional(store.tenantId, store.id, dto.professionalId);
+    if (dto.nailDesignId) await this.assertNailDesign(store.tenantId, store.id, dto.nailDesignId);
+
+    // Hora fin y validación de fecha (no reservar en el pasado)
+    const startTime = dto.startTime;
+    const endTime = dto.endTime ?? addMinutes(startTime, service.durationMinutes);
+    const apptDate = new Date(dto.date);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (apptDate < today) throw new BadRequestException('No se puede reservar en una fecha pasada');
 
     // Upsert Customer record in this salon for the platform user
     const existing = await this.prisma.customer.findFirst({
@@ -282,33 +419,34 @@ export class AppointmentsService {
       });
     }
 
-    // Check overlaps if professional assigned
-    if (dto.professionalId) {
-      await this.checkOverlap(store.tenantId, store.id, dto.professionalId, dto.date, dto.startTime, dto.endTime ?? dto.startTime);
-    }
-
-    const appointment = await this.prisma.appointment.create({
-      data: {
-        tenantId: store.tenantId,
-        storeId: store.id,
-        customerId: customer.id,
-        serviceId: dto.serviceId,
-        professionalId: dto.professionalId ?? null,
-        nailDesignId: dto.nailDesignId ?? null,
-        date: new Date(dto.date),
-        startTime: dto.startTime,
-        endTime: dto.endTime ?? dto.startTime,
-        notes: dto.notes ?? null,
-        status: 'pending',
-        price: dto.price ?? 0,
-        originChannel: 'storefront',
-      },
-      include: {
-        service: { select: { id: true, name: true, price: true, durationMinutes: true } },
-        professional: { select: { id: true, firstName: true, lastName: true } },
-        customer: { select: { id: true, firstName: true, lastName: true, email: true } },
-        store: { select: { id: true, name: true } },
-      },
+    const appointment = await this.prisma.$transaction(async (tx) => {
+      if (dto.professionalId) {
+        await this.lockProfessionalDay(tx, dto.professionalId, dto.date);
+        await this.checkOverlap(tx, store.tenantId, store.id, dto.professionalId, dto.date, startTime, endTime);
+      }
+      return tx.appointment.create({
+        data: {
+          tenantId: store.tenantId,
+          storeId: store.id,
+          customerId: customer.id,
+          serviceId: service.id,
+          professionalId: dto.professionalId ?? null,
+          nailDesignId: dto.nailDesignId ?? null,
+          date: apptDate,
+          startTime,
+          endTime,
+          notes: dto.notes ?? null,
+          status: 'pending',
+          price: Number(service.price), // precio autoritativo del servidor (no del cliente)
+          originChannel: 'storefront',
+        },
+        include: {
+          service: { select: { id: true, name: true, price: true, durationMinutes: true } },
+          professional: { select: { id: true, firstName: true, lastName: true } },
+          customer: { select: { id: true, firstName: true, lastName: true, email: true } },
+          store: { select: { id: true, name: true } },
+        },
+      });
     });
 
     // Send confirmation email for storefront bookings
@@ -323,7 +461,7 @@ export class AppointmentsService {
           ? `${appointment.professional.firstName} ${appointment.professional.lastName ?? ''}`.trim()
           : undefined,
         storeName: appointment.store?.name,
-        price: Number(dto.price ?? 0) || undefined,
+        price: Number(appointment.price) || undefined,
       }).catch(err => console.error('Email storefront booking failed:', err.message));
     }
 

@@ -11,6 +11,7 @@ import {
   CreatePurchaseDto,
   UpdatePurchaseDto,
   ReceivePurchaseDto,
+  MarkPaidDto,
 } from './dto/purchase.dto';
 import { EmailService } from '../email/email.service';
 import { generatePurchasePdf } from './purchase-pdf.util';
@@ -99,6 +100,18 @@ export class PurchasesService {
     return purchase;
   }
 
+  /** Siguiente folio "OC-" por tienda, robusto ante prefijos ajenos. */
+  private async nextPurchaseNumber(tenantId: string, storeId: string): Promise<string> {
+    const last = await this.prisma.purchase.findFirst({
+      where: { tenantId, storeId, purchaseNumber: { startsWith: 'OC-' } },
+      orderBy: { purchaseNumber: 'desc' },
+      select: { purchaseNumber: true },
+    });
+    const lastNum = last ? parseInt(last.purchaseNumber.slice(3), 10) : 0;
+    const num = (Number.isFinite(lastNum) ? lastNum : 0) + 1;
+    return `OC-${String(num).padStart(4, '0')}`;
+  }
+
   async create(
     tenantId: string,
     storeId: string,
@@ -115,32 +128,39 @@ export class PurchasesService {
       throw new BadRequestException('Debe incluir al menos un producto');
     }
 
-    // Validate all products exist
+    // Validate all products exist and load their ivaRate
     const productIds = dto.items.map((i) => i.productId);
     const products = await this.prisma.product.findMany({
       where: { id: { in: productIds }, tenantId, storeId },
-      select: { id: true },
+      select: { id: true, ivaRate: true, isIvaExcluded: true },
     });
     if (products.length !== productIds.length) {
       throw new BadRequestException('Uno o más productos no encontrados');
     }
+    const productIvaMap = new Map(products.map(p => [p.id, p]));
 
-    // Generate purchase number
-    const count = await this.prisma.purchase.count({
-      where: { tenantId, storeId },
+    // Build enriched items with per-item IVA
+    const enrichedItems = dto.items.map((i) => {
+      const prod = productIvaMap.get(i.productId);
+      const ivaRate = i.ivaRate ?? Number(prod?.ivaRate ?? 19);
+      const isIvaExcluded = i.isIvaExcluded ?? prod?.isIvaExcluded ?? false;
+      const lineSubtotal = i.quantity * i.unitPrice;
+      const ivaAmount = isIvaExcluded ? 0 : lineSubtotal * (ivaRate / 100);
+      return { ...i, ivaRate, ivaAmount, lineSubtotal };
     });
-    const purchaseNumber = `OC-${String(count + 1).padStart(4, '0')}`;
 
-    // Calculate totals
-    const subtotal = dto.items.reduce(
-      (sum, i) => sum + i.quantity * i.unitPrice,
-      0,
-    );
-    const ivaPercent = dto.ivaPercent ?? 0;
-    const ivaAmount = subtotal * (ivaPercent / 100);
+    const subtotal  = enrichedItems.reduce((s, i) => s + i.lineSubtotal, 0);
+    const ivaAmount = enrichedItems.reduce((s, i) => s + i.ivaAmount, 0);
+    // Weighted average IVA % for header-level reporting
+    const ivaPercent = subtotal > 0 ? (ivaAmount / subtotal) * 100 : 0;
     const total = subtotal + ivaAmount;
 
-    const purchase = await this.prisma.purchase.create({
+    // Reintenta ante colisión rara del folio bajo concurrencia (@@unique → P2002)
+    let purchase: any;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const purchaseNumber = await this.nextPurchaseNumber(tenantId, storeId);
+      try {
+        purchase = await this.prisma.purchase.create({
       data: {
         tenantId,
         storeId,
@@ -156,11 +176,13 @@ export class PurchasesService {
         notes: dto.notes,
         createdBy: userId || null,
         items: {
-          create: dto.items.map((i) => ({
-            productId: i.productId,
-            quantity: i.quantity,
-            unitPrice: i.unitPrice,
-            total: i.quantity * i.unitPrice,
+          create: enrichedItems.map((i) => ({
+            productId:  i.productId,
+            quantity:   i.quantity,
+            unitPrice:  i.unitPrice,
+            ivaRate:    i.ivaRate,
+            ivaAmount:  i.ivaAmount,
+            total:      i.lineSubtotal + i.ivaAmount,
           })),
         },
       },
@@ -183,7 +205,13 @@ export class PurchasesService {
         },
         store: { select: { name: true, email: true, phone: true, address: true, primaryColor: true, slogan: true } },
       },
-    });
+        });
+        break;
+      } catch (e: any) {
+        if (e?.code === 'P2002' && attempt < 2) continue;
+        throw e;
+      }
+    }
 
     // Fire-and-forget: send email to supplier + admin CC
     this.sendPurchaseOrderEmail(purchase, tenantId, storeId, userId).catch(err =>
@@ -344,103 +372,114 @@ export class PurchasesService {
       receivedMap.set(r.itemId, r.quantityReceived);
     }
 
-    // Process each item
+    // Process everything atomically: si algo falla, no queda estado parcial
+    // (recibido sin movimiento, o stock sin actualizar la cantidad recibida).
     const now = new Date();
-    for (const item of purchase.items) {
-      const qtyToReceive = receivedMap.get(item.id) ?? 0;
-      if (qtyToReceive <= 0) continue;
+    return this.prisma.$transaction(async (tx) => {
+      for (const item of purchase.items) {
+        const qtyToReceive = receivedMap.get(item.id) ?? 0;
+        if (qtyToReceive <= 0) continue;
 
-      const maxReceivable = item.quantity - item.receivedQuantity;
-      if (qtyToReceive > maxReceivable) {
-        throw new BadRequestException(
-          `Cantidad a recibir (${qtyToReceive}) excede lo pendiente (${maxReceivable}) para ${item.productId}`,
-        );
-      }
+        const maxReceivable = item.quantity - item.receivedQuantity;
+        if (qtyToReceive > maxReceivable) {
+          throw new BadRequestException(
+            `Cantidad a recibir (${qtyToReceive}) excede lo pendiente (${maxReceivable}) para ${item.productId}`,
+          );
+        }
 
-      // 1. Update received quantity on purchase item
-      await this.prisma.purchaseItem.update({
-        where: { id: item.id },
-        data: { receivedQuantity: { increment: qtyToReceive } },
-      });
+        // 1. Update received quantity on purchase item
+        await tx.purchaseItem.update({
+          where: { id: item.id },
+          data: { receivedQuantity: { increment: qtyToReceive } },
+        });
 
-      // 2. Create inventory movement (ENTRY)
-      const newStock = item.product.currentStock + qtyToReceive;
-      await this.prisma.inventoryMovement.create({
-        data: {
-          tenantId,
-          storeId,
-          productId: item.productId,
-          movementType: 'entry',
-          quantity: qtyToReceive,
-          previousStock: item.product.currentStock,
-          newStock,
-          referenceType: 'purchase',
-          referenceId: purchase.id,
-          notes: `Recepción OC ${purchase.purchaseNumber}`,
-          createdBy: userId || null,
-        },
-      });
+        // 2. Create inventory movement (ENTRY)
+        const newStock = item.product.currentStock + qtyToReceive;
+        await tx.inventoryMovement.create({
+          data: {
+            tenantId,
+            storeId,
+            productId: item.productId,
+            movementType: 'entry',
+            quantity: qtyToReceive,
+            previousStock: item.product.currentStock,
+            newStock,
+            referenceType: 'purchase',
+            referenceId: purchase.id,
+            notes: `Recepción OC ${purchase.purchaseNumber}`,
+            createdBy: userId || null,
+          },
+        });
 
-      // 3. Update product stock + cost price (use latest purchase price)
- await this.prisma.product.update({
+        // 3. Update product stock + cost price (weighted average)
+        const prevQty = item.product.currentStock;
+        const prevCost = Number(item.product.costPrice);
+        const newAvgCost =
+          prevQty + qtyToReceive > 0
+            ? (prevQty * prevCost + qtyToReceive * Number(item.unitPrice)) /
+              (prevQty + qtyToReceive)
+            : Number(item.unitPrice);
+
+        await tx.product.update({
           where: { id: item.productId, tenantId, storeId },
           data: {
-            currentStock:{ increment: qtyToReceive },
-          costPrice: item.unitPrice, // Update cost to latest purchase price
-        },
+            currentStock: { increment: qtyToReceive },
+            costPrice: newAvgCost,
+          },
+        });
+      }
+
+      // Determine new status
+      const updatedItems = await tx.purchaseItem.findMany({
+        where: { purchaseId: id },
       });
-    }
+      const allFullyReceived = updatedItems.every(
+        (i) => i.receivedQuantity >= i.quantity,
+      );
+      const anyReceived = updatedItems.some((i) => i.receivedQuantity > 0);
 
-    // Determine new status
-    const updatedItems = await this.prisma.purchaseItem.findMany({
-      where: { purchaseId: id },
-    });
-    const allFullyReceived = updatedItems.every(
-      (i) => i.receivedQuantity >= i.quantity,
-    );
-    const anyReceived = updatedItems.some((i) => i.receivedQuantity > 0);
+      const newStatus = allFullyReceived
+        ? 'received'
+        : anyReceived
+          ? 'partial'
+          : purchase.status;
 
-    const newStatus = allFullyReceived
-      ? 'received'
-      : anyReceived
-        ? 'partial'
-        : purchase.status;
-
-    // Update purchase
-    const updated = await this.prisma.purchase.update({
-      where: { id, tenantId, storeId },
-      data: {
-        status: newStatus,
-        ...(allFullyReceived ? { receivedAt: now } : {}),
-        ...(anyReceived && purchase.paymentStatus === 'pending'
-          ? { paymentStatus: 'pending' }
-          : {}),
-      },
-      include: {
-        supplier: {
-          select: { id: true, businessName: true, supplierNumber: true },
+      // Update purchase
+      const updated = await tx.purchase.update({
+        where: { id, tenantId, storeId },
+        data: {
+          status: newStatus,
+          ...(allFullyReceived ? { receivedAt: now } : {}),
+          ...(anyReceived && purchase.paymentStatus === 'pending'
+            ? { paymentStatus: 'pending' }
+            : {}),
         },
-        items: {
-          include: {
-            product: { select: { id: true, name: true, sku: true } },
+        include: {
+          supplier: {
+            select: { id: true, businessName: true, supplierNumber: true },
+          },
+          items: {
+            include: {
+              product: { select: { id: true, name: true, sku: true } },
+            },
           },
         },
-      },
-    });
-
-    // 4. Update supplier stats
-    if (anyReceived) {
-await this.prisma.supplier.update({
-      where: { id: purchase.supplierId, tenantId, storeId },
-        data: {
-          totalPurchases: { increment: updated.total },
-          purchaseCount: { increment: 1 },
-          lastPurchaseAt: now,
-        },
       });
-    }
 
-    return updated;
+      // 4. Update supplier stats
+      if (anyReceived) {
+        await tx.supplier.update({
+          where: { id: purchase.supplierId, tenantId, storeId },
+          data: {
+            totalPurchases: { increment: updated.total },
+            purchaseCount: { increment: 1 },
+            lastPurchaseAt: now,
+          },
+        });
+      }
+
+      return updated;
+    });
   }
 
   // ===================================================================
@@ -451,7 +490,7 @@ await this.prisma.supplier.update({
     tenantId: string,
     storeId: string,
     id: string,
-    dto: { paymentMethod?: string; paymentDate?: string; notes?: string },
+    dto: MarkPaidDto,
     userId?: string,
   ) {
     const purchase = await this.findOne(tenantId, storeId, id);
@@ -463,54 +502,55 @@ await this.prisma.supplier.update({
       throw new BadRequestException('No se puede marcar como pagada una compra cancelada');
     }
 
-    const updated = await this.prisma.purchase.update({
-      where: { id, tenantId, storeId },
-      data: {
-        paymentStatus: 'paid',
-        ...(dto.notes ? { notes: dto.notes } : {}),
-      },
-      include: {
-        supplier: {
-          select: { id: true, businessName: true, supplierNumber: true },
-        },
-        items: {
-          include: {
-            product: { select: { id: true, name: true, sku: true } },
-          },
-        },
-      },
-    });
-
-    // Auto-register accounting transaction (idempotent)
-    const existing = await this.prisma.accountingTransaction.findFirst({
-      where: { purchaseId: id },
-    });
-    if (!existing) {
-      await this.prisma.accountingTransaction.create({
+    // Todo atómico + idempotente: la transición usa updateMany filtrando
+    // paymentStatus='pending', así dos llamadas concurrentes no crean doble asiento.
+    return this.prisma.$transaction(async (tx) => {
+      const transition = await tx.purchase.updateMany({
+        where: { id, tenantId, storeId, paymentStatus: 'pending' },
         data: {
-          tenantId,
-          storeId,
-          transactionType: 'expense',
-          category: 'inventory_purchase',
-          description: `Compra ${purchase.purchaseNumber} - ${(purchase as any).supplier?.businessName ?? ''}`,
-          purchaseId: id,
-          grossAmount: Number((purchase as any).subtotal || purchase.total),
-          taxAmount: Number((purchase as any).ivaAmount || 0),
-          retentionAmount: 0,
-          netAmount: Number(purchase.total),
-          ivaAmount: Number((purchase as any).ivaAmount || 0),
-          retefuenteAmount: 0,
-          reteIvaAmount: 0,
-          reteIcaAmount: 0,
-          icaAmount: 0,
-          paymentMethod: dto.paymentMethod ?? null,
-          transactionDate: dto.paymentDate ? new Date(dto.paymentDate) : new Date(),
-          createdBy: userId ?? null,
+          paymentStatus: 'paid',
+          ...(dto.notes ? { notes: dto.notes } : {}),
         },
       });
-    }
+      if (transition.count === 0) {
+        throw new BadRequestException('La compra ya fue procesada o no puede marcarse como pagada');
+      }
 
-    return updated;
+      // Asiento contable (la transición ganada garantiza una sola creación)
+      const existing = await tx.accountingTransaction.findFirst({ where: { purchaseId: id } });
+      if (!existing) {
+        await tx.accountingTransaction.create({
+          data: {
+            tenantId,
+            storeId,
+            transactionType: 'expense',
+            category: 'inventory_purchase',
+            description: `Compra ${purchase.purchaseNumber} - ${(purchase as any).supplier?.businessName ?? ''}`,
+            purchaseId: id,
+            grossAmount: Number((purchase as any).subtotal || purchase.total),
+            taxAmount: Number((purchase as any).ivaAmount || 0),
+            retentionAmount: 0,
+            netAmount: Number(purchase.total),
+            ivaAmount: Number((purchase as any).ivaAmount || 0),
+            retefuenteAmount: 0,
+            reteIvaAmount: 0,
+            reteIcaAmount: 0,
+            icaAmount: 0,
+            paymentMethod: dto.paymentMethod ?? null,
+            transactionDate: dto.paymentDate ? new Date(dto.paymentDate) : new Date(),
+            createdBy: userId ?? null,
+          },
+        });
+      }
+
+      return tx.purchase.findFirst({
+        where: { id, tenantId, storeId },
+        include: {
+          supplier: { select: { id: true, businessName: true, supplierNumber: true } },
+          items: { include: { product: { select: { id: true, name: true, sku: true } } } },
+        },
+      });
+    });
   }
 
   // ===================================================================
@@ -529,19 +569,58 @@ await this.prisma.supplier.update({
       );
     }
 
-    return this.prisma.purchase.update({
-      where: { id, tenantId, storeId },
-      data: { status: 'cancelled', paymentStatus: 'cancelled' },
-      include: {
-        supplier: {
-          select: { id: true, businessName: true, supplierNumber: true },
-        },
-        items: {
-          include: {
-            product: { select: { id: true, name: true, sku: true } },
+    // Todo atómico: revertir el stock parcialmente recibido + anular asiento + cancelar
+    return this.prisma.$transaction(async (tx) => {
+      // Guard de transición (evita doble cancelación concurrente)
+      const transition = await tx.purchase.updateMany({
+        where: { id, tenantId, storeId, status: { in: ['pending', 'partial'] } },
+        data: { status: 'cancelled', paymentStatus: 'cancelled' },
+      });
+      if (transition.count === 0) {
+        throw new BadRequestException('La compra ya fue procesada o no puede cancelarse');
+      }
+
+      // Revertir el stock de los ítems parcialmente recibidos (devolución al proveedor)
+      for (const item of purchase.items as any[]) {
+        const received = item.receivedQuantity ?? 0;
+        if (received <= 0) continue;
+        const updatedProd = await tx.product.update({
+          where: { id: item.productId },
+          data: { currentStock: { decrement: received } },
+          select: { currentStock: true },
+        });
+        const newStock = updatedProd.currentStock;
+        if (newStock < 0) {
+          this.logger.warn(`Cancelación OC ${purchase.purchaseNumber}: stock de ${item.productId} quedó en ${newStock}`);
+        }
+        await tx.inventoryMovement.create({
+          data: {
+            tenantId, storeId,
+            productId: item.productId,
+            movementType: 'exit',
+            quantity: -received,
+            previousStock: newStock + received,
+            newStock,
+            referenceType: 'purchase_cancel',
+            referenceId: id,
+            notes: `Cancelación OC ${purchase.purchaseNumber} (stock recibido revertido)`,
           },
+        });
+      }
+
+      // Anular el asiento contable si la compra había sido pagada
+      await tx.accountingTransaction.updateMany({
+        where: { purchaseId: id, tenantId, storeId, status: { not: 'voided' } },
+        data: { status: 'voided' },
+      });
+
+      return tx.purchase.findFirst({
+        where: { id, tenantId, storeId },
+        include: {
+          supplier: { select: { id: true, businessName: true, supplierNumber: true } },
+          items: { include: { product: { select: { id: true, name: true, sku: true } } } },
         },
-      },
+      });
     });
   }
 }

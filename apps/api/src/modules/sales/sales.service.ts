@@ -58,48 +58,155 @@ export class SalesService {
   }
 
   async create(tenantId: string, storeId: string, userId: string, dto: any) {
-    const saleNumber = await this.generateSaleNumber(tenantId, storeId);
+    if (dto.discountPercent && dto.discountAmount)
+      throw new BadRequestException('Proporcionar discountPercent o discountAmount, no ambos');
+    if (dto.discountPercent && (dto.discountPercent < 0 || dto.discountPercent > 100))
+      throw new BadRequestException('discountPercent debe estar entre 0 y 100');
 
-    const subtotal = dto.items.reduce((sum: number, item: any) => sum + item.unitPrice * item.quantity, 0);
-    const discountAmount = dto.discountPercent ? subtotal * (dto.discountPercent / 100) : (dto.discountAmount || 0);
+    // Pre-load product IVA config for all product items
+    const productIds = dto.items.filter((i: any) => i.productId && !i.serviceId).map((i: any) => i.productId);
+    const serviceIds = dto.items.filter((i: any) => i.serviceId).map((i: any) => i.serviceId);
+    const productIvaMap = new Map<string, { ivaRate: number; isIvaExcluded: boolean }>();
+    const serviceIvaMap = new Map<string, { ivaRate: number; isIvaExcluded: boolean }>();
+
+    const [prods, svcs] = await Promise.all([
+      productIds.length
+        ? this.prisma.product.findMany({
+            where: { id: { in: productIds }, tenantId, storeId },
+            select: { id: true, ivaRate: true, isIvaExcluded: true },
+          })
+        : ([] as { id: string; ivaRate: any; isIvaExcluded: boolean }[]),
+      serviceIds.length
+        ? this.prisma.service.findMany({
+            where: { id: { in: serviceIds }, tenantId, storeId },
+            select: { id: true, ivaRate: true, isIvaExcluded: true } as any,
+          })
+        : ([] as { id: string; ivaRate: any; isIvaExcluded: boolean }[]),
+    ]);
+
+    prods.forEach(p => productIvaMap.set(p.id, {
+      ivaRate: Number(p.ivaRate ?? 19),
+      isIvaExcluded: p.isIvaExcluded ?? false,
+    }));
+    svcs.forEach(s => serviceIvaMap.set(s.id, {
+      ivaRate: Number((s as any).ivaRate ?? 19),
+      isIvaExcluded: (s as any).isIvaExcluded ?? false,
+    }));
+
+    // Tenant default IVA rate as final fallback (reads from TaxRate table)
+    const tenantDefaultIva = await this.getDefaultIvaRate(tenantId);
+
+    // Build enriched items with per-item IVA
+    const enrichedItems = dto.items.map((item: any) => {
+      const ivaConfig = item.productId
+        ? productIvaMap.get(item.productId)
+        : item.serviceId
+          ? serviceIvaMap.get(item.serviceId)
+          : null;
+      const ivaRate = item.ivaRate ?? ivaConfig?.ivaRate ?? tenantDefaultIva;
+      const isIvaExcluded = item.isIvaExcluded ?? ivaConfig?.isIvaExcluded ?? false;
+      const lineBase = (Number(item.unitPrice) - Number(item.discountAmount || 0)) * item.quantity;
+      const ivaAmount = isIvaExcluded ? 0 : lineBase * (ivaRate / 100);
+      return { ...item, ivaRate, ivaAmount };
+    });
+
+    const subtotal = enrichedItems.reduce((s: number, i: any) => s + Number(i.unitPrice) * i.quantity, 0);
+    const discountAmount = dto.discountPercent
+      ? subtotal * (dto.discountPercent / 100)
+      : (Number(dto.discountAmount) || 0);
+    const taxAmount = enrichedItems.reduce((s: number, i: any) => s + i.ivaAmount, 0);
+    // taxPercent stored as weighted average for legacy compatibility
     const afterDiscount = subtotal - discountAmount;
-    const taxPercent = dto.taxPercent || 16;
-    const taxAmount = afterDiscount * (taxPercent / 100);
+    const taxPercent = afterDiscount > 0 ? (taxAmount / afterDiscount) * 100 : 19;
     const total = afterDiscount + taxAmount;
 
-    return this.prisma.sale.create({
-      data: {
-        tenantId,
-        storeId,
-        userId,
-        customerId: dto.customerId,
-        saleNumber,
-        subtotal,
-        discountPercent: dto.discountPercent || 0,
-        discountAmount,
-        taxPercent,
-        taxAmount,
-        total,
-        notes: dto.notes,
-        items: {
-          create: dto.items.map((item: any) => ({
-            productId:    item.productId,
-            serviceId:    item.serviceId,
-            itemType:     item.itemType || 'product',
-            name:         item.name,
-            quantity:     item.quantity,
-            unitPrice:    item.unitPrice,
-            discountAmount: item.discountAmount || 0,
-            total:        item.unitPrice * item.quantity - (item.discountAmount || 0),
-            // Commission fields — only for services
-            performedBy:      item.itemType === 'service' ? (item.performedBy || null) : null,
-            commissionRate:   item.commissionRate ?? 0,
-            commissionAmount: 0, // calculated when sale completes
-          })),
+    // Reintenta ante una colisión rara del número de venta bajo concurrencia
+    // (el unique constraint lanza P2002 → regeneramos folio y reintentamos).
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const saleNumber = await this.generateSaleNumber(tenantId, storeId);
+      try {
+        return await this.prisma.$transaction(async (tx) => {
+      // Hold stock immediately to prevent overselling.
+      // Decremento atómico condicional: evita oversell por TOCTOU bajo concurrencia.
+      for (const item of enrichedItems) {
+        if (item.productId && item.itemType !== 'service') {
+          const dec = await tx.product.updateMany({
+            where: { id: item.productId, tenantId, storeId, currentStock: { gte: item.quantity } },
+            data: { currentStock: { decrement: item.quantity } },
+          });
+          if (dec.count === 0) {
+            // O el producto no existe en esta tienda, o no hay stock suficiente
+            const exists = await tx.product.findFirst({
+              where: { id: item.productId, tenantId, storeId },
+              select: { currentStock: true },
+            });
+            if (!exists) throw new NotFoundException(`Producto ${item.productId} no encontrado`);
+            throw new BadRequestException(`Stock insuficiente para "${item.name}". Disponible: ${exists.currentStock}`);
+          }
+          const after = await tx.product.findUnique({
+            where: { id: item.productId },
+            select: { currentStock: true },
+          });
+          const newStock = after!.currentStock;
+          await tx.inventoryMovement.create({
+            data: {
+              tenantId, storeId,
+              productId: item.productId,
+              movementType: 'exit',
+              quantity: -item.quantity,
+              previousStock: newStock + item.quantity,
+              newStock,
+              referenceType: 'sale',
+              notes: `Venta ${saleNumber}`,
+              createdBy: userId,
+            },
+          });
+        }
+      }
+
+      return tx.sale.create({
+        data: {
+          tenantId, storeId, userId,
+          customerId: dto.customerId,
+          saleNumber, subtotal,
+          discountPercent: dto.discountPercent || 0,
+          discountAmount, taxPercent, taxAmount, total,
+          notes: dto.notes,
+          items: {
+            create: enrichedItems.map((item: any) => ({
+              productId:      item.productId,
+              serviceId:      item.serviceId,
+              itemType:       item.itemType || 'product',
+              name:           item.name,
+              quantity:       item.quantity,
+              unitPrice:      item.unitPrice,
+              discountAmount: item.discountAmount || 0,
+              ivaRate:        item.ivaRate,
+              ivaAmount:      item.ivaAmount,
+              total:          Number(item.unitPrice) * item.quantity - (item.discountAmount || 0) + item.ivaAmount,
+              performedBy:    item.itemType === 'service' ? (item.performedBy || null) : null,
+              commissionRate: item.commissionRate ?? 0,
+              commissionAmount: 0,
+            })),
+          },
         },
-      },
-      include: { items: true, customer: true },
+        include: { items: true, customer: true },
+      });
+        });
+      } catch (e: any) {
+        if (e?.code === 'P2002' && attempt < 2) continue;
+        throw e;
+      }
+    }
+    throw new BadRequestException('No se pudo generar el número de venta, intenta de nuevo');
+  }
+
+  private async getDefaultIvaRate(tenantId: string): Promise<number> {
+    const rate = await this.prisma.taxRate.findFirst({
+      where: { tenantId, taxType: 'iva', isDefault: true, isActive: true },
+      select: { rate: true },
     });
+    return rate ? Number(rate.rate) : 19;
   }
 
   async complete(tenantId: string, storeId: string, id: string, payments: any[]) {
@@ -117,64 +224,70 @@ export class SalesService {
       throw new BadRequestException('Debe abrir la caja antes de realizar ventas');
     }
 
-    // Deduct stock for each product item
-    for (const item of sale.items) {
-      if (item.productId) {
-        await this.prisma.product.update({
-          where: { id: item.productId, tenantId, storeId },
-          data: { currentStock: { decrement: item.quantity } },
-        });
-        await this.prisma.inventoryMovement.create({
-          data: {
-            tenantId,
-            storeId,
-            productId: item.productId,
-            movementType: 'exit',
-            quantity: -item.quantity,
-            previousStock: 0, // simplified
-            newStock: 0,
-            referenceType: 'sale',
-            referenceId: id,
-          },
-        });
+    // Validar que los pagos cubran el total (excepto ventas online ya pagadas).
+    // Se permite sobrepago (vuelto en efectivo); se rechaza pago insuficiente.
+    if (!isOnline) {
+      const totalPaid = (payments ?? []).reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+      if (Math.round(totalPaid * 100) < Math.round(Number(sale.total) * 100)) {
+        throw new BadRequestException(
+          `Los pagos ($${totalPaid.toFixed(2)}) no cubren el total de la venta ($${Number(sale.total).toFixed(2)})`,
+        );
       }
     }
 
-    // Create payments
-    if (payments?.length) {
-      await this.prisma.payment.createMany({
-        data: payments.map((p: any) => ({
-          tenantId,
-          saleId: id,
-          paymentMethod: p.paymentMethod,
-          amount: p.amount,
-          reference: p.reference,
-        })),
-      });
-    }
+    const cashPayments = (payments ?? []).filter((p: any) => p.paymentMethod === 'cash');
+    const totalCash = cashPayments.reduce((s: number, p: any) => s + Number(p.amount), 0);
 
-    // Auto-register cash payments in the active cash register session
-    const cashPayments = payments?.filter((p: any) => p.paymentMethod === 'cash') || [];
-    if (cashPayments.length > 0 && activeSession) {
-      const totalCash = cashPayments.reduce((s: number, p: any) => s + Number(p.amount), 0);
-      await this.prisma.cashMovement.create({
-        data: {
-          tenantId,
-          storeId,
-          sessionId: activeSession.id,
-          type: 'in',
-          amount: totalCash,
-          reason: `Venta ${sale.saleNumber}`,
-          description: `Pago en efectivo de venta ${sale.saleNumber}`,
-          createdBy: sale.userId,
-        },
+    // Todo atómico + idempotente: el cambio de estado se hace con updateMany
+    // filtrando status='pending', así dos `complete` concurrentes no duplican
+    // pagos/ingresos (el segundo encuentra count=0 y aborta).
+    const completed = await this.prisma.$transaction(async (tx) => {
+      const transition = await tx.sale.updateMany({
+        where: { id, tenantId, storeId, status: 'pending' },
+        data: { status: 'completed', completedAt: new Date() },
       });
-    }
+      if (transition.count === 0) {
+        throw new BadRequestException('La venta ya fue procesada o no está pendiente');
+      }
 
-    const completed = await this.prisma.sale.update({
-      where: { id, tenantId, storeId },
-      data: { status: 'completed', completedAt: new Date() },
-      include: { items: true, payments: true },
+      // Link stock-hold movements to this completed sale
+      await tx.inventoryMovement.updateMany({
+        where: { tenantId, storeId, referenceType: 'sale', referenceId: null, notes: { contains: sale.saleNumber } },
+        data: { referenceId: id },
+      });
+
+      if (payments?.length) {
+        await tx.payment.createMany({
+          data: payments.map((p: any) => ({
+            tenantId,
+            saleId: id,
+            paymentMethod: p.paymentMethod,
+            amount: p.amount,
+            reference: p.reference,
+          })),
+        });
+      }
+
+      // Auto-register cash payments in the active cash register session
+      if (totalCash > 0 && activeSession) {
+        await tx.cashMovement.create({
+          data: {
+            tenantId,
+            storeId,
+            sessionId: activeSession.id,
+            type: 'in',
+            amount: totalCash,
+            reason: `Venta ${sale.saleNumber}`,
+            description: `Pago en efectivo de venta ${sale.saleNumber}`,
+            createdBy: sale.userId,
+          },
+        });
+      }
+
+      return tx.sale.findUnique({
+        where: { id },
+        include: { items: true, payments: true },
+      });
     });
 
     // Update customer stats after completing sale
@@ -182,13 +295,19 @@ export class SalesService {
       await this.updateCustomerStats(tenantId, storeId, sale.customerId);
     }
 
-    // Auto-register income transaction in accounting (fire-and-forget)
-    this.accounting.registerSaleTransaction(tenantId, storeId, id, sale.userId || '')
-      .catch(err => this.logger.warn(`Accounting auto-register failed for sale ${id}: ${err.message}`));
+    // Register accounting transaction — await but don't fail the sale if it errors
+    try {
+      await this.accounting.registerSaleTransaction(tenantId, storeId, id, sale.userId || '');
+    } catch (err: any) {
+      this.logger.warn(`Accounting auto-register failed for sale ${id}: ${err.message}`);
+    }
 
-    // Auto-register commissions for service items with a performer (fire-and-forget)
-    this.commissions.registerSaleCommissions(tenantId, storeId, id)
-      .catch(err => this.logger.warn(`Commissions auto-register failed for sale ${id}: ${err.message}`));
+    // Register commissions for service items with a performer
+    try {
+      await this.commissions.registerSaleCommissions(tenantId, storeId, id);
+    } catch (err: any) {
+      this.logger.warn(`Commissions auto-register failed for sale ${id}: ${err.message}`);
+    }
 
     // If this sale came from a storefront order → mark the order as delivered
     const storefrontOrderId = (sale as any).storefrontOrderId;
@@ -203,22 +322,58 @@ export class SalesService {
   }
 
   async cancel(tenantId: string, storeId: string, id: string, reason: string) {
+    if (!reason?.trim()) throw new BadRequestException('El motivo de cancelación es requerido');
+
     const sale = await this.findOne(tenantId, storeId, id);
-    if (sale.status === 'completed') {
-      // Return stock
-      for (const item of sale.items) {
-        if (item.productId) {
-          await this.prisma.product.update({
-            where: { id: item.productId },
-            data: { currentStock: { increment: item.quantity } },
-          });
-        }
-      }
+    if (sale.status !== 'pending' && sale.status !== 'completed') {
+      throw new BadRequestException('Solo se pueden cancelar ventas pendientes o completadas');
     }
 
-    const cancelled = await this.prisma.sale.update({
-      where: { id, tenantId, storeId },
-      data: { status: 'cancelled', cancelledAt: new Date(), cancelledReason: reason },
+    // Todo atómico + idempotente: la transición usa updateMany filtrando estado,
+    // así dos `cancel` concurrentes no restauran el stock dos veces.
+    const cancelled = await this.prisma.$transaction(async (tx) => {
+      const transition = await tx.sale.updateMany({
+        where: { id, tenantId, storeId, status: { in: ['pending', 'completed'] } },
+        data: { status: 'cancelled', cancelledAt: new Date(), cancelledReason: reason },
+      });
+      if (transition.count === 0) {
+        throw new BadRequestException('La venta ya fue procesada o no puede cancelarse');
+      }
+
+      // Restaurar solo la cantidad no devuelta (lo devuelto ya retornó su stock)
+      for (const item of sale.items) {
+        if (!item.productId) continue;
+        const qty = item.quantity - (item.refundedQuantity ?? 0);
+        if (qty <= 0) continue;
+        const prod = await tx.product.update({
+          where: { id: item.productId },
+          data: { currentStock: { increment: qty } },
+          select: { currentStock: true },
+        });
+        await tx.inventoryMovement.create({
+          data: {
+            tenantId, storeId,
+            productId: item.productId,
+            movementType: 'entry',
+            quantity: qty,
+            previousStock: prod.currentStock - qty,
+            newStock: prod.currentStock,
+            referenceType: 'sale_cancel',
+            referenceId: id,
+            notes: `Cancelación ${sale.saleNumber}: ${reason}`,
+          },
+        });
+      }
+
+      // Si la venta estaba completada, revertir su huella financiera: anular el
+      // asiento contable y las comisiones pendientes (las pagadas se conservan).
+      // Las ventas pendientes nunca registraron contabilidad/comisiones.
+      if (sale.status === 'completed') {
+        await this.accounting.voidSaleTransaction(tx, tenantId, storeId, id);
+        await this.commissions.voidSaleCommissions(tx, tenantId, storeId, id);
+      }
+
+      return tx.sale.findUnique({ where: { id } });
     });
 
     // Update customer stats if the cancelled sale was completed (revert stats)
@@ -229,49 +384,98 @@ export class SalesService {
     return cancelled;
   }
 
-  async refund(tenantId: string, storeId: string, id: string, dto: { items: { saleItemId: string; quantity: number }[]; reason: string; refundMethod: string }) {
-    const sale = await this.findOne(tenantId, storeId, id);
-    if (sale.status !== 'completed' && sale.status !== 'refunded') {
-      throw new BadRequestException('Solo se pueden devolver ventas completadas');
-    }
+  /**
+   * Libera el stock retenido por ventas pendientes abandonadas.
+   *
+   * El stock se descuenta al CREAR la venta (hold para evitar sobreventa). Si
+   * una venta pendiente nunca se completa ni cancela (carrito POS abandonado,
+   * orden online sin pago, webhook perdido), ese stock queda bloqueado. Este
+   * método cancela las ventas pendientes más viejas que `maxAgeHours` y devuelve
+   * su stock al inventario. Se ejecuta periódicamente (ver SalesTasksService).
+   */
+  async expireStalePendingSales(maxAgeHours = 24): Promise<number> {
+    const cutoff = new Date(Date.now() - maxAgeHours * 3_600_000);
+    const stale = await this.prisma.sale.findMany({
+      where: { status: 'pending', createdAt: { lt: cutoff } },
+      include: { items: true },
+    });
 
-    // Calculate refund amount
-    let refundSubtotal = 0;
-    const refundedItems: { saleItemId: string; quantity: number; unitPrice: number; name: string }[] = [];
-    const remainingItems: typeof sale.items = [];
-
-    for (const item of sale.items) {
-      const refundQty = dto.items.find(i => i.saleItemId === item.id)?.quantity || 0;
-      if (refundQty > 0 && refundQty <= item.quantity) {
-        refundedItems.push({ saleItemId: item.id, quantity: refundQty, unitPrice: Number(item.unitPrice), name: item.name });
-        refundSubtotal += Number(item.unitPrice) * refundQty;
-
-        // Return stock
-        if (item.productId) {
-          await this.prisma.product.update({
+    for (const sale of stale) {
+      await this.prisma.$transaction(async (tx) => {
+        for (const item of sale.items) {
+          if (!item.productId) continue;
+          const current = await tx.product.findUnique({
             where: { id: item.productId },
-            data: { currentStock: { increment: refundQty } },
+            select: { currentStock: true },
           });
-          await this.prisma.inventoryMovement.create({
+          if (!current) continue;
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { currentStock: { increment: item.quantity } },
+          });
+          await tx.inventoryMovement.create({
             data: {
-              tenantId, storeId,
+              tenantId: sale.tenantId,
+              storeId: sale.storeId,
               productId: item.productId,
               movementType: 'entry',
-              quantity: refundQty,
-              previousStock: 0,
-              newStock: 0,
-              referenceType: 'refund',
-              referenceId: id,
+              quantity: item.quantity,
+              previousStock: current.currentStock,
+              newStock: current.currentStock + item.quantity,
+              referenceType: 'sale_expired',
+              referenceId: sale.id,
+              notes: `Expiración automática venta ${sale.saleNumber} (stock liberado tras ${maxAgeHours}h pendiente)`,
             },
           });
         }
-      }
-      if (refundQty < item.quantity) {
-        remainingItems.push(item);
-      }
+        await tx.sale.update({
+          where: { id: sale.id },
+          data: {
+            status: 'cancelled',
+            cancelledAt: new Date(),
+            cancelledReason: `Expiración automática: venta pendiente sin completar tras ${maxAgeHours}h`,
+          },
+        });
+      });
+      this.logger.log(`Venta pendiente expirada: ${sale.saleNumber} (stock liberado)`);
     }
 
-    if (refundedItems.length === 0) {
+    return stale.length;
+  }
+
+  async refund(tenantId: string, storeId: string, id: string, dto: { items: { saleItemId: string; quantity: number }[]; reason: string; refundMethod: string }) {
+    if (!dto.reason?.trim()) throw new BadRequestException('El motivo de devolución es requerido');
+
+    const sale = await this.findOne(tenantId, storeId, id);
+    if (sale.status === 'refunded') {
+      throw new BadRequestException('La venta ya fue devuelta en su totalidad');
+    }
+    if (sale.status !== 'completed') {
+      throw new BadRequestException('Solo se pueden devolver ventas completadas');
+    }
+
+    // Validar cantidades contra lo aún devolvible (quantity - refundedQuantity)
+    let refundSubtotal = 0;
+    const refundedItems: { quantity: number; name: string }[] = [];
+    const itemRefunds: { item: (typeof sale.items)[number]; qty: number }[] = [];
+
+    for (const reqItem of dto.items) {
+      const qty = Number(reqItem.quantity) || 0;
+      if (qty <= 0) continue;
+      const item = sale.items.find(i => i.id === reqItem.saleItemId);
+      if (!item) throw new BadRequestException(`El ítem ${reqItem.saleItemId} no pertenece a esta venta`);
+      const available = item.quantity - (item.refundedQuantity ?? 0);
+      if (qty > available) {
+        throw new BadRequestException(
+          `No se puede devolver ${qty} de "${item.name}": disponible para devolución ${available}`,
+        );
+      }
+      refundSubtotal += Number(item.unitPrice) * qty;
+      refundedItems.push({ quantity: qty, name: item.name });
+      itemRefunds.push({ item, qty });
+    }
+
+    if (itemRefunds.length === 0) {
       throw new BadRequestException('Debe seleccionar al menos un ítem para devolver');
     }
 
@@ -282,19 +486,11 @@ export class SalesService {
     const refundTax = Number(sale.taxAmount) * ratio;
     const refundTotal = refundSubtotal - refundDiscount + refundTax;
 
-    // Create refund payment (negative amount)
-    await this.prisma.payment.create({
-      data: {
-        tenantId,
-        saleId: id,
-        paymentMethod: dto.refundMethod as any,
-        amount: -refundTotal,
-        notes: `Devolución: ${dto.reason}`,
-      },
+    // ¿Devolución total? (todos los ítems quedan completamente devueltos)
+    const isFullRefund = sale.items.every((it) => {
+      const add = itemRefunds.find(r => r.item.id === it.id)?.qty ?? 0;
+      return (it.refundedQuantity ?? 0) + add >= it.quantity;
     });
-
-    // Determine new status
-    const isFullRefund = remainingItems.length === 0;
     const newStatus = isFullRefund ? 'refunded' : 'completed';
 
     const refundNote = [
@@ -306,15 +502,55 @@ export class SalesService {
 
     const existingNotes = sale.notes || '';
 
-    const refunded = await this.prisma.sale.update({
-      where: { id, tenantId, storeId },
-      data: {
-        status: newStatus as any,
-        refundedAt: isFullRefund ? new Date() : undefined,
-        refundReason: dto.reason,
-        notes: existingNotes ? `${existingNotes}\n${refundNote}` : refundNote,
-      },
-      include: { items: true, payments: true },
+    // Todo atómico: tracking de devolución + stock + pago negativo + estado
+    const refunded = await this.prisma.$transaction(async (tx) => {
+      for (const { item, qty } of itemRefunds) {
+        await tx.saleItem.update({
+          where: { id: item.id },
+          data: { refundedQuantity: { increment: qty } },
+        });
+
+        if (item.productId) {
+          const prod = await tx.product.update({
+            where: { id: item.productId },
+            data: { currentStock: { increment: qty } },
+            select: { currentStock: true },
+          });
+          await tx.inventoryMovement.create({
+            data: {
+              tenantId, storeId,
+              productId: item.productId,
+              movementType: 'entry',
+              quantity: qty,
+              previousStock: prod.currentStock - qty,
+              newStock: prod.currentStock,
+              referenceType: 'refund',
+              referenceId: id,
+            },
+          });
+        }
+      }
+
+      await tx.payment.create({
+        data: {
+          tenantId,
+          saleId: id,
+          paymentMethod: dto.refundMethod as any,
+          amount: -refundTotal,
+          notes: `Devolución: ${dto.reason}`,
+        },
+      });
+
+      return tx.sale.update({
+        where: { id, tenantId, storeId },
+        data: {
+          status: newStatus as any,
+          refundedAt: isFullRefund ? new Date() : undefined,
+          refundReason: dto.reason,
+          notes: existingNotes ? `${existingNotes}\n${refundNote}` : refundNote,
+        },
+        include: { items: true, payments: true },
+      });
     });
 
     // Update customer stats after refund
@@ -354,13 +590,17 @@ export class SalesService {
   }
 
   private async generateSaleNumber(tenantId: string, storeId: string): Promise<string> {
+    // Solo considera folios POS "V-" (las ventas online usan prefijo "ON-" y no
+    // deben envenenar el correlativo). El orden lexicográfico funciona porque el
+    // número va con padding a 6 dígitos.
     const last = await this.prisma.sale.findFirst({
-      where: { tenantId, storeId },
-      orderBy: { createdAt: 'desc' },
+      where: { tenantId, storeId, saleNumber: { startsWith: 'V-' } },
+      orderBy: { saleNumber: 'desc' },
       select: { saleNumber: true },
     });
 
-    const num = last ? parseInt(last.saleNumber.replace('V-', '')) + 1 : 1;
+    const lastNum = last ? parseInt(last.saleNumber.slice(2), 10) : 0;
+    const num = (Number.isFinite(lastNum) ? lastNum : 0) + 1;
     return `V-${String(num).padStart(6, '0')}`;
   }
 

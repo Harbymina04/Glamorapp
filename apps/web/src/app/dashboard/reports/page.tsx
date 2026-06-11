@@ -15,8 +15,9 @@ import {
 import {
   DollarSign, ShoppingBag, CalendarCheck, Users, Package,
   TrendingUp, Wallet, AlertTriangle, Download, RefreshCw,
-  Filter, Scissors, BarChart3, ArrowUpRight, ArrowDownRight,
+  Filter, Scissors, BarChart3, ArrowUpRight, ArrowDownRight, Receipt,
 } from 'lucide-react';
+import Link from 'next/link';
 
 type Tab = 'overview' | 'sales' | 'appointments' | 'inventory' | 'expenses';
 
@@ -82,25 +83,33 @@ function ReportsPage() {
 
   // Data
   const [overview, setOverview]         = useState<any>(null);
-  const [sales, setSales]               = useState<any[]>([]);
-  const [appointments, setAppointments] = useState<any[]>([]);
-  const [topProducts, setTopProducts]   = useState<any[]>([]);
+  const [salesData, setSalesData]       = useState<any>(null);   // { data, summary, total, totalPages }
+  const [appointments, setAppointments] = useState<any>(null);   // { data, stats, total }
+  const [topSelling, setTopSelling]     = useState<any[]>([]);
   const [inventory, setInventory]       = useState<any[]>([]);
-  const [expenses, setExpenses]         = useState<any[]>([]);
+  const [expensesData, setExpensesData] = useState<any>(null);   // { data, summary }
 
   // Loading states
-  const [loadingOverview, setLoadingOverview]         = useState(true);
-  const [loadingSales, setLoadingSales]               = useState(false);
-  const [loadingAppts, setLoadingAppts]               = useState(false);
-  const [loadingInventory, setLoadingInventory]       = useState(false);
-  const [loadingExpenses, setLoadingExpenses]         = useState(false);
+  const [loadingOverview, setLoadingOverview]   = useState(true);
+  const [loadingSales, setLoadingSales]         = useState(false);
+  const [loadingAppts, setLoadingAppts]         = useState(false);
+  const [loadingInventory, setLoadingInventory] = useState(false);
+  const [loadingExpenses, setLoadingExpenses]   = useState(false);
+  const [fetchError, setFetchError]             = useState('');
 
-  // Filters
+  // Pagination (sales)
+  const [salesPage, setSalesPage] = useState(1);
+
+  // Filters — use LOCAL date (not UTC) so timezones don't shift the visible day
+  const localDate = (d: Date) => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date(); d.setDate(1);
-    return d.toISOString().split('T')[0];
+    return localDate(d);
   });
-  const [dateTo, setDateTo] = useState(() => new Date().toISOString().split('T')[0]);
+  const [dateTo, setDateTo] = useState(() => localDate(new Date()));
 
   // ── Fetch overview (always) ──────────────────────────────────
   const fetchOverview = useCallback(async () => {
@@ -113,25 +122,26 @@ function ReportsPage() {
   useEffect(() => { fetchOverview(); }, [fetchOverview]);
 
   // ── Fetch tab data on demand ─────────────────────────────────
-  const fetchSales = useCallback(async () => {
-    setLoadingSales(true);
+  const fetchSales = useCallback(async (page = 1) => {
+    setLoadingSales(true); setFetchError('');
     try {
-      const [s, p] = await Promise.all([
-        api.get(`/reports/sales?dateFrom=${dateFrom}&dateTo=${dateTo}`, { token: token! }),
-        api.get('/reports/products?limit=8', { token: token! }),
+      const [s, ts] = await Promise.all([
+        api.get(`/reports/sales?dateFrom=${dateFrom}&dateTo=${dateTo}&page=${page}&limit=50`, { token: token! }),
+        api.get(`/reports/top-selling?dateFrom=${dateFrom}&dateTo=${dateTo}`, { token: token! }),
       ]);
-      setSales(Array.isArray(s) ? s : []);
-      setTopProducts(Array.isArray(p) ? p : []);
-    } catch { /* silent */ }
+      setSalesData(s);
+      setTopSelling(Array.isArray(ts) ? ts : []);
+      setSalesPage(page);
+    } catch (e: any) { setFetchError(e.message || 'Error al cargar ventas'); }
     finally { setLoadingSales(false); }
   }, [token, dateFrom, dateTo]);
 
   const fetchAppointments = useCallback(async () => {
     setLoadingAppts(true);
-    try { setAppointments(await api.get('/reports/appointments', { token: token! })); }
+    try { setAppointments(await api.get(`/reports/appointments?dateFrom=${dateFrom}&dateTo=${dateTo}`, { token: token! })); }
     catch { /* silent */ }
     finally { setLoadingAppts(false); }
-  }, [token]);
+  }, [token, dateFrom, dateTo]);
 
   const fetchInventory = useCallback(async () => {
     setLoadingInventory(true);
@@ -142,31 +152,37 @@ function ReportsPage() {
 
   const fetchExpenses = useCallback(async () => {
     setLoadingExpenses(true);
-    try { setExpenses(await api.get('/reports/expenses', { token: token! })); }
+    try { setExpensesData(await api.get(`/reports/expenses?dateFrom=${dateFrom}&dateTo=${dateTo}`, { token: token! })); }
     catch { /* silent */ }
     finally { setLoadingExpenses(false); }
-  }, [token]);
+  }, [token, dateFrom, dateTo]);
 
   useEffect(() => {
-    if (tab === 'sales')        fetchSales();
+    if (tab === 'sales')        fetchSales(1);
     if (tab === 'appointments') fetchAppointments();
     if (tab === 'inventory')    fetchInventory();
     if (tab === 'expenses')     fetchExpenses();
   }, [tab]); // eslint-disable-line
 
-  // Re-fetch sales when dates change
+  // Re-fetch when dates change
   useEffect(() => {
-    if (tab === 'sales') fetchSales();
+    if (tab === 'sales')        fetchSales(1);
+    if (tab === 'appointments') fetchAppointments();
+    if (tab === 'expenses')     fetchExpenses();
   }, [dateFrom, dateTo]); // eslint-disable-line
 
   // ── Derived data ─────────────────────────────────────────────
-  const salesByDay       = groupSalesByDay(sales);
+  const sales             = salesData?.data ?? [];
+  const salesSummary      = salesData?.summary;
+  const expenses          = expensesData?.data ?? [];
+  const expensesSummary   = expensesData?.summary;
+  const apptList          = appointments?.data ?? [];
+  const apptStats         = appointments?.stats ?? [];
+
+  const salesByDay        = groupSalesByDay(sales);
   const expenseByCategory = groupExpensesByCategory(expenses);
-  const apptByStatus     = groupAppointmentsByStatus(appointments);
-  const totalSalesAmount = sales.reduce((s, x) => s + Number(x.total || 0), 0);
-  const avgTicket        = sales.length > 0 ? totalSalesAmount / sales.length : 0;
-  const totalExpenses    = expenses.reduce((s, x) => s + Number(x.amount || 0), 0);
-  const lowStockItems    = inventory.filter(p => Number(p.currentStock) <= Number(p.minStock || 0));
+  const apptByStatus      = groupAppointmentsByStatus(apptList);
+  const lowStockItems     = inventory.filter(p => Number(p.currentStock) <= Number(p.minStock || 0));
 
   // ── Render ───────────────────────────────────────────────────
   return (
@@ -196,6 +212,13 @@ function ReportsPage() {
           <StatCard title="Clientes totales"  value={String(overview?.totalCustomers || 0)}           icon={<Users className="w-5 h-5 text-purple-500" />} />
         </div>
       )}
+
+      {/* Acceso rápido al reporte IVA */}
+      <div className="mb-4">
+        <Link href="/dashboard/reports/iva" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-sm font-medium hover:bg-blue-100 transition">
+          <Receipt className="w-4 h-4" /> Reporte IVA (DIAN)
+        </Link>
+      </div>
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-border-primary overflow-x-auto">
@@ -282,21 +305,32 @@ function ReportsPage() {
               className="h-9 px-3 rounded-lg border border-border-primary text-sm focus:outline-none focus:ring-2 focus:ring-glamor-primary/20" />
           </div>
 
+          {fetchError && (
+            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{fetchError}</div>
+          )}
           {loadingSales ? <LoadingSkeleton rows={4} cols={2} /> : (
             <>
               {/* KPIs */}
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                 <div className="bg-white rounded-xl border border-border-primary p-4">
-                  <p className="text-xs text-muted-foreground mb-1">Total ingresos</p>
-                  <p className="text-2xl font-bold text-foreground">{formatCurrency(totalSalesAmount)}</p>
+                  <p className="text-xs text-muted-foreground mb-1">Ventas completadas</p>
+                  <p className="text-2xl font-bold text-foreground">{salesSummary?.totalSales ?? sales.length}</p>
                 </div>
                 <div className="bg-white rounded-xl border border-border-primary p-4">
-                  <p className="text-xs text-muted-foreground mb-1">Número de ventas</p>
-                  <p className="text-2xl font-bold text-foreground">{sales.length}</p>
+                  <p className="text-xs text-muted-foreground mb-1">Subtotal (sin IVA)</p>
+                  <p className="text-2xl font-bold text-foreground">{formatCurrency(Number(salesSummary?.subtotal || 0) - Number(salesSummary?.totalIva || 0))}</p>
+                </div>
+                <div className="bg-white rounded-xl border border-border-primary p-4">
+                  <p className="text-xs text-muted-foreground mb-1">IVA recaudado</p>
+                  <p className="text-2xl font-bold text-blue-600">{formatCurrency(salesSummary?.totalIva || 0)}</p>
+                </div>
+                <div className="bg-white rounded-xl border border-border-primary p-4">
+                  <p className="text-xs text-muted-foreground mb-1">Total con IVA</p>
+                  <p className="text-2xl font-bold text-green-600">{formatCurrency(salesSummary?.totalRevenue || 0)}</p>
                 </div>
                 <div className="bg-white rounded-xl border border-border-primary p-4">
                   <p className="text-xs text-muted-foreground mb-1">Ticket promedio</p>
-                  <p className="text-2xl font-bold text-foreground">{formatCurrency(avgTicket)}</p>
+                  <p className="text-2xl font-bold text-foreground">{formatCurrency(salesSummary?.avgTicket || 0)}</p>
                 </div>
               </div>
 
@@ -336,23 +370,26 @@ function ReportsPage() {
                 )}
               </div>
 
-              {/* Top products */}
-              {topProducts.length > 0 && (
+              {/* Top selling products */}
+              {topSelling.length > 0 && (
                 <div className="bg-white rounded-xl border border-border-primary p-5">
-                  <h3 className="font-semibold text-foreground mb-4">Productos más vistos en catálogo</h3>
+                  <h3 className="font-semibold text-foreground mb-4">Productos más vendidos</h3>
                   <div className="space-y-2">
-                    {topProducts.map((p: any, i: number) => (
-                      <div key={p.id} className="flex items-center gap-3">
+                    {topSelling.map((p: any, i: number) => (
+                      <div key={p.productId} className="flex items-center gap-3">
                         <span className="w-5 text-xs text-muted-foreground text-right">{i + 1}</span>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-0.5">
                             <p className="text-sm font-medium text-foreground truncate">{p.name}</p>
-                            <p className="text-xs text-muted-foreground ml-2 shrink-0">{p.catalogViews || 0} vistas</p>
+                            <div className="flex items-center gap-3 ml-2 shrink-0">
+                              <span className="text-xs text-muted-foreground">{p.qtySold} uds.</span>
+                              <span className="text-xs font-semibold text-green-600">{formatCurrency(p.revenue)}</span>
+                            </div>
                           </div>
                           <div className="h-1.5 rounded-full bg-surface-hover overflow-hidden">
                             <div
                               className="h-full rounded-full bg-glamor-primary"
-                              style={{ width: `${Math.min(100, ((p.catalogViews || 0) / (topProducts[0]?.catalogViews || 1)) * 100)}%` }}
+                              style={{ width: `${Math.min(100, (p.qtySold / (topSelling[0]?.qtySold || 1)) * 100)}%` }}
                             />
                           </div>
                         </div>
@@ -373,28 +410,51 @@ function ReportsPage() {
                       <thead>
                         <tr className="border-b border-border-primary">
                           <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Fecha</th>
+                          <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">N° Venta</th>
                           <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Cliente</th>
-                          <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Productos</th>
+                          <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Subtotal</th>
+                          <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">IVA</th>
                           <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Total</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {sales.slice(0, 15).map((s: any) => (
+                        {sales.map((s: any) => (
                           <tr key={s.id} className="border-b border-border-primary/40 last:border-0 hover:bg-surface-hover/40">
-                            <td className="py-2 px-3 text-muted-foreground">{formatDate(s.createdAt)}</td>
+                            <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">{formatDate(s.createdAt)}</td>
+                            <td className="py-2 px-3 text-xs text-muted-foreground">{s.saleNumber}</td>
                             <td className="py-2 px-3">
                               {s.customer ? `${s.customer.firstName} ${s.customer.lastName}` : 'Cliente ocasional'}
                             </td>
-                            <td className="py-2 px-3 text-muted-foreground">{s.items?.length || 0} ítem(s)</td>
+                            <td className="py-2 px-3 text-right text-muted-foreground">{formatCurrency(Number(s.subtotal || 0) - Number(s.taxAmount || 0))}</td>
+                            <td className="py-2 px-3 text-right text-blue-600 text-xs">{formatCurrency(s.taxAmount || 0)}</td>
                             <td className="py-2 px-3 text-right font-semibold text-green-600">{formatCurrency(s.total)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                    {sales.length > 15 && (
-                      <p className="text-xs text-muted-foreground text-center pt-3">
-                        Mostrando 15 de {sales.length} ventas
-                      </p>
+                    {/* Pagination */}
+                    {salesData?.totalPages > 1 && (
+                      <div className="flex items-center justify-between pt-3 px-1">
+                        <p className="text-xs text-muted-foreground">
+                          Página {salesPage} de {salesData.totalPages} · {salesData.total} ventas en total
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            disabled={salesPage <= 1}
+                            onClick={() => fetchSales(salesPage - 1)}
+                            className="h-7 px-3 rounded-lg border border-border-primary text-xs hover:bg-surface-hover disabled:opacity-40"
+                          >
+                            Anterior
+                          </button>
+                          <button
+                            disabled={salesPage >= salesData.totalPages}
+                            onClick={() => fetchSales(salesPage + 1)}
+                            className="h-7 px-3 rounded-lg border border-border-primary text-xs hover:bg-surface-hover disabled:opacity-40"
+                          >
+                            Siguiente
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
@@ -407,29 +467,41 @@ function ReportsPage() {
       {/* ── Tab: Appointments ──────────────────────────────────── */}
       {tab === 'appointments' && (
         <div className="space-y-6">
+          {/* Date filter */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Filter className="w-4 h-4" /> Período:
+            </div>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              className="h-9 px-3 rounded-lg border border-border-primary text-sm focus:outline-none focus:ring-2 focus:ring-glamor-primary/20" />
+            <span className="text-muted-foreground text-sm">—</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              className="h-9 px-3 rounded-lg border border-border-primary text-sm focus:outline-none focus:ring-2 focus:ring-glamor-primary/20" />
+          </div>
+
           {loadingAppts ? <LoadingSkeleton rows={4} cols={2} /> : (
             <>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-white rounded-xl border border-border-primary p-4">
-                  <p className="text-xs text-muted-foreground mb-1">Próximos 7 días</p>
-                  <p className="text-2xl font-bold text-foreground">{appointments.length}</p>
+                  <p className="text-xs text-muted-foreground mb-1">Total citas</p>
+                  <p className="text-2xl font-bold text-foreground">{appointments?.total ?? apptList.length}</p>
                 </div>
                 <div className="bg-white rounded-xl border border-border-primary p-4">
                   <p className="text-xs text-muted-foreground mb-1">Confirmadas</p>
                   <p className="text-2xl font-bold text-green-600">
-                    {appointments.filter((a: any) => a.status === 'confirmed').length}
+                    {apptList.filter((a: any) => a.status === 'confirmed').length}
                   </p>
                 </div>
                 <div className="bg-white rounded-xl border border-border-primary p-4">
                   <p className="text-xs text-muted-foreground mb-1">Pendientes</p>
                   <p className="text-2xl font-bold text-yellow-600">
-                    {appointments.filter((a: any) => a.status === 'pending').length}
+                    {apptList.filter((a: any) => a.status === 'pending').length}
                   </p>
                 </div>
                 <div className="bg-white rounded-xl border border-border-primary p-4">
                   <p className="text-xs text-muted-foreground mb-1">Canceladas</p>
                   <p className="text-2xl font-bold text-red-500">
-                    {appointments.filter((a: any) => a.status === 'cancelled').length}
+                    {apptList.filter((a: any) => a.status === 'cancelled').length}
                   </p>
                 </div>
               </div>
@@ -452,14 +524,14 @@ function ReportsPage() {
                   )}
                 </div>
 
-                {/* Upcoming list */}
+                {/* Appointments list */}
                 <div className="bg-white rounded-xl border border-border-primary p-5">
-                  <h3 className="font-semibold text-foreground mb-4">Próximas citas</h3>
-                  {appointments.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-8">Sin citas programadas</p>
+                  <h3 className="font-semibold text-foreground mb-4">Citas del período</h3>
+                  {apptList.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">Sin citas en el período</p>
                   ) : (
                     <div className="space-y-3 max-h-60 overflow-y-auto">
-                      {appointments.slice(0, 10).map((a: any) => (
+                      {apptList.slice(0, 20).map((a: any) => (
                         <div key={a.id} className="flex items-center gap-3 py-2 border-b border-border-primary/40 last:border-0">
                           <div className="w-9 h-9 rounded-lg bg-purple-50 flex items-center justify-center shrink-0">
                             <Scissors className="w-4 h-4 text-purple-600" />
@@ -493,7 +565,7 @@ function ReportsPage() {
         <div className="space-y-6">
           {loadingInventory ? <LoadingSkeleton rows={4} cols={3} /> : (
             <>
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-white rounded-xl border border-border-primary p-4">
                   <p className="text-xs text-muted-foreground mb-1">Total productos</p>
                   <p className="text-2xl font-bold text-foreground">{inventory.length}</p>
@@ -503,52 +575,117 @@ function ReportsPage() {
                   <p className="text-2xl font-bold text-red-500">{lowStockItems.length}</p>
                 </div>
                 <div className="bg-white rounded-xl border border-border-primary p-4">
-                  <p className="text-xs text-muted-foreground mb-1">Valor del inventario</p>
+                  <p className="text-xs text-muted-foreground mb-1">Valor del inventario (costo)</p>
                   <p className="text-2xl font-bold text-foreground">
                     {formatCurrency(inventory.reduce((s, p) => s + Number(p.costPrice || 0) * Number(p.currentStock || 0), 0))}
                   </p>
                 </div>
+                <div className="bg-white rounded-xl border border-border-primary p-4">
+                  <p className="text-xs text-muted-foreground mb-1">Valor a precio de venta</p>
+                  <p className="text-2xl font-bold text-green-600">
+                    {formatCurrency(inventory.reduce((s, p) => s + Number(p.salePrice || 0) * Number(p.currentStock || 0), 0))}
+                  </p>
+                </div>
               </div>
 
-              {/* Bar chart — stock */}
-              {inventory.length > 0 && (
+              {/* Bar chart — solo productos bajo stock mínimo */}
+              {lowStockItems.length > 0 ? (
                 <div className="bg-white rounded-xl border border-border-primary p-5">
-                  <h3 className="font-semibold text-foreground mb-4">Productos con menor stock</h3>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={inventory.slice(0, 10)} layout="vertical">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-foreground flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-red-500" />
+                      Productos bajo stock mínimo ({lowStockItems.length})
+                    </h3>
+                  </div>
+                  <ResponsiveContainer width="100%" height={Math.max(180, lowStockItems.length * 36)}>
+                    <BarChart data={lowStockItems} layout="vertical">
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-                      <XAxis type="number" tick={{ fontSize: 11 }} />
-                      <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={120} />
-                      <Tooltip content={<CustomTooltip />} />
-                      <Bar dataKey="currentStock" name="Stock actual" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                      <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                      <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={140} />
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload?.length) return null;
+                          const item = lowStockItems.find((p: any) => p.name === label);
+                          return (
+                            <div className="bg-white border border-border-primary rounded-lg shadow-lg p-3 text-xs">
+                              <p className="font-semibold text-foreground mb-1">{label}</p>
+                              <p className="text-red-500">Stock actual: <strong>{payload[0]?.value}</strong></p>
+                              <p className="text-muted-foreground">Stock mínimo: <strong>{item?.minStock ?? 0}</strong></p>
+                              <p className="text-muted-foreground">SKU: {item?.sku ?? '—'}</p>
+                            </div>
+                          );
+                        }}
+                      />
+                      <Bar dataKey="currentStock" name="Stock actual" radius={[0, 4, 4, 0]}>
+                        {lowStockItems.map((p: any, i: number) => (
+                          <Cell
+                            key={i}
+                            fill={Number(p.currentStock) <= 0 ? '#ef4444' : '#f97316'}
+                          />
+                        ))}
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
+                  <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-red-500 inline-block" /> Sin stock (0 uds.)</span>
+                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-orange-500 inline-block" /> Bajo mínimo</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white rounded-xl border border-border-primary p-8 text-center">
+                  <Package className="w-10 h-10 text-green-500 mx-auto mb-2 opacity-60" />
+                  <p className="text-sm font-medium text-green-700">Inventario saludable</p>
+                  <p className="text-xs text-muted-foreground mt-1">Todos los productos están sobre su stock mínimo</p>
                 </div>
               )}
 
-              {/* Low stock alert */}
+              {/* Tabla detalle productos bajo mínimo */}
               {lowStockItems.length > 0 && (
-                <div className="bg-white rounded-xl border border-border-primary p-5">
-                  <div className="flex items-center gap-2 mb-4">
-                    <AlertTriangle className="w-4 h-4 text-red-500" />
-                    <h3 className="font-semibold text-foreground">Alertas de stock</h3>
+                <div className="bg-white rounded-xl border border-border-primary shadow-card overflow-hidden">
+                  <div className="px-5 py-3 border-b border-border-primary">
+                    <h3 className="font-semibold text-foreground text-sm">Detalle de alertas</h3>
                   </div>
-                  <div className="space-y-2">
-                    {lowStockItems.map((p: any) => (
-                      <div key={p.id} className="flex items-center justify-between py-2 border-b border-border-primary/40 last:border-0">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{p.name}</p>
-                          <p className="text-xs text-muted-foreground">{p.sku}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className={`text-sm font-bold ${Number(p.currentStock) <= 0 ? 'text-red-500' : 'text-orange-500'}`}>
-                            {Number(p.currentStock) <= 0 ? 'Sin stock' : `${p.currentStock} uds.`}
-                          </p>
-                          <p className="text-xs text-muted-foreground">Mín: {p.minStock || 0}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-border-primary bg-surface-primary/50">
+                        <th className="text-left px-5 py-2.5 text-xs font-semibold text-muted-foreground uppercase">Producto</th>
+                        <th className="text-right px-5 py-2.5 text-xs font-semibold text-muted-foreground uppercase">Stock actual</th>
+                        <th className="text-right px-5 py-2.5 text-xs font-semibold text-muted-foreground uppercase">Stock mínimo</th>
+                        <th className="text-right px-5 py-2.5 text-xs font-semibold text-muted-foreground uppercase">Déficit</th>
+                        <th className="text-right px-5 py-2.5 text-xs font-semibold text-muted-foreground uppercase">Precio venta</th>
+                        <th className="text-center px-5 py-2.5 text-xs font-semibold text-muted-foreground uppercase">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {lowStockItems.map((p: any) => {
+                        const deficit = (p.minStock || 0) - Number(p.currentStock);
+                        const isOut = Number(p.currentStock) <= 0;
+                        return (
+                          <tr key={p.id} className="hover:bg-surface-hover/50 transition">
+                            <td className="px-5 py-3">
+                              <p className="text-sm font-medium text-foreground">{p.name}</p>
+                              <p className="text-xs text-muted-foreground">{p.sku ?? '—'} · IVA {p.isIvaExcluded ? 'excluido' : `${p.ivaRate}%`}</p>
+                            </td>
+                            <td className={`px-5 py-3 text-right text-sm font-bold ${isOut ? 'text-red-500' : 'text-orange-500'}`}>
+                              {p.currentStock}
+                            </td>
+                            <td className="px-5 py-3 text-right text-sm text-muted-foreground">{p.minStock || 0}</td>
+                            <td className="px-5 py-3 text-right text-sm font-semibold text-red-500">
+                              -{Math.max(0, deficit)}
+                            </td>
+                            <td className="px-5 py-3 text-right text-sm text-foreground">{formatCurrency(p.salePrice)}</td>
+                            <td className="px-5 py-3 text-center">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                isOut ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
+                              }`}>
+                                {isOut ? 'Sin stock' : 'Bajo mínimo'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </>
@@ -559,21 +696,33 @@ function ReportsPage() {
       {/* ── Tab: Expenses ──────────────────────────────────────── */}
       {tab === 'expenses' && (
         <div className="space-y-6">
+          {/* Date filter */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Filter className="w-4 h-4" /> Período:
+            </div>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              className="h-9 px-3 rounded-lg border border-border-primary text-sm focus:outline-none focus:ring-2 focus:ring-glamor-primary/20" />
+            <span className="text-muted-foreground text-sm">—</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              className="h-9 px-3 rounded-lg border border-border-primary text-sm focus:outline-none focus:ring-2 focus:ring-glamor-primary/20" />
+          </div>
+
           {loadingExpenses ? <LoadingSkeleton rows={4} cols={2} /> : (
             <>
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                 <div className="bg-white rounded-xl border border-border-primary p-4">
-                  <p className="text-xs text-muted-foreground mb-1">Total gastos del mes</p>
-                  <p className="text-2xl font-bold text-red-500">{formatCurrency(totalExpenses)}</p>
+                  <p className="text-xs text-muted-foreground mb-1">Total gastos del período</p>
+                  <p className="text-2xl font-bold text-red-500">{formatCurrency(expensesSummary?.total || 0)}</p>
                 </div>
                 <div className="bg-white rounded-xl border border-border-primary p-4">
                   <p className="text-xs text-muted-foreground mb-1">Número de gastos</p>
-                  <p className="text-2xl font-bold text-foreground">{expenses.length}</p>
+                  <p className="text-2xl font-bold text-foreground">{expensesSummary?.count ?? expenses.length}</p>
                 </div>
                 <div className="bg-white rounded-xl border border-border-primary p-4">
                   <p className="text-xs text-muted-foreground mb-1">Gasto promedio</p>
                   <p className="text-2xl font-bold text-foreground">
-                    {formatCurrency(expenses.length > 0 ? totalExpenses / expenses.length : 0)}
+                    {formatCurrency(expensesSummary?.count > 0 ? Number(expensesSummary.total) / expensesSummary.count : 0)}
                   </p>
                 </div>
               </div>
