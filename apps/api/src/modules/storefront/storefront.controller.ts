@@ -66,6 +66,13 @@ export class StorefrontController {
     return this.service.getPublicConfig();
   }
 
+  // Declarado antes de public/:slug para que "cities" no se capture como slug
+  @Get('public/cities')
+  @ApiOperation({ summary: 'Cities with active stores (location selector)' })
+  getPublicCities() {
+    return this.service.getPublicCities();
+  }
+
   @Get('public/discounts')
   @ApiOperation({ summary: 'Get active storefront discounts for a tenant (public)' })
   getPublicDiscounts(@Query('tenantId') tenantId: string) {

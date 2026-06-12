@@ -824,14 +824,100 @@ export class StorefrontService {
     };
   }
 
+  /**
+   * Listado público de tiendas. Acepta filtros de ubicación:
+   * - lat/lng: ordena por distancia a la sucursal más cercana (Haversine) y
+   *   anexa distanceKm/nearestCity a cada storefront.
+   * - city: filtra a tiendas con sucursal en esa ciudad.
+   * Sin ubicación, conserva el orden por rating.
+   */
   async getPublicStorefronts(query: any) {
     const where: any = { isActive: true };
     if (query.q) where.displayName = { contains: query.q, mode: 'insensitive' };
-    return this.prisma.storefront.findMany({
+    const storefronts = await this.prisma.storefront.findMany({
       where,
-      take: 20,
+      take: 50,
       orderBy: { averageRating: 'desc' },
     });
+
+    const lat = parseFloat(query.lat);
+    const lng = parseFloat(query.lng);
+    const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+    const city = String(query.city || '').trim();
+
+    if (!hasCoords && !city) return storefronts.slice(0, 20);
+
+    // Sucursales activas de esos tenants (la ubicación vive en Store, no en Storefront)
+    const stores = await this.prisma.store.findMany({
+      where: { tenantId: { in: storefronts.map(s => s.tenantId) }, isActive: true },
+      select: { tenantId: true, latitude: true, longitude: true, city: true },
+    });
+    const storesByTenant = new Map<string, typeof stores>();
+    for (const s of stores) {
+      const list = storesByTenant.get(s.tenantId) ?? [];
+      list.push(s);
+      storesByTenant.set(s.tenantId, list);
+    }
+
+    const haversineKm = (aLat: number, aLng: number, bLat: number, bLng: number) => {
+      const R = 6371;
+      const rad = (d: number) => (d * Math.PI) / 180;
+      const dLat = rad(bLat - aLat);
+      const dLng = rad(bLng - aLng);
+      const h = Math.sin(dLat / 2) ** 2
+        + Math.cos(rad(aLat)) * Math.cos(rad(bLat)) * Math.sin(dLng / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(h));
+    };
+
+    let enriched = storefronts.map(sf => {
+      const tenantStores = storesByTenant.get(sf.tenantId) ?? [];
+      let distanceKm: number | null = null;
+      let nearestCity: string | null = tenantStores[0]?.city ?? null;
+      if (hasCoords) {
+        for (const s of tenantStores) {
+          const sLat = Number(s.latitude);
+          const sLng = Number(s.longitude);
+          if (!Number.isFinite(sLat) || !Number.isFinite(sLng) || (sLat === 0 && sLng === 0)) continue;
+          const d = haversineKm(lat, lng, sLat, sLng);
+          if (distanceKm === null || d < distanceKm) {
+            distanceKm = Math.round(d * 10) / 10;
+            nearestCity = s.city ?? nearestCity;
+          }
+        }
+      }
+      const cities = tenantStores.map(s => (s.city || '').toLowerCase()).filter(Boolean);
+      return { ...sf, distanceKm, nearestCity, _cities: cities };
+    });
+
+    if (city) {
+      const c = city.toLowerCase();
+      enriched = enriched.filter(sf => sf._cities.some(x => x.includes(c)));
+    }
+
+    if (hasCoords) {
+      // Más cercanas primero; las que no tienen coordenadas al final (por rating)
+      enriched.sort((a, b) => {
+        if (a.distanceKm === null && b.distanceKm === null) return Number(b.averageRating) - Number(a.averageRating);
+        if (a.distanceKm === null) return 1;
+        if (b.distanceKm === null) return -1;
+        return a.distanceKm - b.distanceKm;
+      });
+    }
+
+    return enriched.slice(0, 20).map(({ _cities, ...sf }) => sf);
+  }
+
+  /** Ciudades con sucursales activas — para el selector de ubicación del storefront. */
+  async getPublicCities() {
+    const stores = await this.prisma.store.findMany({
+      where: { isActive: true, city: { not: null } },
+      select: { city: true },
+      distinct: ['city'],
+    });
+    return stores
+      .map(s => (s.city || '').trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, 'es'));
   }
 
   async getPublicStorefront(slug: string) {
