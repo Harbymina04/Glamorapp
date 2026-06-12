@@ -38,6 +38,24 @@ function pick<T extends Record<string, any>>(obj: T, keys: readonly string[]): P
   return out;
 }
 
+/** Distancia en km entre dos coordenadas (fórmula de Haversine). */
+function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(bLat - aLat);
+  const dLng = rad(bLng - aLng);
+  const h = Math.sin(dLat / 2) ** 2
+    + Math.cos(rad(aLat)) * Math.cos(rad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/** Coordenada válida: numérica y distinta del (0,0) por defecto. */
+function validCoord(lat: any, lng: any): boolean {
+  const a = Number(lat);
+  const b = Number(lng);
+  return Number.isFinite(a) && Number.isFinite(b) && !(a === 0 && b === 0);
+}
+
 // Campos editables por el admin del comercio. Se EXCLUYEN identidad y métricas
 // (id, tenantId, slug de store, averageRating, totalReviews, etc.).
 const STOREFRONT_EDITABLE = [
@@ -859,26 +877,14 @@ export class StorefrontService {
       storesByTenant.set(s.tenantId, list);
     }
 
-    const haversineKm = (aLat: number, aLng: number, bLat: number, bLng: number) => {
-      const R = 6371;
-      const rad = (d: number) => (d * Math.PI) / 180;
-      const dLat = rad(bLat - aLat);
-      const dLng = rad(bLng - aLng);
-      const h = Math.sin(dLat / 2) ** 2
-        + Math.cos(rad(aLat)) * Math.cos(rad(bLat)) * Math.sin(dLng / 2) ** 2;
-      return 2 * R * Math.asin(Math.sqrt(h));
-    };
-
     let enriched = storefronts.map(sf => {
       const tenantStores = storesByTenant.get(sf.tenantId) ?? [];
       let distanceKm: number | null = null;
       let nearestCity: string | null = tenantStores[0]?.city ?? null;
       if (hasCoords) {
         for (const s of tenantStores) {
-          const sLat = Number(s.latitude);
-          const sLng = Number(s.longitude);
-          if (!Number.isFinite(sLat) || !Number.isFinite(sLng) || (sLat === 0 && sLng === 0)) continue;
-          const d = haversineKm(lat, lng, sLat, sLng);
+          if (!validCoord(s.latitude, s.longitude)) continue;
+          const d = haversineKm(lat, lng, Number(s.latitude), Number(s.longitude));
           if (distanceKm === null || d < distanceKm) {
             distanceKm = Math.round(d * 10) / 10;
             nearestCity = s.city ?? nearestCity;
@@ -961,12 +967,20 @@ export class StorefrontService {
         category: { select: { id: true, name: true } },
         images:   { take: 4, orderBy: { sortOrder: 'asc' } },
         brand:    { select: { name: true } },
+        // Sucursal que vende el producto: nombre/ciudad para mostrar y
+        // coordenadas para calcular "a X km de ti" en el cliente
+        store:    { select: { name: true, city: true, address: true, latitude: true, longitude: true } },
       },
     });
     if (!product) throw new NotFoundException('Product not found or not available in store');
     return product;
   }
 
+  /**
+   * Productos públicos. Con lat/lng anexa distanceKm (a la sucursal del
+   * producto); con maxKm además limita a sucursales dentro del radio,
+   * filtrando ANTES de paginar para no romper el "cargar más".
+   */
   async getPublicProducts(query: any) {
     const where: any = { isStoreVisible: true, deletedAt: null };
     if (query.tenantId) where.tenantId = query.tenantId;
@@ -974,17 +988,55 @@ export class StorefrontService {
     if (query.cat)
       where.category = { name: { contains: query.cat, mode: 'insensitive' } };
 
-    return this.prisma.product.findMany({
+    const lat = parseFloat(query.lat);
+    const lng = parseFloat(query.lng);
+    const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+    let distanceByStore: Map<string, number> | null = null;
+
+    if (hasCoords) {
+      const stores = await this.prisma.store.findMany({
+        where: { isActive: true },
+        select: { id: true, latitude: true, longitude: true },
+      });
+      distanceByStore = new Map();
+      for (const s of stores) {
+        if (!validCoord(s.latitude, s.longitude)) continue;
+        const d = haversineKm(lat, lng, Number(s.latitude), Number(s.longitude));
+        distanceByStore.set(s.id, Math.round(d * 10) / 10);
+      }
+      const maxKm = parseFloat(query.maxKm);
+      if (Number.isFinite(maxKm) && maxKm > 0) {
+        const eligible = [...distanceByStore.entries()]
+          .filter(([, d]) => d <= maxKm)
+          .map(([id]) => id);
+        if (eligible.length === 0) return [];
+        where.storeId = { in: eligible };
+      }
+    }
+
+    const limit = parseInt(query.limit || '50');
+    // El catálogo pagina con offset; se mantiene page como compatibilidad
+    const skip = query.offset != null
+      ? Math.max(0, parseInt(query.offset) || 0)
+      : (parseInt(query.page || '1') - 1) * limit;
+
+    const products = await this.prisma.product.findMany({
       where,
       select: {
         ...PUBLIC_PRODUCT_FIELDS,
         category: { select: { name: true } },
         images: { take: 1 },
       },
-      take: parseInt(query.limit || '50'),
-      skip: (parseInt(query.page || '1') - 1) * parseInt(query.limit || '50'),
+      take: limit,
+      skip,
       orderBy: { storeSortOrder: 'asc' },
     });
+
+    if (!distanceByStore) return products;
+    return products.map(p => ({
+      ...p,
+      distanceKm: distanceByStore!.get((p as any).storeId) ?? null,
+    }));
   }
 
   async getPublicServices(query: any) {

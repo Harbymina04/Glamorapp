@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Heart, Minus, Plus, ShoppingBag, CheckCircle, AlertCircle, Star } from 'lucide-react';
+import { Heart, Minus, Plus, ShoppingBag, CheckCircle, AlertCircle, Star, MapPin } from 'lucide-react';
 import { useStoreCart, getStorefrontDiscount } from '@/stores/store-cart';
 import { storeApi, formatCOP } from '@/lib/store-utils';
+import { getSavedLocation, haversineKm } from '@/lib/geo';
 import { StarRating } from '@/components/store/StarRating';
 import { ProductCard } from '@/components/store/ProductCard';
 import { ReviewCard } from '@/components/store/ReviewCard';
@@ -28,8 +29,21 @@ export function ProductDetailClient({ id, initialProduct }: Props) {
   const [tab, setTab] = useState<Tab>('descripcion');
   const [added, setAdded] = useState(false);
   const [activeImg, setActiveImg] = useState(0);
+  // Distancia a la sucursal del producto (si el visitante compartió ubicación)
+  const [distanceKm, setDistanceKm] = useState<number | null>(null);
 
   const fav = isFavorite(id);
+
+  useEffect(() => {
+    const loc = getSavedLocation();
+    const sLat = Number(product?.store?.latitude);
+    const sLng = Number(product?.store?.longitude);
+    if (loc && Number.isFinite(sLat) && Number.isFinite(sLng) && !(sLat === 0 && sLng === 0)) {
+      setDistanceKm(Math.round(haversineKm(loc.lat, loc.lng, sLat, sLng) * 10) / 10);
+    } else {
+      setDistanceKm(null);
+    }
+  }, [product?.store?.latitude, product?.store?.longitude]);
 
   const load = () => {
     setLoading(true);
@@ -190,6 +204,20 @@ export function ProductDetailClient({ id, initialProduct }: Props) {
             <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
             <span className="text-sm text-green-600 font-medium">En stock ({product.currentStock})</span>
           </div>
+          {product.store?.name && (
+            <div className="flex items-center gap-1.5 text-sm text-gray-500">
+              <MapPin className="w-4 h-4 text-gray-400" />
+              <span>
+                {product.store.name}
+                {product.store.city ? ` · ${product.store.city}` : ''}
+              </span>
+              {distanceKm != null && (
+                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-xs font-semibold rounded-full">
+                  a {distanceKm} km de ti
+                </span>
+              )}
+            </div>
+          )}
           <div className="flex items-center gap-4">
             <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden">
               <button onClick={() => setQty(Math.max(1, qty - 1))} className="px-4 py-3 hover:bg-gray-50 transition border-r border-gray-200"><Minus className="w-4 h-4" /></button>

@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState, useMemo, useRef, Suspense } from 'react';
-import { Search, SlidersHorizontal, X, Heart, AlertCircle, Loader2 } from 'lucide-react';
+import { Search, SlidersHorizontal, X, Heart, AlertCircle, Loader2, MapPin } from 'lucide-react';
 import { ProductCard } from '@/components/store/ProductCard';
 import { storeApi, formatCOP } from '@/lib/store-utils';
 import { useStoreCart, getStorefrontDiscount } from '@/stores/store-cart';
+import { getSavedLocation, requestLocation, type ClientLocation } from '@/lib/geo';
 
 const SORT_OPTIONS = [
   { value: 'default', label: 'Relevancia' },
@@ -54,7 +55,15 @@ function CatalogoContent({ initialProducts = [] }: { initialProducts?: any[] }) 
   const [sort, setSort] = useState('default');
   const [filterOpen, setFilterOpen] = useState(false);
 
+  // ── Filtro "Cerca de mí" ──────────────────────────────────────
+  const [nearMe, setNearMe] = useState(false);
+  const [radiusKm, setRadiusKm] = useState(25);
+  const [coords, setCoords] = useState<ClientLocation | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locError, setLocError] = useState('');
+
   const searchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const geoMounted = useRef(false);
 
   const handleSearch = (value: string) => {
     setSearch(value);
@@ -68,16 +77,43 @@ function CatalogoContent({ initialProducts = [] }: { initialProducts?: any[] }) 
     const setter = reset ? setLoading : setLoadingMore;
     setter(true);
     if (reset) setError(false);
-    storeApi.get(`/storefront/public/products?limit=${PAGE_SIZE}&offset=${offset}`)
+    // Con "Cerca de mí" activo, el servidor filtra por radio y anexa distanceKm
+    const geoParams = nearMe && coords
+      ? `&lat=${coords.lat}&lng=${coords.lng}&maxKm=${radiusKm}`
+      : '';
+    storeApi.get(`/storefront/public/products?limit=${PAGE_SIZE}&offset=${offset}${geoParams}`)
       .then(res => {
         const items = Array.isArray(res) ? res : [];
         setProducts(prev => reset ? items : [...prev, ...items]);
         setHasMore(items.length === PAGE_SIZE);
-        if (!reset) setPage(currentPage);
+        setPage(reset ? 0 : currentPage);
       })
       .catch(() => { if (reset) setError(true); })
       .finally(() => setter(false));
   };
+
+  const toggleNearMe = async () => {
+    setLocError('');
+    if (nearMe) { setNearMe(false); return; }
+    const saved = getSavedLocation();
+    if (saved) { setCoords(saved); setNearMe(true); return; }
+    setLocating(true);
+    try {
+      const loc = await requestLocation();
+      setCoords(loc);
+      setNearMe(true);
+    } catch {
+      setLocError('No pudimos obtener tu ubicación. Revisa el permiso del navegador.');
+    } finally {
+      setLocating(false);
+    }
+  };
+
+  // Refetch al activar/desactivar el filtro o cambiar el radio
+  useEffect(() => {
+    if (!geoMounted.current) { geoMounted.current = true; return; }
+    fetchProducts(true);
+  }, [nearMe, coords, radiusKm]);
 
   useEffect(() => {
     // Con productos del servidor no refetcheamos la primera página
@@ -110,14 +146,19 @@ function CatalogoContent({ initialProducts = [] }: { initialProducts?: any[] }) 
     if (sort === 'price_asc') result.sort((a, b) => Number(a.salePrice) - Number(b.salePrice));
     else if (sort === 'price_desc') result.sort((a, b) => Number(b.salePrice) - Number(a.salePrice));
     else if (sort === 'name_asc') result.sort((a, b) => a.name.localeCompare(b.name));
+    else if (nearMe) {
+      // Con "Cerca de mí" y orden por relevancia, los más cercanos primero
+      result.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+    }
     return result;
-  }, [products, debouncedSearch, category, minPrice, maxPrice, onlyFavs, sort, isFavorite]);
+  }, [products, debouncedSearch, category, minPrice, maxPrice, onlyFavs, sort, isFavorite, nearMe]);
 
   const activeFilters: { label: string; clear: () => void }[] = [];
   if (category !== 'Todos') activeFilters.push({ label: category, clear: () => setCategory('Todos') });
   if (minPrice) activeFilters.push({ label: `Desde ${formatCOP(Number(minPrice))}`, clear: () => setMinPrice('') });
   if (maxPrice) activeFilters.push({ label: `Hasta ${formatCOP(Number(maxPrice))}`, clear: () => setMaxPrice('') });
   if (onlyFavs) activeFilters.push({ label: 'Solo favoritos', clear: () => setOnlyFavs(false) });
+  if (nearMe) activeFilters.push({ label: `Cerca de mí (≤${radiusKm} km)`, clear: () => setNearMe(false) });
 
   if (error) return (
     <div className="flex flex-col items-center justify-center py-32 text-center px-4">
@@ -138,6 +179,19 @@ function CatalogoContent({ initialProducts = [] }: { initialProducts?: any[] }) 
             placeholder="Buscar en el catálogo..."
             className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30" />
         </div>
+        <button onClick={toggleNearMe} disabled={locating}
+          className={`hidden sm:flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border transition whitespace-nowrap ${
+            nearMe ? 'bg-[#EF2D8F] text-white border-transparent' : 'border-gray-200 text-gray-700 hover:border-[#EF2D8F] hover:text-[#EF2D8F]'
+          } disabled:opacity-60`}>
+          {locating ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
+          Cerca de mí
+        </button>
+        {nearMe && (
+          <select value={radiusKm} onChange={e => setRadiusKm(Number(e.target.value))}
+            className="hidden sm:block px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30">
+            {[5, 10, 25, 50].map(km => <option key={km} value={km}>≤ {km} km</option>)}
+          </select>
+        )}
         <select value={sort} onChange={e => setSort(e.target.value)}
           className="hidden sm:block px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30">
           {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -150,6 +204,7 @@ function CatalogoContent({ initialProducts = [] }: { initialProducts?: any[] }) 
         <span className="hidden sm:block text-sm text-gray-500 whitespace-nowrap">{filtered.length} productos</span>
       </div>
       <span className="sm:hidden block text-xs text-gray-400 mb-3">{filtered.length} productos</span>
+      {locError && <p className="text-xs text-amber-600 mb-3">{locError}</p>}
 
       {activeFilters.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-5">
@@ -207,6 +262,21 @@ function CatalogoContent({ initialProducts = [] }: { initialProducts?: any[] }) 
               <Heart className="w-4 h-4 text-gray-400" />
               <span className="text-sm text-gray-700">Solo favoritos</span>
             </label>
+            <div className="space-y-2">
+              <button onClick={toggleNearMe} disabled={locating}
+                className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl border text-sm font-medium transition ${
+                  nearMe ? 'bg-[#EF2D8F] text-white border-transparent' : 'border-gray-200 text-gray-700'
+                } disabled:opacity-60`}>
+                {locating ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
+                Cerca de mí
+              </button>
+              {nearMe && (
+                <select value={radiusKm} onChange={e => setRadiusKm(Number(e.target.value))}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none">
+                  {[5, 10, 25, 50].map(km => <option key={km} value={km}>Hasta {km} km</option>)}
+                </select>
+              )}
+            </div>
             <button onClick={() => setFilterOpen(false)}
               className="w-full py-3 bg-[#EF2D8F] text-white rounded-xl font-bold hover:bg-[#d4267e] transition">
               Ver {filtered.length} productos
@@ -279,6 +349,7 @@ function CatalogoContent({ initialProducts = [] }: { initialProducts?: any[] }) 
                       imageUrl={p.images?.[0]?.url}
                       category={p.category?.name}
                       categoryId={p.categoryId}
+                      distanceKm={p.distanceKm}
                       tenantId={p.tenantId} />
                   );
                 })}

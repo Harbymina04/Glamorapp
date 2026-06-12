@@ -21,6 +21,7 @@ interface ProductCardProps {
   category?: string;
   categoryId?: string;
   tenantId?: string;
+  distanceKm?: number | null;
 }
 
 const CATEGORY_GRADIENTS: Record<string, string> = {
@@ -34,7 +35,7 @@ const CATEGORY_GRADIENTS: Record<string, string> = {
 
 export function ProductCard({
   id, name, brand, price, oldPrice, rating = 0, reviewCount = 0,
-  shopName, imageUrl, category, categoryId, tenantId = '',
+  shopName, imageUrl, category, categoryId, tenantId = '', distanceKm,
 }: ProductCardProps) {
   const { addItem, toggleFavorite, isFavorite } = useStoreCart();
   const [toastMsg, setToastMsg] = useState('');
@@ -99,10 +100,13 @@ export function ProductCard({
         <Link href={productPath({ id, name })} className="block">
           <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 leading-tight hover:text-[#EF2D8F] transition-colors">{name}</h3>
         </Link>
-        {shopName && (
+        {(shopName || distanceKm != null) && (
           <div className="flex items-center gap-1">
             <MapPin className="w-3 h-3 text-gray-400" />
-            <span className="text-xs text-gray-400 truncate">{shopName}</span>
+            {shopName && <span className="text-xs text-gray-400 truncate">{shopName}</span>}
+            {distanceKm != null && (
+              <span className="text-xs font-semibold text-emerald-600 whitespace-nowrap">a {distanceKm} km</span>
+            )}
           </div>
         )}
         <div className="flex items-center justify-between">
