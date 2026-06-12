@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DiscountsService } from '../discounts/discounts.service';
 import { CreatePublicOrderDto } from './dto/public-order.dto';
 import { CreatePublicReviewDto } from './dto/public-review.dto';
 
@@ -60,7 +61,10 @@ const SERVICE_VISIBILITY_EDITABLE = ['isStoreVisible', 'storeDescription'] as co
 @Injectable()
 export class StorefrontService {
   private readonly logger = new Logger(StorefrontService.name);
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private discounts: DiscountsService,
+  ) {}
 
   // ── My Storefront (admin) ──────────────────────────────────
   async getStorefront(tenantId: string) {
@@ -74,10 +78,14 @@ export class StorefrontService {
         data: {
           tenantId,
           displayName: tenant?.name || 'Mi Salón',
+          // NFD + strip diacríticos para que "Salón" → "salon" (no "sal-n")
           slug: (tenant?.name || 'salon')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
             .toLowerCase()
             .replace(/[^a-z0-9]/g, '-')
             .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '')
             .slice(0, 100),
         },
       });
@@ -493,37 +501,46 @@ export class StorefrontService {
     const total = round2(subtotal + taxAmount);
     const taxPercent = subtotal > 0 ? round2((taxAmount / subtotal) * 100) : 0;
 
-    // Generate sale number
+    // Generate sale number — retry ante colisión del folio (unique por tenant+store)
     const count = await this.prisma.sale.count({ where: { tenantId: order.tenantId, storeId: order.storeId } });
-    const saleNumber = `ON-${String(count + 1).padStart(5, '0')}`;
-
-    const sale = await this.prisma.sale.create({
-      data: {
-        tenantId: order.tenantId,
-        storeId: order.storeId,
-        userId: systemUser.id,
-        saleNumber,
-        source: 'online',
-        storefrontOrderId: order.id,
-        status: 'completed',
-        subtotal,
-        discountPercent: 0,
-        discountAmount: 0,
-        taxPercent,
-        taxAmount,
-        total,
-        notes: `Pedido online ${order.orderNumber} — ${order.paymentMethod?.toUpperCase()}`,
-        completedAt: new Date(),
-        items: { create: saleItems },
-        payments: {
-          create: [{
-            method: order.paymentMethod === 'pse' ? 'transfer' : 'other',
-            amount: total,
-            reference: order.paymentTransactionId || order.orderNumber,
-          }],
-        },
-      } as any,
-    });
+    let sale: any = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const saleNumber = `ON-${String(count + 1 + attempt).padStart(5, '0')}`;
+      try {
+        sale = await this.prisma.sale.create({
+          data: {
+            tenantId: order.tenantId,
+            storeId: order.storeId,
+            userId: systemUser.id,
+            saleNumber,
+            source: 'online',
+            storefrontOrderId: order.id,
+            status: 'completed',
+            subtotal,
+            discountPercent: 0,
+            discountAmount: 0,
+            taxPercent,
+            taxAmount,
+            total,
+            notes: `Pedido online ${order.orderNumber} — ${order.paymentMethod?.toUpperCase()}`,
+            completedAt: new Date(),
+            items: { create: saleItems },
+            payments: {
+              create: [{
+                paymentMethod: order.paymentMethod === 'pse' ? 'transfer' : 'other',
+                amount: total,
+                reference: order.paymentTransactionId || order.orderNumber,
+              }],
+            },
+          } as any,
+        });
+        break;
+      } catch (e: any) {
+        if (e?.code === 'P2002' && attempt < 2) continue;
+        throw e;
+      }
+    }
+    if (!sale) return;
 
     // Link the sale back to the storefront order
     await this.prisma.storefrontOrder.update({
@@ -595,7 +612,9 @@ export class StorefrontService {
   }
 
   async createOrder(dto: CreatePublicOrderDto) {
-    const orderNumber = `GA-${Date.now().toString().slice(-6)}`;
+    // Folio colisión-resistente: timestamp base36 + sufijo aleatorio (los últimos
+    // 6 dígitos del timestamp se repetían cada ~16 min y entre tenants).
+    const orderNumber = `GA-${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
 
     // Resolver la sucursal del pedido. Si el cliente envía storeId, debe ser una
     // sucursal ACTIVA del MISMO tenant (evita asignar un store ajeno); si no,
@@ -628,9 +647,26 @@ export class StorefrontService {
     const productIds = [...new Set(dto.items.map((i: any) => i.productId).filter(Boolean))];
     const products = await this.prisma.product.findMany({
       where: { id: { in: productIds }, tenantId: dto.tenantId, deletedAt: null },
-      select: { id: true, name: true, salePrice: true },
+      select: { id: true, name: true, salePrice: true, categoryId: true },
     });
     const priceById = new Map(products.map(p => [p.id, p]));
+
+    // Aplicar los descuentos de campaña del storefront con la MISMA lógica y
+    // redondeo del frontend (getStorefrontDiscount + Math.round a pesos). Si el
+    // total guardado no coincide con lo que cobra Wompi, el webhook marca
+    // AMOUNT_MISMATCH y el pedido pagado nunca se confirma.
+    const activeDiscounts = await this.discounts.findActiveStorefront(dto.tenantId);
+    const bestDiscountPercent = (product: { id: string; categoryId: string | null }): number => {
+      const matches = activeDiscounts.filter((d: any) => {
+        const ids: string[] = Array.isArray(d.targetIds) ? (d.targetIds as string[]) : [];
+        if (d.scope === 'all') return true;
+        if (d.scope === 'products') return ids.length === 0 || ids.includes(product.id);
+        if (d.scope === 'category') return product.categoryId != null && ids.includes(product.categoryId);
+        return false;
+      });
+      if (!matches.length) return 0;
+      return Math.max(...matches.map((d: any) => Number(d.discountPercent)));
+    };
 
     let subtotal = 0;
     const items = dto.items.map((i: any) => {
@@ -639,9 +675,19 @@ export class StorefrontService {
         throw new BadRequestException(`Producto inválido en el pedido: ${i.productId}`);
       }
       const qty = Math.max(1, Math.floor(Number(i.qty) || 0));
-      const price = Number(product.salePrice);
+      const originalPrice = Number(product.salePrice);
+      const discountPercent = bestDiscountPercent(product);
+      const price = discountPercent > 0
+        ? Math.round(originalPrice * (1 - discountPercent / 100))
+        : originalPrice;
       subtotal += price * qty;
-      return { productId: product.id, name: product.name, qty, price };
+      return {
+        productId: product.id,
+        name: product.name,
+        qty,
+        price,
+        ...(discountPercent > 0 ? { originalPrice, discountPercent } : {}),
+      };
     });
 
     return this.prisma.storefrontOrder.create({

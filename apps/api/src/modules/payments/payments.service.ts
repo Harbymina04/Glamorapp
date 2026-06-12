@@ -139,9 +139,11 @@ export class PaymentsService {
 
     this.logger.log(`PSE transaction created: ${tx.id} for order ${reference}`);
 
-    // Persist the Wompi transaction ID on the order immediately
+    // Persist the Wompi transaction ID on the order immediately.
+    // Acotado por tenant + status pending: orderNumber no es único globalmente
+    // y este endpoint es público — sin esto se podían marcar pedidos ajenos.
     await this.prisma.storefrontOrder.updateMany({
-      where: { orderNumber: reference },
+      where: { orderNumber: reference, tenantId: dto.tenantId, status: 'pending' },
       data: {
         paymentTransactionId: tx.id,
         paymentStatus: 'PENDING',
@@ -208,11 +210,11 @@ export class PaymentsService {
         await this.plans.activateSubscriptionFromPayment(reference);
         this.logger.log(`Subscription activated via payment: ${reference}`);
       } else {
-        await this.handleApprovedTransaction(reference, tx.amount_in_cents);
+        await this.handleApprovedTransaction(reference, tx.amount_in_cents, tx.id);
       }
     } else if (status === 'DECLINED' || status === 'VOIDED' || status === 'ERROR') {
       if (!reference.startsWith('SUB|')) {
-        await this.handleFailedTransaction(reference, status);
+        await this.handleFailedTransaction(reference, status, tx.id);
       }
     }
 
@@ -232,10 +234,26 @@ export class PaymentsService {
     return expected === checksum;
   }
 
-  private async handleApprovedTransaction(orderNumber: string, amountInCents?: number) {
-    const order = await this.prisma.storefrontOrder.findFirst({
+  /**
+   * Resuelve el pedido de un evento de Wompi. Prefiere paymentTransactionId
+   * (único por transacción e indexado); orderNumber queda como fallback para
+   * pedidos creados antes de persistir el transactionId.
+   */
+  private async findOrderForTransaction(orderNumber: string, transactionId?: string) {
+    if (transactionId) {
+      const byTx = await this.prisma.storefrontOrder.findFirst({
+        where: { paymentTransactionId: transactionId },
+      });
+      if (byTx) return byTx;
+    }
+    return this.prisma.storefrontOrder.findFirst({
       where: { orderNumber },
+      orderBy: { createdAt: 'desc' },
     });
+  }
+
+  private async handleApprovedTransaction(orderNumber: string, amountInCents?: number, transactionId?: string) {
+    const order = await this.findOrderForTransaction(orderNumber, transactionId);
 
     if (!order) {
       this.logger.warn(`Webhook: order ${orderNumber} not found`);
@@ -286,10 +304,8 @@ export class PaymentsService {
     this.logger.log(`Webhook: order ${orderNumber} confirmed | fee: ${platformFee} | payout: ${tenantPayout}`);
   }
 
-  private async handleFailedTransaction(orderNumber: string, status: string) {
-    const order = await this.prisma.storefrontOrder.findFirst({
-      where: { orderNumber },
-    });
+  private async handleFailedTransaction(orderNumber: string, status: string, transactionId?: string) {
+    const order = await this.findOrderForTransaction(orderNumber, transactionId);
 
     if (!order || order.status === 'cancelled') return;
 

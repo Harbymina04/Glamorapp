@@ -88,6 +88,12 @@ export default function CheckoutPage() {
 
   const handleSubmit = async () => {
     if (!form.name || !form.phone) return;
+    if (paymentMethod === 'pse' && shopSubtotals.length > 1) {
+      // Una transacción PSE solo puede pagar UN pedido: con varias tiendas se
+      // cobraría todo el carrito contra un pedido y los demás quedarían impagos.
+      setSubmitError('PSE está disponible para una tienda a la vez. Paga cada tienda por separado o elige "Pagar en tienda".');
+      return;
+    }
     if (paymentMethod === 'pse' && (!pseForm.bankCode || !pseForm.docNumber || !form.email)) {
       setSubmitError('Para PSE completa: banco, tipo y número de documento, y correo electrónico.');
       return;
@@ -126,10 +132,13 @@ export default function CheckoutPage() {
         const { shop, subtotal, tenantId } = shopSubtotals[0];
         const returnUrl = `${window.location.origin}/tienda/pago-resultado`;
 
+        // Cobrar el total AUTORITATIVO del pedido (calculado por el servidor,
+        // con descuentos aplicados). Si difiere del total local, el webhook
+        // rechazaría el pago por monto insuficiente (AMOUNT_MISMATCH).
         const tx = await storeApi.post('/payments/pse/create', {
           orderNumber: orderNum,
           tenantId,
-          amountCOP: total(),
+          amountCOP: Number(createdOrder?.total ?? total()),
           buyerFullName: form.name,
           buyerEmail: form.email,
           buyerPhone: form.phone,
@@ -200,8 +209,9 @@ export default function CheckoutPage() {
 
   // ── Main checkout form ──────────────────────────────────────
 
-  const pseMissing = paymentMethod === 'pse' && (!pseForm.bankCode || !pseForm.docNumber || !form.email);
-  const canSubmit  = !submitting && !!form.name && !!form.phone && !pseMissing;
+  const pseMissing   = paymentMethod === 'pse' && (!pseForm.bankCode || !pseForm.docNumber || !form.email);
+  const pseMultiShop = paymentMethod === 'pse' && Object.keys(grouped).length > 1;
+  const canSubmit    = !submitting && !!form.name && !!form.phone && !pseMissing && !pseMultiShop;
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -302,7 +312,16 @@ export default function CheckoutPage() {
             </div>
 
             {/* PSE extra fields */}
-            {paymentMethod === 'pse' && (
+            {pseMultiShop && (
+              <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700">
+                  Tu carrito tiene productos de varias tiendas. PSE está disponible para una tienda
+                  a la vez: paga cada tienda por separado o elige <strong>Pagar en tienda</strong>.
+                </p>
+              </div>
+            )}
+            {paymentMethod === 'pse' && !pseMultiShop && (
               <div className="border-t border-gray-100 pt-4 space-y-4">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Datos para PSE</p>
 
