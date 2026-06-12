@@ -110,7 +110,12 @@ export class SalesService {
       return { ...item, ivaRate, ivaAmount };
     });
 
-    const subtotal = enrichedItems.reduce((s: number, i: any) => s + Number(i.unitPrice) * i.quantity, 0);
+    // Subtotal neto de descuentos de campaña por ítem (discountAmount es por unidad),
+    // igual que lo calcula el frontend — si no, sale.total queda inflado y complete() rechaza el cobro.
+    const subtotal = enrichedItems.reduce(
+      (s: number, i: any) => s + (Number(i.unitPrice) - Number(i.discountAmount || 0)) * i.quantity,
+      0,
+    );
     const discountAmount = dto.discountPercent
       ? subtotal * (dto.discountPercent / 100)
       : (Number(dto.discountAmount) || 0);
@@ -183,7 +188,7 @@ export class SalesService {
               discountAmount: item.discountAmount || 0,
               ivaRate:        item.ivaRate,
               ivaAmount:      item.ivaAmount,
-              total:          Number(item.unitPrice) * item.quantity - (item.discountAmount || 0) + item.ivaAmount,
+              total:          (Number(item.unitPrice) - Number(item.discountAmount || 0)) * item.quantity + item.ivaAmount,
               performedBy:    item.itemType === 'service' ? (item.performedBy || null) : null,
               commissionRate: item.commissionRate ?? 0,
               commissionAmount: 0,
