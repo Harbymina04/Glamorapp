@@ -681,6 +681,7 @@ function ComercioTab({ storefront, onSave }: { storefront: any; onSave: (data: a
         acceptsDelivery: storefront.acceptsDelivery ?? false,
         deliveryFee: storefront.deliveryFee ?? 0,
         deliveryRadiusKm: storefront.deliveryRadiusKm ?? 10,
+        freeDeliveryThreshold: storefront.freeDeliveryThreshold ?? 0,
         acceptsAppointments: storefront.acceptsAppointments ?? true,
         advancePaymentPercent: storefront.advancePaymentPercent ?? 0,
       });
@@ -735,6 +736,12 @@ function ComercioTab({ storefront, onSave }: { storefront: any; onSave: (data: a
             <input type="number" value={form.deliveryRadiusKm || 10} onChange={e => set('deliveryRadiusKm', Number(e.target.value))}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30" />
           </div>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-gray-600 block mb-1">Envío gratis a partir de (COP)</label>
+          <input type="number" value={form.freeDeliveryThreshold || 0} onChange={e => set('freeDeliveryThreshold', Number(e.target.value))}
+            className="w-full max-w-xs px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30" />
+          <p className="text-xs text-gray-500 mt-1">Si el pedido alcanza este monto, el domicilio sale gratis. Deja 0 para no aplicar.</p>
         </div>
       </div>
 

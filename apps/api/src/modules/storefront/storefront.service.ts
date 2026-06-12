@@ -44,8 +44,8 @@ const STOREFRONT_EDITABLE = [
   'displayName', 'slug', 'tagline', 'description', 'logoUrl', 'bannerUrl',
   'galleryUrls', 'businessType', 'tags', 'publicEmail', 'publicPhone', 'whatsapp',
   'instagram', 'facebook', 'tiktok', 'website', 'acceptsOrders', 'acceptsAppointments',
-  'acceptsDelivery', 'deliveryFee', 'deliveryRadiusKm', 'minOrderAmount',
-  'advancePaymentPercent', 'isActive',
+  'acceptsDelivery', 'deliveryFee', 'deliveryRadiusKm', 'freeDeliveryThreshold',
+  'minOrderAmount', 'advancePaymentPercent', 'isActive',
 ] as const;
 
 // Solo campos de presentación/ubicación del storefront (NO config POS/facturación
@@ -700,7 +700,7 @@ export class StorefrontService {
     // Config de comercio del tenant: pedido mínimo y costo de envío
     const commerce = await this.prisma.storefront.findFirst({
       where: { tenantId: dto.tenantId },
-      select: { minOrderAmount: true, deliveryFee: true, acceptsDelivery: true },
+      select: { minOrderAmount: true, deliveryFee: true, acceptsDelivery: true, freeDeliveryThreshold: true },
     });
 
     const minOrder = Number(commerce?.minOrderAmount ?? 0);
@@ -717,7 +717,10 @@ export class StorefrontService {
     if (isDelivery && !dto.deliveryAddress?.trim()) {
       throw new BadRequestException('La dirección de entrega es obligatoria para domicilio.');
     }
-    const deliveryFee = isDelivery ? Number(commerce?.deliveryFee ?? 0) : 0;
+    // Envío gratis al superar el umbral configurado (0 = nunca)
+    const freeThreshold = Number(commerce?.freeDeliveryThreshold ?? 0);
+    const freeDelivery = freeThreshold > 0 && subtotal >= freeThreshold;
+    const deliveryFee = isDelivery && !freeDelivery ? Number(commerce?.deliveryFee ?? 0) : 0;
 
     // La dirección viaja en buyerNotes (el modelo no tiene columna de dirección)
     const notes = isDelivery
@@ -841,9 +844,15 @@ export class StorefrontService {
   async getPublicCommerceConfig(tenantId: string) {
     const sf = await this.prisma.storefront.findFirst({
       where: { tenantId, isActive: true },
-      select: { acceptsDelivery: true, deliveryFee: true, minOrderAmount: true, acceptsOrders: true },
+      select: {
+        acceptsDelivery: true, deliveryFee: true, freeDeliveryThreshold: true,
+        minOrderAmount: true, acceptsOrders: true,
+      },
     });
-    return sf ?? { acceptsDelivery: false, deliveryFee: 0, minOrderAmount: 0, acceptsOrders: true };
+    return sf ?? {
+      acceptsDelivery: false, deliveryFee: 0, freeDeliveryThreshold: 0,
+      minOrderAmount: 0, acceptsOrders: true,
+    };
   }
 
   async getPublicLocations(tenantId: string) {

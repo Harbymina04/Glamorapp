@@ -1711,6 +1711,8 @@ model Storefront {
   acceptsDelivery       Boolean  @default(false) @map("accepts_delivery")
   deliveryFee           Decimal  @default(0) @map("delivery_fee") @db.Decimal(12, 2)
   deliveryRadiusKm      Int      @default(10) @map("delivery_radius_km")
+  // Envío gratis cuando el subtotal alcanza este monto (0 = nunca)
+  freeDeliveryThreshold Decimal  @default(0) @map("free_delivery_threshold") @db.Decimal(12, 2)
   minOrderAmount        Decimal  @default(0) @map("min_order_amount") @db.Decimal(12, 2)
   advancePaymentPercent Decimal  @default(0) @map("advance_payment_percent") @db.Decimal(5, 2)
   averageRating         Decimal  @default(0) @map("average_rating") @db.Decimal(3, 2)

@@ -53,7 +53,7 @@ export default function CheckoutPage() {
   const [deliveryMethod, setDeliveryMethod] = useState<'pickup' | 'delivery'>('pickup');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [commerceCfg, setCommerceCfg] = useState<{
-    acceptsDelivery: boolean; deliveryFee: number; minOrderAmount: number;
+    acceptsDelivery: boolean; deliveryFee: number; minOrderAmount: number; freeDeliveryThreshold: number;
   } | null>(null);
 
   // PSE-specific fields
@@ -101,12 +101,17 @@ export default function CheckoutPage() {
         acceptsDelivery: !!cfg?.acceptsDelivery,
         deliveryFee: Number(cfg?.deliveryFee ?? 0),
         minOrderAmount: Number(cfg?.minOrderAmount ?? 0),
+        freeDeliveryThreshold: Number(cfg?.freeDeliveryThreshold ?? 0),
       }))
       .catch(() => setCommerceCfg(null));
   }, [singleShop, shopSubtotals[0]?.tenantId]);
 
   const isDelivery  = singleShop && deliveryMethod === 'delivery' && !!commerceCfg?.acceptsDelivery;
-  const deliveryFee = isDelivery ? (commerceCfg?.deliveryFee ?? 0) : 0;
+  // Envío gratis al superar el umbral (misma regla que createOrder en el backend)
+  const freeThreshold  = commerceCfg?.freeDeliveryThreshold ?? 0;
+  const freeDelivery   = freeThreshold > 0 && total() >= freeThreshold;
+  const missingForFree = freeThreshold > 0 && !freeDelivery ? freeThreshold - total() : 0;
+  const deliveryFee = isDelivery && !freeDelivery ? (commerceCfg?.deliveryFee ?? 0) : 0;
   const belowMinOrder = singleShop && (commerceCfg?.minOrderAmount ?? 0) > 0
     && total() < (commerceCfg!.minOrderAmount);
 
@@ -342,7 +347,7 @@ export default function CheckoutPage() {
                   }`}>
                   <Truck className={`w-5 h-5 ${deliveryMethod === 'delivery' ? 'text-[#EF2D8F]' : 'text-gray-400'}`} />
                   <span className={`text-sm font-medium ${deliveryMethod === 'delivery' ? 'text-[#EF2D8F]' : 'text-gray-700'}`}>
-                    Domicilio {commerceCfg.deliveryFee > 0 ? `(+${formatCOP(commerceCfg.deliveryFee)})` : '(gratis)'}
+                    Domicilio {freeDelivery || commerceCfg.deliveryFee === 0 ? '(gratis)' : `(+${formatCOP(commerceCfg.deliveryFee)})`}
                   </span>
                 </button>
               </div>
@@ -497,6 +502,12 @@ export default function CheckoutPage() {
                   {isDelivery ? (deliveryFee > 0 ? formatCOP(deliveryFee) : 'Gratis') : 'Recoger en tienda'}
                 </span>
               </div>
+              {isDelivery && missingForFree > 0 && (
+                <div className="flex items-start gap-2 p-2.5 bg-pink-50 border border-pink-100 rounded-lg text-xs text-[#EF2D8F]">
+                  <Truck className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>Agrega {formatCOP(missingForFree)} más y el envío te sale <strong>gratis</strong>.</span>
+                </div>
+              )}
               <div className="border-t border-gray-200 pt-2 flex justify-between font-bold text-gray-900 text-base">
                 <span>Total</span><span>{formatCOP(total() + deliveryFee)}</span>
               </div>
