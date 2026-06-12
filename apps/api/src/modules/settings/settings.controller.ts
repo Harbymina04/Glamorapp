@@ -22,6 +22,12 @@ export class SettingsController {
   @Get()
   getSettings(@TenantId() t: string, @StoreId() s: string) { return this.service.getStore(t, s); }
 
+  // Flags mínimos que el POS necesita para calcular totales. Accesible al
+  // cajero (el GET completo de settings es solo para admins).
+  @Get('pos-config')
+  @Roles('superadmin', 'tenant_admin', 'store_admin', 'cashier')
+  getPosConfig(@TenantId() t: string, @StoreId() s: string) { return this.service.getPosConfig(t, s); }
+
   @Put('general')
   @Audit('settings', 'config_change', 'Configuración general actualizada')
   updateGeneral(@TenantId() t: string, @StoreId() s: string, @Body() d: any) { return this.service.updateGeneral(t, s, d); }

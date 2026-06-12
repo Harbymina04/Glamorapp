@@ -11,6 +11,15 @@ export class SettingsService {
     return store;
   }
 
+  async getPosConfig(tenantId: string, storeId: string) {
+    const store = await this.prisma.store.findFirst({
+      where: { id: storeId, tenantId },
+      select: { taxInclusive: true, allowDiscounts: true, currency: true },
+    });
+    if (!store) throw new NotFoundException('Store not found');
+    return store;
+  }
+
   async updateGeneral(tenantId: string, storeId: string, dto: any) {
     const { name, email, phone, address, city, state, country, zipCode, currency, timezone, locale, dateFormat, timeFormat, unitSystem, slogan } = dto;
     return this.prisma.store.update({

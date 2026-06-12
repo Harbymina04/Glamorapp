@@ -166,6 +166,16 @@ function POSContent() {
       .catch(() => {});
   }, [token]);
 
+  // Load store tax mode (taxInclusive) so cart totals match the backend
+  useEffect(() => {
+    if (!token) return;
+    api.get('/settings/pos-config', { token })
+      .then((cfg: any) => {
+        if (cfg && typeof cfg.taxInclusive === 'boolean') cart.setTaxInclusive(cfg.taxInclusive);
+      })
+      .catch(() => {});
+  }, [token]);
+
   // Load cash register session
   useEffect(() => {
     if (!token) return;
@@ -439,7 +449,7 @@ ${lastSale.customer ? `<div class="center" style="font-size:11px">Cliente: ${las
 <div class="line"></div>
 ${(lastSale.items || []).map((i: any) => `<div class="row"><span>${i.name} x${i.quantity}</span><span>$${Number(i.unitPrice * i.quantity - (i.discountAmount || 0)).toLocaleString('es-CO', {minimumFractionDigits:0})}</span></div>`).join('')}
 <div class="line"></div>
-<div class="row"><span>Subtotal (sin IVA)</span><span>$${(Number(lastSale.subtotal) - Number(lastSale.taxAmount)).toLocaleString('es-CO', {minimumFractionDigits:0})}</span></div>
+<div class="row"><span>Subtotal (sin IVA)</span><span>$${(Number(lastSale.total) - Number(lastSale.taxAmount)).toLocaleString('es-CO', {minimumFractionDigits:0})}</span></div>
 ${Number(lastSale.discountAmount) > 0 ? `<div class="row"><span>Descuento (${lastSale.discountPercent}%)</span><span>-$${Number(lastSale.discountAmount).toLocaleString('es-CO', {minimumFractionDigits:0})}</span></div>` : ''}
 ${ivaRows}
 <div class="row bold"><span>TOTAL</span><span>$${Number(lastSale.total).toLocaleString('es-CO', {minimumFractionDigits:0})}</span></div>
@@ -901,7 +911,7 @@ ${pm.map((p: any) => `<div class="row" style="font-size:11px"><span>${paymentLab
           </div>
           <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
           <div className="flex justify-between text-sm"><span className="text-muted-foreground">Descuento</span><span className="text-red-500">-{formatCurrency(discount)}</span></div>
-          <div className="flex justify-between text-sm"><span className="text-muted-foreground">IVA</span><span>{formatCurrency(tax)}</span></div>
+          <div className="flex justify-between text-sm"><span className="text-muted-foreground">IVA{cart.taxInclusive ? ' (incluido)' : ''}</span><span>{formatCurrency(tax)}</span></div>
           <div className="flex justify-between text-lg font-bold pt-2 border-t border-border-primary"><span>Total</span><span className="text-glamor-primary">{formatCurrency(total)}</span></div>
           {/* Notes */}
           <input value={saleNotes} onChange={e => setSaleNotes(e.target.value)} placeholder="Notas de venta (opcional)" className="w-full h-8 px-2 rounded-lg border border-border-primary text-xs bg-white focus:outline-none focus:ring-2 focus:ring-glamor-primary/20" />
@@ -929,7 +939,7 @@ ${pm.map((p: any) => `<div class="row" style="font-size:11px"><span>${paymentLab
                 {cart.items.map(item => <div key={item.id} className="flex justify-between"><span>{item.name} x{item.quantity}</span><span className="font-medium">{formatCurrency(item.unitPrice * item.quantity)}</span></div>)}
                 <div className="border-t border-border-primary pt-2 mt-2 space-y-1"><div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
                 {discount > 0 && <div className="flex justify-between text-red-500"><span>Descuento ({cart.discountPercent}%)</span><span>-{formatCurrency(discount)}</span></div>}
-                <div className="flex justify-between text-muted-foreground"><span>IVA</span><span>{formatCurrency(tax)}</span></div>
+                <div className="flex justify-between text-muted-foreground"><span>IVA{cart.taxInclusive ? ' (incluido)' : ''}</span><span>{formatCurrency(tax)}</span></div>
                 <div className="flex justify-between font-bold text-base pt-1 border-t border-border-primary"><span>Total</span><span className="text-glamor-primary">{formatCurrency(total)}</span></div></div>
               </div>
               <div className="mb-4">

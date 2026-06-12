@@ -22,6 +22,7 @@ interface CartState {
   customerName: string | null;
   discountPercent: number;
   discounts: any[];                // active campaigns loaded from API
+  taxInclusive: boolean;           // true = precios con IVA incluido (config de tienda)
   addItem: (item: Omit<CartItem, 'id'>) => void;
   removeItem: (id: string) => void;
   updateQuantity: (id: string, qty: number) => void;
@@ -29,6 +30,7 @@ interface CartState {
   setCustomer: (id: string, name: string) => void;
   setDiscount: (percent: number) => void;
   setDiscounts: (discounts: any[]) => void;
+  setTaxInclusive: (inclusive: boolean) => void;
   getSubtotal: () => number;
   getDiscountAmount: () => number;
   getTax: () => number;
@@ -42,6 +44,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   customerName: null,
   discountPercent: 0,
   discounts: [],
+  taxInclusive: true,
 
   addItem: (item) => {
     const items = get().items;
@@ -70,6 +73,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   setCustomer: (id, name) => set({ customerId: id, customerName: name }),
   setDiscount: (percent) => set({ discountPercent: percent }),
   setDiscounts: (discounts) => set({ discounts }),
+  setTaxInclusive: (inclusive) => set({ taxInclusive: inclusive }),
 
   // Subtotal net of per-item campaign discounts (scales with quantity)
   getSubtotal: () =>
@@ -81,39 +85,49 @@ export const useCartStore = create<CartState>((set, get) => ({
     return sub * (get().discountPercent / 100);
   },
 
-  // IVA calculated per item using each product's individual rate
+  // IVA calculated per item using each product's individual rate.
+  // taxInclusive=true: el IVA viene DENTRO del precio y se desagrega;
+  // false: se suma encima. Debe espejar sales.service.create del backend.
   getTax: () => {
     const saleDisco = get().getDiscountAmount();
     const sub = get().getSubtotal();
+    const inclusive = get().taxInclusive;
     // Distribute sale-level discount proportionally across items
     const discountRatio = sub > 0 ? saleDisco / sub : 0;
     return get().items.reduce((total, i) => {
       if (i.isIvaExcluded) return total;
+      const rate = i.ivaRate ?? 19;
       const lineBase = (i.unitPrice - i.discountAmount) * i.quantity;
       const lineAfterDiscount = lineBase * (1 - discountRatio);
-      return total + lineAfterDiscount * ((i.ivaRate ?? 19) / 100);
+      return total + (inclusive
+        ? lineAfterDiscount * (rate / (100 + rate))
+        : lineAfterDiscount * (rate / 100));
     }, 0);
   },
 
   getTotal: () => {
     const sub = get().getSubtotal();
     const saleDisco = get().getDiscountAmount();
-    const tax = get().getTax();
-    return (sub - saleDisco) + tax;
+    if (get().taxInclusive) return sub - saleDisco; // IVA ya incluido en el precio
+    return (sub - saleDisco) + get().getTax();
   },
 
   // Returns IVA grouped by rate for the tirilla / receipt breakdown
   getIvaBreakdown: () => {
     const saleDisco = get().getDiscountAmount();
     const sub = get().getSubtotal();
+    const inclusive = get().taxInclusive;
     const discountRatio = sub > 0 ? saleDisco / sub : 0;
     const map = new Map<number, { base: number; amount: number }>();
     get().items.forEach(i => {
       const rate = i.isIvaExcluded ? 0 : (i.ivaRate ?? 19);
-      const lineBase = (i.unitPrice - i.discountAmount) * i.quantity * (1 - discountRatio);
-      const ivaAmount = i.isIvaExcluded ? 0 : lineBase * (rate / 100);
+      const lineNet = (i.unitPrice - i.discountAmount) * i.quantity * (1 - discountRatio);
+      const ivaAmount = i.isIvaExcluded ? 0 : (inclusive
+        ? lineNet * (rate / (100 + rate))
+        : lineNet * (rate / 100));
+      const base = inclusive ? lineNet - ivaAmount : lineNet;
       const prev = map.get(rate) ?? { base: 0, amount: 0 };
-      map.set(rate, { base: prev.base + lineBase, amount: prev.amount + ivaAmount });
+      map.set(rate, { base: prev.base + base, amount: prev.amount + ivaAmount });
     });
     return Array.from(map.entries())
       .map(([rate, v]) => ({ rate, base: v.base, amount: v.amount }))

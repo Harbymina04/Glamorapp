@@ -96,6 +96,14 @@ export class SalesService {
     // Tenant default IVA rate as final fallback (reads from TaxRate table)
     const tenantDefaultIva = await this.getDefaultIvaRate(tenantId);
 
+    // Modo de impuestos de la tienda: taxInclusive=true (default) → los precios
+    // YA incluyen IVA y se desagrega; false → el IVA se suma encima del precio.
+    const storeCfg = await this.prisma.store.findFirst({
+      where: { id: storeId, tenantId },
+      select: { taxInclusive: true },
+    });
+    const taxInclusive = storeCfg?.taxInclusive ?? true;
+
     // Build enriched items with per-item IVA
     const enrichedItems = dto.items.map((item: any) => {
       const ivaConfig = item.productId
@@ -105,25 +113,40 @@ export class SalesService {
           : null;
       const ivaRate = item.ivaRate ?? ivaConfig?.ivaRate ?? tenantDefaultIva;
       const isIvaExcluded = item.isIvaExcluded ?? ivaConfig?.isIvaExcluded ?? false;
-      const lineBase = (Number(item.unitPrice) - Number(item.discountAmount || 0)) * item.quantity;
-      const ivaAmount = isIvaExcluded ? 0 : lineBase * (ivaRate / 100);
+      const lineNet = (Number(item.unitPrice) - Number(item.discountAmount || 0)) * item.quantity;
+      const ivaAmount = isIvaExcluded
+        ? 0
+        : taxInclusive
+          ? lineNet * (ivaRate / (100 + ivaRate)) // IVA contenido en el precio
+          : lineNet * (ivaRate / 100);            // IVA sobre el precio
       return { ...item, ivaRate, ivaAmount };
     });
 
-    // Subtotal neto de descuentos de campaña por ítem (discountAmount es por unidad),
-    // igual que lo calcula el frontend — si no, sale.total queda inflado y complete() rechaza el cobro.
-    const subtotal = enrichedItems.reduce(
+    // Suma de líneas neta de descuentos de campaña por ítem (discountAmount es
+    // por unidad), igual que el frontend — si no, sale.total queda inflado y
+    // complete() rechaza el cobro.
+    const itemsNet = enrichedItems.reduce(
       (s: number, i: any) => s + (Number(i.unitPrice) - Number(i.discountAmount || 0)) * i.quantity,
       0,
     );
     const discountAmount = dto.discountPercent
-      ? subtotal * (dto.discountPercent / 100)
+      ? itemsNet * (dto.discountPercent / 100)
       : (Number(dto.discountAmount) || 0);
-    const taxAmount = enrichedItems.reduce((s: number, i: any) => s + i.ivaAmount, 0);
+    const afterDiscount = itemsNet - discountAmount;
+    // El IVA se calcula sobre la base DESPUÉS del descuento de cajero (ratio
+    // proporcional por línea), igual que cart-store.getTax en el frontend.
+    const discountRatio = itemsNet > 0 ? discountAmount / itemsNet : 0;
+    const taxAmount = enrichedItems.reduce(
+      (s: number, i: any) => s + i.ivaAmount * (1 - discountRatio),
+      0,
+    );
+    // taxInclusive: subtotal = base imponible y el total NO suma el IVA (ya viene
+    // dentro del precio). Modo legacy: subtotal = líneas netas e IVA encima.
+    const subtotal = taxInclusive ? afterDiscount - taxAmount : itemsNet;
+    const total = taxInclusive ? afterDiscount : afterDiscount + taxAmount;
     // taxPercent stored as weighted average for legacy compatibility
-    const afterDiscount = subtotal - discountAmount;
-    const taxPercent = afterDiscount > 0 ? (taxAmount / afterDiscount) * 100 : 19;
-    const total = afterDiscount + taxAmount;
+    const taxBase = total - taxAmount;
+    const taxPercent = taxBase > 0 ? (taxAmount / taxBase) * 100 : 19;
 
     // Reintenta ante una colisión rara del número de venta bajo concurrencia
     // (el unique constraint lanza P2002 → regeneramos folio y reintentamos).
@@ -188,7 +211,7 @@ export class SalesService {
               discountAmount: item.discountAmount || 0,
               ivaRate:        item.ivaRate,
               ivaAmount:      item.ivaAmount,
-              total:          (Number(item.unitPrice) - Number(item.discountAmount || 0)) * item.quantity + item.ivaAmount,
+              total:          (Number(item.unitPrice) - Number(item.discountAmount || 0)) * item.quantity + (taxInclusive ? 0 : item.ivaAmount),
               performedBy:    item.itemType === 'service' ? (item.performedBy || null) : null,
               commissionRate: item.commissionRate ?? 0,
               commissionAmount: 0,
