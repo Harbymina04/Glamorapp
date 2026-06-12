@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 
 export const revalidate = 3600;
 import { notFound } from 'next/navigation';
-import Script from 'next/script';
 import { getStorefront, getStorefrontData } from '@/lib/store-server';
 import { SalonClient } from './SalonClient';
 
@@ -94,8 +93,9 @@ export default async function SalonPage({ params }: { params: { slug: string } }
 
   return (
     <>
-      <Script
-        id={`json-ld-salon-${params.slug}`}
+      {/* <script> nativo (no next/script): debe ir en el HTML inicial del
+          servidor para que los crawlers vean el structured data */}
+      <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />

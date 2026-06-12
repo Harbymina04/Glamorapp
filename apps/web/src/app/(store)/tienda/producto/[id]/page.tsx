@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import Script from 'next/script';
 
 export const revalidate = 3600;
 import { getPublicProduct } from '@/lib/store-server';
@@ -52,7 +51,7 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
         name: product.name,
         description: product.description || undefined,
         image: product.images?.map((img: any) => img.url) ?? [],
-        sku: product.id,
+        sku: product.sku || product.id,
         brand: product.store?.name
           ? { '@type': 'Brand', name: product.store.name }
           : undefined,
@@ -65,29 +64,22 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
           priceCurrency: 'COP',
           price: String(Number(product.salePrice)),
           availability:
-            product.stock > 0
+            Number(product.currentStock) > 0
               ? 'https://schema.org/InStock'
               : 'https://schema.org/OutOfStock',
           seller: product.store?.name
             ? { '@type': 'Organization', name: product.store.name }
             : undefined,
         },
-        ...(product.averageRating > 0 && {
-          aggregateRating: {
-            '@type': 'AggregateRating',
-            ratingValue: String(Number(product.averageRating).toFixed(1)),
-            reviewCount: String(product.totalReviews || 0),
-            bestRating: '5',
-          },
-        }),
       }
     : null;
 
   return (
     <>
+      {/* <script> nativo (no next/script): debe ir en el HTML inicial del
+          servidor para que los crawlers vean el structured data */}
       {jsonLd && (
-        <Script
-          id={`json-ld-product-${params.id}`}
+        <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
