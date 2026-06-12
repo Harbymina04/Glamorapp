@@ -1,5 +1,8 @@
 import type { Metadata } from 'next';
 import { CatalogoClient } from './CatalogoClient';
+import { getPublicProducts } from '@/lib/store-server';
+
+export const revalidate = 1800;
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://glamorapp.co';
 
@@ -18,11 +21,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function CatalogoPage() {
+export default async function CatalogoPage() {
+  // Primera página renderizada en servidor → productos visibles para crawlers
+  const initialProducts = await getPublicProducts(20).catch(() => []);
   return (
     <>
       <h1 className="sr-only">Catálogo de Productos de Belleza</h1>
-      <CatalogoClient />
+      <CatalogoClient initialProducts={initialProducts} />
     </>
   );
 }

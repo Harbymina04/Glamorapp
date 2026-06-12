@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { getPublicStores, getPublicProducts } from '@/lib/store-server';
+import { productPath } from '@/lib/product-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +26,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Dynamic product pages
   const products = await getPublicProducts(500).catch(() => []);
   const product_routes: MetadataRoute.Sitemap = (products as any[]).map(p => ({
-    url: `${BASE}/tienda/producto/${p.id}`,
+    url: `${BASE}${productPath(p)}`,
     lastModified: p.updatedAt ? new Date(p.updatedAt) : (p.createdAt ? new Date(p.createdAt) : new Date()),
     changeFrequency: 'weekly' as const,
     priority: 0.6,

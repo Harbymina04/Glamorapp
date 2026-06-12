@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
+import { permanentRedirect } from 'next/navigation';
 
 export const revalidate = 3600;
 import { getPublicProduct } from '@/lib/store-server';
+import { extractProductId, productPath } from '@/lib/product-url';
 import { ProductDetailClient } from './ProductDetailClient';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://glamorapp.co';
@@ -9,7 +11,8 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://glamorapp.co';
 export async function generateMetadata(
   { params }: { params: { id: string } }
 ): Promise<Metadata> {
-  const product = await getPublicProduct(params.id);
+  const productId = extractProductId(params.id);
+  const product = await getPublicProduct(productId);
   if (!product) return { title: 'Producto no encontrado | Glamorapp' };
 
   const title = `${product.name}${product.category?.name ? ` — ${product.category.name}` : ''} | Glamorapp`;
@@ -17,7 +20,8 @@ export async function generateMetadata(
     ? product.description.slice(0, 160)
     : `Compra ${product.name} en Glamorapp. Precio: $${Number(product.salePrice).toLocaleString('es-CO')} COP.`;
   const image = product.images?.[0]?.url || `${APP_URL}/og`;
-  const url = `${APP_URL}/tienda/producto/${params.id}`;
+  // Canónica siempre en la forma con slug, aunque entren por el UUID pelado
+  const url = `${APP_URL}${productPath(product)}`;
 
   return {
     title,
@@ -42,7 +46,16 @@ export async function generateMetadata(
 }
 
 export default async function ProductDetailPage({ params }: { params: { id: string } }) {
-  const product = await getPublicProduct(params.id);
+  const productId = extractProductId(params.id);
+  const product = await getPublicProduct(productId);
+
+  // 301: URLs viejas (UUID pelado) o con slug desactualizado → forma canónica
+  if (product) {
+    const canonical = productPath(product);
+    if (decodeURIComponent(params.id) !== canonical.split('/').pop()) {
+      permanentRedirect(canonical);
+    }
+  }
 
   const jsonLd = product
     ? {
@@ -60,7 +73,7 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
         }),
         offers: {
           '@type': 'Offer',
-          url: `${APP_URL}/tienda/producto/${params.id}`,
+          url: `${APP_URL}${productPath(product)}`,
           priceCurrency: 'COP',
           price: String(Number(product.salePrice)),
           availability:
@@ -84,7 +97,7 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       )}
-      <ProductDetailClient id={params.id} initialProduct={product} />
+      <ProductDetailClient id={productId} initialProduct={product} />
     </>
   );
 }

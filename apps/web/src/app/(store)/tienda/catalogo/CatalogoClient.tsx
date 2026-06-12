@@ -22,13 +22,15 @@ const CAT_FROM_ID: Record<string, string> = {
 
 const PAGE_SIZE = 20;
 
-function CatalogoContent() {
+function CatalogoContent({ initialProducts = [] }: { initialProducts?: any[] }) {
   const searchParams = useSearchParams();
   const { isFavorite } = useStoreCart();
 
-  const [products, setProducts] = useState<any[]>([]);
+  // Productos precargados en el servidor (SSR) → el HTML inicial los contiene
+  // y los crawlers ven el catálogo sin ejecutar JS.
+  const [products, setProducts] = useState<any[]>(initialProducts);
   const [storefrontDiscounts, setStorefrontDiscounts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(initialProducts.length === 0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(false);
   const [page, setPage] = useState(0);
@@ -69,6 +71,11 @@ function CatalogoContent() {
   };
 
   useEffect(() => {
+    // Con productos del servidor no refetcheamos la primera página
+    if (initialProducts.length > 0) {
+      setHasMore(initialProducts.length >= PAGE_SIZE);
+      return;
+    }
     fetchProducts(true);
     // Load discounts after products arrive — re-fetch when products list changes
   }, []);
@@ -283,7 +290,7 @@ function CatalogoContent() {
   );
 }
 
-export function CatalogoClient() {
+export function CatalogoClient({ initialProducts = [] }: { initialProducts?: any[] }) {
   return (
     <Suspense fallback={
       <div className="max-w-7xl mx-auto px-4 py-8">
@@ -292,7 +299,7 @@ export function CatalogoClient() {
         </div>
       </div>
     }>
-      <CatalogoContent />
+      <CatalogoContent initialProducts={initialProducts} />
     </Suspense>
   );
 }

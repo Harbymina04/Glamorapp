@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Heart, ShoppingBag, MapPin } from 'lucide-react';
 import { useStoreCart } from '@/stores/store-cart';
 import { formatCOP } from '@/lib/store-utils';
+import { productPath } from '@/lib/product-url';
 import { StarRating } from './StarRating';
 
 interface ProductCardProps {
@@ -64,7 +65,7 @@ export function ProductCard({
   return (
     <div className="group bg-white border border-gray-200 rounded-xl overflow-hidden hover:-translate-y-1 hover:shadow-lg transition-all duration-200">
       {/* Image */}
-      <Link href={`/tienda/producto/${id}`} className="block relative aspect-square overflow-hidden">
+      <Link href={productPath({ id, name })} className="block relative aspect-square overflow-hidden">
         {imageUrl ? (
           <img src={imageUrl} alt={name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
         ) : (
@@ -95,7 +96,7 @@ export function ProductCard({
       {/* Content */}
       <div className="p-3 space-y-2">
         {rating > 0 && <StarRating rating={rating} count={reviewCount} size="sm" />}
-        <Link href={`/tienda/producto/${id}`} className="block">
+        <Link href={productPath({ id, name })} className="block">
           <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 leading-tight hover:text-[#EF2D8F] transition-colors">{name}</h3>
         </Link>
         {shopName && (
