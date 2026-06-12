@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useMemo, useRef, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { Search, SlidersHorizontal, X, Heart, AlertCircle, Loader2 } from 'lucide-react';
 import { ProductCard } from '@/components/store/ProductCard';
 import { storeApi, formatCOP } from '@/lib/store-utils';
@@ -23,7 +22,6 @@ const CAT_FROM_ID: Record<string, string> = {
 const PAGE_SIZE = 20;
 
 function CatalogoContent({ initialProducts = [] }: { initialProducts?: any[] }) {
-  const searchParams = useSearchParams();
   const { isFavorite } = useStoreCart();
 
   // Productos precargados en el servidor (SSR) → el HTML inicial los contiene
@@ -36,9 +34,20 @@ function CatalogoContent({ initialProducts = [] }: { initialProducts?: any[] }) 
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
 
-  const [search, setSearch] = useState(searchParams.get('q') ?? '');
-  const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get('q') ?? '');
-  const [category, setCategory] = useState(CAT_FROM_ID[searchParams.get('cat') ?? ''] ?? 'Todos');
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [category, setCategory] = useState('Todos');
+
+  // Los query params (?q=, ?cat=) se leen en el cliente tras montar:
+  // useSearchParams() forzaría el fallback de Suspense en el HTML estático
+  // y los crawlers verían el skeleton en vez de los productos.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const q = sp.get('q');
+    const cat = sp.get('cat');
+    if (q) { setSearch(q); setDebouncedSearch(q); }
+    if (cat && CAT_FROM_ID[cat]) setCategory(CAT_FROM_ID[cat]);
+  }, []);
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
   const [onlyFavs, setOnlyFavs] = useState(false);
