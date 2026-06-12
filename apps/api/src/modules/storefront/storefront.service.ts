@@ -647,7 +647,7 @@ export class StorefrontService {
     const productIds = [...new Set(dto.items.map((i: any) => i.productId).filter(Boolean))];
     const products = await this.prisma.product.findMany({
       where: { id: { in: productIds }, tenantId: dto.tenantId, deletedAt: null },
-      select: { id: true, name: true, salePrice: true, categoryId: true },
+      select: { id: true, name: true, salePrice: true, categoryId: true, currentStock: true },
     });
     const priceById = new Map(products.map(p => [p.id, p]));
 
@@ -675,6 +675,13 @@ export class StorefrontService {
         throw new BadRequestException(`Producto inválido en el pedido: ${i.productId}`);
       }
       const qty = Math.max(1, Math.floor(Number(i.qty) || 0));
+      // Política: bloquear pedidos sin stock suficiente (el cliente pagaría
+      // por producto inexistente; el descuento real ocurre al confirmar).
+      if (qty > Number(product.currentStock ?? 0)) {
+        throw new BadRequestException(
+          `Stock insuficiente para "${product.name}". Disponible: ${Math.max(0, Number(product.currentStock ?? 0))}`,
+        );
+      }
       const originalPrice = Number(product.salePrice);
       const discountPercent = bestDiscountPercent(product);
       const price = discountPercent > 0
@@ -690,6 +697,33 @@ export class StorefrontService {
       };
     });
 
+    // Config de comercio del tenant: pedido mínimo y costo de envío
+    const commerce = await this.prisma.storefront.findFirst({
+      where: { tenantId: dto.tenantId },
+      select: { minOrderAmount: true, deliveryFee: true, acceptsDelivery: true },
+    });
+
+    const minOrder = Number(commerce?.minOrderAmount ?? 0);
+    if (minOrder > 0 && subtotal < minOrder) {
+      throw new BadRequestException(
+        `El pedido mínimo de esta tienda es $${minOrder.toLocaleString('es-CO')}. Tu pedido suma $${subtotal.toLocaleString('es-CO')}.`,
+      );
+    }
+
+    const isDelivery = dto.deliveryMethod === 'delivery';
+    if (isDelivery && !commerce?.acceptsDelivery) {
+      throw new BadRequestException('Esta tienda no ofrece entrega a domicilio.');
+    }
+    if (isDelivery && !dto.deliveryAddress?.trim()) {
+      throw new BadRequestException('La dirección de entrega es obligatoria para domicilio.');
+    }
+    const deliveryFee = isDelivery ? Number(commerce?.deliveryFee ?? 0) : 0;
+
+    // La dirección viaja en buyerNotes (el modelo no tiene columna de dirección)
+    const notes = isDelivery
+      ? `📍 Domicilio: ${dto.deliveryAddress!.trim()}${dto.buyerNotes ? `\n${dto.buyerNotes}` : ''}`
+      : dto.buyerNotes ?? null;
+
     return this.prisma.storefrontOrder.create({
       data: {
         tenantId: dto.tenantId,
@@ -698,10 +732,11 @@ export class StorefrontService {
         buyerName: dto.buyerName,
         buyerEmail: dto.buyerEmail ?? null,
         buyerPhone: dto.buyerPhone ?? null,
-        buyerNotes: dto.buyerNotes ?? null,
+        buyerNotes: notes,
         items,
         subtotal,
-        total: subtotal,
+        deliveryFee,
+        total: subtotal + deliveryFee,
         paymentMethod: dto.paymentMethod ?? 'store',
         status: 'pending', // server-controlled — payment confirmed via webhook
       },
@@ -800,6 +835,15 @@ export class StorefrontService {
     const sf = await this.prisma.storefront.findFirst({ where: { slug, isActive: true } });
     if (!sf) throw new NotFoundException('Storefront not found');
     return sf;
+  }
+
+  /** Config pública de comercio (envío/mínimo) para el checkout. */
+  async getPublicCommerceConfig(tenantId: string) {
+    const sf = await this.prisma.storefront.findFirst({
+      where: { tenantId, isActive: true },
+      select: { acceptsDelivery: true, deliveryFee: true, minOrderAmount: true, acceptsOrders: true },
+    });
+    return sf ?? { acceptsDelivery: false, deliveryFee: 0, minOrderAmount: 0, acceptsOrders: true };
   }
 
   async getPublicLocations(tenantId: string) {

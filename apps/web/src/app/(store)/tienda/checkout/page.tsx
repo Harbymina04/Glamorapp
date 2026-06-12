@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   CheckCircle, CreditCard, Smartphone, Building2, Store,
-  Loader2, ShoppingBag, AlertCircle, ChevronDown,
+  Loader2, ShoppingBag, AlertCircle, ChevronDown, Truck,
 } from 'lucide-react';
 import { useStoreCart } from '@/stores/store-cart';
 import { storeApi, formatCOP } from '@/lib/store-utils';
@@ -49,6 +49,13 @@ export default function CheckoutPage() {
   });
   const setF = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
+  // Delivery (solo carritos de una tienda; multi-tienda = recoger en tienda)
+  const [deliveryMethod, setDeliveryMethod] = useState<'pickup' | 'delivery'>('pickup');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [commerceCfg, setCommerceCfg] = useState<{
+    acceptsDelivery: boolean; deliveryFee: number; minOrderAmount: number;
+  } | null>(null);
+
   // PSE-specific fields
   const [pseBanks, setPseBanks]     = useState<PseBank[]>([]);
   const [banksLoading, setBanksLoading] = useState(false);
@@ -84,6 +91,25 @@ export default function CheckoutPage() {
     items: shopItems,
   }));
 
+  const singleShop = shopSubtotals.length === 1;
+
+  // Config de comercio (envío/mínimo) del único tenant del carrito
+  useEffect(() => {
+    if (!singleShop || !shopSubtotals[0]?.tenantId) { setCommerceCfg(null); return; }
+    storeApi.get(`/storefront/public/commerce/${shopSubtotals[0].tenantId}`)
+      .then((cfg: any) => setCommerceCfg({
+        acceptsDelivery: !!cfg?.acceptsDelivery,
+        deliveryFee: Number(cfg?.deliveryFee ?? 0),
+        minOrderAmount: Number(cfg?.minOrderAmount ?? 0),
+      }))
+      .catch(() => setCommerceCfg(null));
+  }, [singleShop, shopSubtotals[0]?.tenantId]);
+
+  const isDelivery  = singleShop && deliveryMethod === 'delivery' && !!commerceCfg?.acceptsDelivery;
+  const deliveryFee = isDelivery ? (commerceCfg?.deliveryFee ?? 0) : 0;
+  const belowMinOrder = singleShop && (commerceCfg?.minOrderAmount ?? 0) > 0
+    && total() < (commerceCfg!.minOrderAmount);
+
   // ── Submit ──────────────────────────────────────────────────
 
   const handleSubmit = async () => {
@@ -96,6 +122,10 @@ export default function CheckoutPage() {
     }
     if (paymentMethod === 'pse' && (!pseForm.bankCode || !pseForm.docNumber || !form.email)) {
       setSubmitError('Para PSE completa: banco, tipo y número de documento, y correo electrónico.');
+      return;
+    }
+    if (isDelivery && !deliveryAddress.trim()) {
+      setSubmitError('Escribe la dirección de entrega para el domicilio.');
       return;
     }
 
@@ -122,6 +152,9 @@ export default function CheckoutPage() {
           buyerNotes: form.notes || undefined,
           items: orderItems,
           paymentMethod,
+          // Domicilio solo aplica en carritos de una tienda
+          deliveryMethod: isDelivery ? 'delivery' : 'pickup',
+          deliveryAddress: isDelivery ? deliveryAddress.trim() : undefined,
         });
       }
 
@@ -211,7 +244,9 @@ export default function CheckoutPage() {
 
   const pseMissing   = paymentMethod === 'pse' && (!pseForm.bankCode || !pseForm.docNumber || !form.email);
   const pseMultiShop = paymentMethod === 'pse' && Object.keys(grouped).length > 1;
-  const canSubmit    = !submitting && !!form.name && !!form.phone && !pseMissing && !pseMultiShop;
+  const addressMissing = isDelivery && !deliveryAddress.trim();
+  const canSubmit    = !submitting && !!form.name && !!form.phone
+    && !pseMissing && !pseMultiShop && !addressMissing && !belowMinOrder;
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -286,6 +321,41 @@ export default function CheckoutPage() {
               </div>
             </div>
           </div>
+
+          {/* Delivery method (solo carritos de una tienda con domicilio activo) */}
+          {singleShop && commerceCfg?.acceptsDelivery && (
+            <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+              <h3 className="font-bold text-gray-900">Entrega</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setDeliveryMethod('pickup')}
+                  className={`flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 transition text-left ${
+                    deliveryMethod === 'pickup' ? 'border-[#EF2D8F] bg-pink-50' : 'border-gray-200 hover:border-gray-300'
+                  }`}>
+                  <Store className={`w-5 h-5 ${deliveryMethod === 'pickup' ? 'text-[#EF2D8F]' : 'text-gray-400'}`} />
+                  <span className={`text-sm font-medium ${deliveryMethod === 'pickup' ? 'text-[#EF2D8F]' : 'text-gray-700'}`}>
+                    Recoger en tienda
+                  </span>
+                </button>
+                <button onClick={() => setDeliveryMethod('delivery')}
+                  className={`flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 transition text-left ${
+                    deliveryMethod === 'delivery' ? 'border-[#EF2D8F] bg-pink-50' : 'border-gray-200 hover:border-gray-300'
+                  }`}>
+                  <Truck className={`w-5 h-5 ${deliveryMethod === 'delivery' ? 'text-[#EF2D8F]' : 'text-gray-400'}`} />
+                  <span className={`text-sm font-medium ${deliveryMethod === 'delivery' ? 'text-[#EF2D8F]' : 'text-gray-700'}`}>
+                    Domicilio {commerceCfg.deliveryFee > 0 ? `(+${formatCOP(commerceCfg.deliveryFee)})` : '(gratis)'}
+                  </span>
+                </button>
+              </div>
+              {deliveryMethod === 'delivery' && (
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1">Dirección de entrega *</label>
+                  <textarea value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)} rows={2}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30 resize-none"
+                    placeholder="Calle, número, barrio, ciudad, referencias..." />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Payment method selector */}
           <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
@@ -421,12 +491,21 @@ export default function CheckoutPage() {
                   <span>-{formatCOP(totalDiscountAmount())}</span>
                 </div>
               )}
-              <div className="flex justify-between text-green-600">
-                <span>Envío</span><span className="font-medium">Gratis</span>
+              <div className={`flex justify-between ${deliveryFee > 0 ? 'text-gray-600' : 'text-green-600'}`}>
+                <span>Envío</span>
+                <span className="font-medium">
+                  {isDelivery ? (deliveryFee > 0 ? formatCOP(deliveryFee) : 'Gratis') : 'Recoger en tienda'}
+                </span>
               </div>
               <div className="border-t border-gray-200 pt-2 flex justify-between font-bold text-gray-900 text-base">
-                <span>Total</span><span>{formatCOP(total())}</span>
+                <span>Total</span><span>{formatCOP(total() + deliveryFee)}</span>
               </div>
+              {belowMinOrder && (
+                <div className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>El pedido mínimo de esta tienda es {formatCOP(commerceCfg!.minOrderAmount)}.</span>
+                </div>
+              )}
             </div>
 
             {submitError && (

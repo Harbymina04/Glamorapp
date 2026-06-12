@@ -51,4 +51,14 @@ export class CreatePublicOrderDto {
   @IsString()
   @IsIn(['store', 'pse', 'card', 'nequi'])
   paymentMethod?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['pickup', 'delivery'])
+  deliveryMethod?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  deliveryAddress?: string;
 }

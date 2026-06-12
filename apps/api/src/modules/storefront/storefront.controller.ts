@@ -105,6 +105,12 @@ export class StorefrontController {
     return this.service.getPublicLocations(tenantId);
   }
 
+  @Get('public/commerce/:tenantId')
+  @ApiOperation({ summary: 'Public commerce config (delivery fee, min order) for checkout' })
+  getPublicCommerce(@Param('tenantId') tenantId: string) {
+    return this.service.getPublicCommerceConfig(tenantId);
+  }
+
   @Post('public/orders')
   @HttpCode(HttpStatus.CREATED)
   @Throttle({ default: { ttl: 60_000, limit: 10 } }) // 10 pedidos/min por IP
