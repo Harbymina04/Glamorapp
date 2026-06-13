@@ -471,7 +471,7 @@ export class SalesService {
     return stale.length;
   }
 
-  async refund(tenantId: string, storeId: string, id: string, dto: { items: { saleItemId: string; quantity: number }[]; reason: string; refundMethod: string }) {
+  async refund(tenantId: string, storeId: string, id: string, dto: { items: { saleItemId: string; quantity: number }[]; reason: string; refundMethod: string }, userId?: string) {
     if (!dto.reason?.trim()) throw new BadRequestException('El motivo de devolución es requerido');
 
     const sale = await this.findOne(tenantId, storeId, id);
@@ -483,7 +483,6 @@ export class SalesService {
     }
 
     // Validar cantidades contra lo aún devolvible (quantity - refundedQuantity)
-    let refundSubtotal = 0;
     const refundedItems: { quantity: number; name: string }[] = [];
     const itemRefunds: { item: (typeof sale.items)[number]; qty: number }[] = [];
 
@@ -498,7 +497,6 @@ export class SalesService {
           `No se puede devolver ${qty} de "${item.name}": disponible para devolución ${available}`,
         );
       }
-      refundSubtotal += Number(item.unitPrice) * qty;
       refundedItems.push({ quantity: qty, name: item.name });
       itemRefunds.push({ item, qty });
     }
@@ -507,12 +505,19 @@ export class SalesService {
       throw new BadRequestException('Debe seleccionar al menos un ítem para devolver');
     }
 
-    // Calculate proportional discount and tax for the refunded portion
-    const saleSubtotal = Number(sale.subtotal);
-    const ratio = saleSubtotal > 0 ? refundSubtotal / saleSubtotal : 0;
-    const refundDiscount = Number(sale.discountAmount) * ratio;
-    const refundTax = Number(sale.taxAmount) * ratio;
-    const refundTotal = refundSubtotal - refundDiscount + refundTax;
+    // Reembolso proporcional, AGNÓSTICO al modo de IVA. El neto por línea
+    // (unitPrice - discountAmount campaña, por unidad) es la base común con la
+    // que el create derivó subtotal/taxAmount/total; por eso el mismo ratio
+    // aplica a total y taxAmount sin importar si el IVA va incluido o por encima.
+    // (Antes se usaba unitPrice con-IVA sobre sale.subtotal sin-IVA → sobre-reembolso ~19%.)
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const lineNet = (it: (typeof sale.items)[number], q: number) =>
+      (Number(it.unitPrice) - Number(it.discountAmount ?? 0)) * q;
+    const itemsNetAll = sale.items.reduce((s, it) => s + lineNet(it, it.quantity), 0);
+    const refundNet = itemRefunds.reduce((s, r) => s + lineNet(r.item, r.qty), 0);
+    const ratio = itemsNetAll > 0 ? refundNet / itemsNetAll : 0;
+    const refundTax = round2(Number(sale.taxAmount) * ratio);
+    const refundTotal = round2(Number(sale.total) * ratio);
 
     // ¿Devolución total? (todos los ítems quedan completamente devueltos)
     const isFullRefund = sale.items.every((it) => {
@@ -530,7 +535,8 @@ export class SalesService {
 
     const existingNotes = sale.notes || '';
 
-    // Todo atómico: tracking de devolución + stock + pago negativo + estado
+    // Todo atómico: tracking de devolución + stock + pago negativo + reversa
+    // contable + ajuste de comisiones + estado.
     const refunded = await this.prisma.$transaction(async (tx) => {
       for (const { item, qty } of itemRefunds) {
         await tx.saleItem.update({
@@ -557,6 +563,14 @@ export class SalesService {
             },
           });
         }
+
+        // #3 Revertir la comisión del servicio devuelto (proporcional a lo que queda).
+        if (item.itemType === 'service' && item.performedBy) {
+          const remainingQty = item.quantity - ((item.refundedQuantity ?? 0) + qty);
+          await this.commissions.adjustCommissionForRefund(
+            tx, tenantId, storeId, item.id, remainingQty, item.quantity,
+          );
+        }
       }
 
       await tx.payment.create({
@@ -568,6 +582,11 @@ export class SalesService {
           notes: `Devolución: ${dto.reason}`,
         },
       });
+
+      // #2 Reversa contable: asiento de ingreso negativo por la porción devuelta.
+      await this.accounting.registerRefundReversal(
+        tx, tenantId, storeId, id, sale.saleNumber, refundTotal, refundTax, userId || '',
+      );
 
       return tx.sale.update({
         where: { id, tenantId, storeId },

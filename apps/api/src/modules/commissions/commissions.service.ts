@@ -25,6 +25,39 @@ export class CommissionsService {
     return res.count;
   }
 
+  /**
+   * Ajusta la comisión de un ítem devuelto. Reduce baseAmount/amount en
+   * proporción a la cantidad que queda sin devolver; si no queda nada, la
+   * cancela. Las comisiones ya PAGADAS se conservan (misma política que al
+   * cancelar una venta). Corre dentro de la transacción de la devolución.
+   */
+  async adjustCommissionForRefund(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    storeId: string,
+    saleItemId: string,
+    remainingQty: number,
+    originalQty: number,
+  ): Promise<void> {
+    const commission = await tx.commission.findFirst({
+      where: { saleItemId, tenantId, storeId },
+    });
+    if (!commission || commission.status !== 'pending') return; // paid/cancelled: no se tocan
+
+    if (remainingQty <= 0 || originalQty <= 0) {
+      await tx.commission.update({ where: { id: commission.id }, data: { status: 'cancelled' } });
+      return;
+    }
+
+    const fraction = remainingQty / originalQty;
+    const newBase = Math.round(Number(commission.baseAmount) * fraction * 100) / 100;
+    const newAmount = Math.round(newBase * Number(commission.commissionRate)) / 100;
+    await tx.commission.update({
+      where: { id: commission.id },
+      data: { baseAmount: newBase, amount: newAmount },
+    });
+  }
+
   // ─── Auto-create commissions when a sale completes ─────────────
   // Called by SalesService after complete(). Only processes service items.
   async registerSaleCommissions(tenantId: string, storeId: string, saleId: string) {

@@ -87,7 +87,8 @@ export class SalesController {
     @StoreId() storeId: string,
     @Param('id') id: string,
     @Body() dto: RefundSaleDto,
+    @CurrentUser() user: any,
   ) {
-    return this.salesService.refund(tenantId, storeId, id, dto);
+    return this.salesService.refund(tenantId, storeId, id, dto, user?.id);
   }
 }

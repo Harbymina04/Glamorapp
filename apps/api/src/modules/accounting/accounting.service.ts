@@ -455,6 +455,41 @@ export class AccountingService {
     return res.count;
   }
 
+  /**
+   * Registra la reversa contable de una devolución: un asiento de ingreso con
+   * montos NEGATIVOS por la porción devuelta. Así los agregados (dashboard,
+   * estado de resultados, IVA generado) descuentan automáticamente lo devuelto.
+   * Corre dentro de la transacción de la devolución para garantizar atomicidad.
+   */
+  async registerRefundReversal(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    storeId: string,
+    saleId: string,
+    saleNumber: string,
+    refundTotal: number,
+    refundTax: number,
+    userId: string,
+  ): Promise<void> {
+    await tx.accountingTransaction.create({
+      data: {
+        tenantId,
+        storeId,
+        transactionType: 'income',
+        category: 'sales_refund',
+        description: `Devolución venta #${saleNumber}`,
+        saleId,
+        grossAmount: -Math.abs(refundTotal),
+        taxAmount: -Math.abs(refundTax),
+        retentionAmount: 0,
+        netAmount: -Math.abs(refundTotal),
+        ivaAmount: -Math.abs(refundTax),
+        transactionDate: new Date(),
+        createdBy: userId || null,
+      } as any,
+    });
+  }
+
   async reconcileTransaction(tenantId: string, storeId: string | null, role: string, id: string, userId: string) {
     if (!isTenantAdmin(role)) throw new ForbiddenException('Only tenant admins can reconcile transactions');
     await this.getTransaction(tenantId, storeId, role, id);
@@ -714,14 +749,30 @@ export class AccountingService {
     const reteIvaTotal = Number(txIncome._sum.reteIvaAmount || 0);
 
     // ── Compute Form 300 fields ────────────────────────────────
-    const baseGravada0  = Number(inv0._sum.subtotal || 0);
-    const baseGravada5  = Number(inv5._sum.subtotal || 0);
-    const baseGravada19 = Number(inv19._sum.subtotal || 0);
-    const baseTotalGravada = baseGravada5 + baseGravada19;
+    // Desglose por tarifa desde facturas electrónicas (cuando existan)
+    const baseGravada0   = Number(inv0._sum.subtotal || 0);
+    const baseGravada5   = Number(inv5._sum.subtotal || 0);
+    const ivaGenerado5   = Number(inv5._sum.ivaAmount || 0);
+    const invBaseGravada19 = Number(inv19._sum.subtotal || 0);
+    const invIvaGenerado19 = Number(inv19._sum.ivaAmount || 0);
 
-    const ivaGenerado5  = Number(inv5._sum.ivaAmount || 0);
-    const ivaGenerado19 = Number(inv19._sum.ivaAmount || 0);
-    const ivaGeneradoTotal = ivaGenerado5 + ivaGenerado19;
+    // IVA generado AUTORITATIVO: toda venta (POS + online) crea una
+    // AccountingTransaction income; las facturas son un subconjunto y no
+    // agregan transacción aparte → esta es la fuente completa y sin doble
+    // conteo. Las devoluciones entran como income negativo y se descuentan.
+    const ivaGeneradoTx  = Number(txIncome._sum.ivaAmount || 0);
+    const baseGravadaTx  = Number(txIncome._sum.grossAmount || 0) - ivaGeneradoTx;
+
+    // Lo no facturado electrónicamente (ventas POS) se atribuye a la tarifa
+    // estándar del 19%, garantizando que el total incluya el mostrador.
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const nonInvoicedIva  = Math.max(0, round2(ivaGeneradoTx - (ivaGenerado5 + invIvaGenerado19)));
+    const nonInvoicedBase = Math.max(0, round2(baseGravadaTx - (baseGravada5 + invBaseGravada19)));
+
+    const baseGravada19 = round2(invBaseGravada19 + nonInvoicedBase);
+    const ivaGenerado19 = round2(invIvaGenerado19 + nonInvoicedIva);
+    const baseTotalGravada = baseGravada5 + baseGravada19;
+    const ivaGeneradoTotal = round2(ivaGenerado5 + ivaGenerado19);
 
     const ivaDescontable = Number(txExpense._sum.ivaAmount || 0);
     const saldoFavorAnterior = 0; // TODO: pull from previous declaration
