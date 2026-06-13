@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/stores/auth-store';
+import { getUser } from '@/lib/auth';
 import { Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
@@ -13,6 +14,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+
+  // Un cliente autenticado nunca debe ver el login de la plataforma
+  useEffect(() => {
+    const u: any = getUser();
+    if (u?.role === 'customer') router.replace('/tienda');
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

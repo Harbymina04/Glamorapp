@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
+import { getUser } from '@/lib/auth';
 import { ArrowRight, Check, X, Loader2, Eye, EyeOff } from 'lucide-react';
 import { PhoneInput } from '@/components/ui/PhoneInput';
 
@@ -38,6 +39,12 @@ type SlugStatus = 'idle' | 'checking' | 'available' | 'taken' | 'invalid';
 export default function RegisterPage() {
   const router = useRouter();
   const { register, isLoading } = useAuthStore();
+
+  // Un cliente autenticado no debe ver el registro de negocio de la plataforma
+  useEffect(() => {
+    const u: any = getUser();
+    if (u?.role === 'customer') router.replace('/tienda');
+  }, [router]);
 
   const [form, setForm] = useState({
     tenantName: '',
