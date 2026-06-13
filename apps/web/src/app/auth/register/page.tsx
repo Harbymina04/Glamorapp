@@ -217,6 +217,11 @@ export default function RegisterPage() {
                   <SlugIndicator />
                 </span>
               </div>
+              {/* Vista previa de la URL pública */}
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Este será el enlace público de tu tienda:{' '}
+                <span className="font-mono text-foreground">glamorapp.co/tienda/{form.tenantSlug || 'mi-salon'}</span>
+              </p>
               {slugStatus === 'available' && (
                 <p className="text-xs text-green-600 mt-1">¡Disponible!</p>
               )}

@@ -67,9 +67,9 @@ function NailDesignModal({ design, onClose }: { design: any; onClose: () => void
               </div>
             )}
           </div>
-          <Link href="/tienda/catalogo" className="block w-full py-3 bg-[#EF2D8F] text-white rounded-xl font-bold text-center hover:bg-[#d4267e] transition">
-            Ver más diseños →
-          </Link>
+          <a href="#salones" onClick={onClose} className="block w-full py-3 bg-[#EF2D8F] text-white rounded-xl font-bold text-center hover:bg-[#d4267e] transition">
+            Agendar una cita →
+          </a>
         </div>
       </div>
     </div>
@@ -267,6 +267,7 @@ export function StoreHomeClient({ shops, products, designs, bannerUrl }: Props) 
                     category={p.category?.name}
                     categoryId={p.categoryId}
                     shopName={p.brand?.name || ''}
+                    isFeatured={p.isFeatured}
                     tenantId={p.tenantId} />
                 );
               })}
@@ -276,7 +277,7 @@ export function StoreHomeClient({ shops, products, designs, bannerUrl }: Props) 
 
         {/* Salones */}
         {shops.length > 0 && (
-          <section className="bg-gradient-to-br from-pink-50 to-fuchsia-50 rounded-3xl p-5 md:p-8">
+          <section id="salones" className="scroll-mt-24 bg-gradient-to-br from-pink-50 to-fuchsia-50 rounded-3xl p-5 md:p-8">
             <div className="text-center mb-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">💅 Agenda tu cita</h2>
               <p className="text-gray-500 text-sm max-w-md mx-auto">

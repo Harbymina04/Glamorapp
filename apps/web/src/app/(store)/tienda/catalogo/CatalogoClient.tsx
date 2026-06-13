@@ -350,6 +350,7 @@ function CatalogoContent({ initialProducts = [] }: { initialProducts?: any[] }) 
                       category={p.category?.name}
                       categoryId={p.categoryId}
                       distanceKm={p.distanceKm}
+                      isFeatured={p.isFeatured}
                       tenantId={p.tenantId} />
                   );
                 })}

@@ -22,6 +22,7 @@ interface ProductCardProps {
   categoryId?: string;
   tenantId?: string;
   distanceKm?: number | null;
+  isFeatured?: boolean;
 }
 
 const CATEGORY_GRADIENTS: Record<string, string> = {
@@ -35,7 +36,7 @@ const CATEGORY_GRADIENTS: Record<string, string> = {
 
 export function ProductCard({
   id, name, brand, price, oldPrice, rating = 0, reviewCount = 0,
-  shopName, imageUrl, category, categoryId, tenantId = '', distanceKm,
+  shopName, imageUrl, category, categoryId, tenantId = '', distanceKm, isFeatured,
 }: ProductCardProps) {
   const { addItem, toggleFavorite, isFavorite } = useStoreCart();
   const [toastMsg, setToastMsg] = useState('');
@@ -52,6 +53,8 @@ export function ProductCard({
       discountPercent: discount > 0 ? discount : undefined,
       shopName: shopName || '', tenantId, imageUrl, categoryId,
     });
+    setToastMsg('Agregado ✓');
+    setTimeout(() => setToastMsg(''), 1800);
   };
 
   const handleFavorite = (e: React.MouseEvent) => {
@@ -74,11 +77,19 @@ export function ProductCard({
             <ShoppingBag className="w-12 h-12 text-white/70" />
           </div>
         )}
-        {discount > 0 && (
-          <span className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-            -{discount}%
-          </span>
-        )}
+        {/* Badges comerciales */}
+        <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
+          {discount > 0 && (
+            <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full shadow">
+              -{discount}% OFERTA
+            </span>
+          )}
+          {isFeatured && (
+            <span className="bg-[#EF2D8F] text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow">
+              DESTACADO
+            </span>
+          )}
+        </div>
         <div className="absolute top-2 right-2">
           <button
             onClick={handleFavorite}

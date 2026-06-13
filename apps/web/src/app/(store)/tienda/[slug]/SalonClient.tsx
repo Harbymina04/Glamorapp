@@ -63,7 +63,7 @@ function LocationCard({ store }: { store: any }) {
   );
 }
 
-function NailDesignModal({ design, onClose }: { design: any; onClose: () => void }) {
+function NailDesignModal({ design, onClose, onBook }: { design: any; onClose: () => void; onBook: () => void }) {
   const { toggleFavorite, isFavorite } = useStoreCart();
   const fav = isFavorite(design.id);
   const GRADIENTS = [
@@ -138,8 +138,8 @@ function NailDesignModal({ design, onClose }: { design: any; onClose: () => void
               </div>
             </div>
           )}
-          <button onClick={onClose} className="block w-full py-3 bg-[#EF2D8F] text-white rounded-xl font-bold text-center hover:bg-[#d4267e] transition">
-            Cerrar
+          <button onClick={onBook} className="block w-full py-3 bg-[#EF2D8F] text-white rounded-xl font-bold text-center hover:bg-[#d4267e] transition">
+            Agendar una cita →
           </button>
         </div>
       </div>
@@ -271,6 +271,7 @@ export function SalonClient({ storefront, products, services, designs, reviews, 
                     price={Number(p.salePrice || p.price || 0)}
                     imageUrl={p.images?.[0]?.url || p.imageUrl}
                     category={p.category?.name} shopName={p.brand?.name || ''}
+                    isFeatured={p.isFeatured}
                     tenantId={p.tenantId} />
                 ))}
               </div>
@@ -339,7 +340,11 @@ export function SalonClient({ storefront, products, services, designs, reviews, 
       )}
 
       {selectedDesign && (
-        <NailDesignModal design={selectedDesign} onClose={() => setSelectedDesign(null)} />
+        <NailDesignModal
+          design={selectedDesign}
+          onClose={() => setSelectedDesign(null)}
+          onBook={() => { setActiveTab('servicios'); setSelectedDesign(null); }}
+        />
       )}
 
       {/* Chatbot con contexto del salón */}

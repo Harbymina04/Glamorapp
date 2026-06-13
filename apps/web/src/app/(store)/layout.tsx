@@ -201,8 +201,13 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
           <div>
             <h4 className="font-semibold mb-3 text-sm">Contacto</h4>
             <ul className="space-y-2 text-sm text-gray-400">
-              <li>soporte@glamorapp.com</li>
-              <li>+57 300 000 0000</li>
+              <li><a href="mailto:soporte@glamorapp.co" className="hover:text-white transition">soporte@glamorapp.co</a></li>
+              <li>Cali, Colombia</li>
+            </ul>
+            <h4 className="font-semibold mt-4 mb-2 text-sm">Legal</h4>
+            <ul className="space-y-2 text-sm text-gray-400">
+              <li><Link href="/tienda/terminos" className="hover:text-white transition">Términos y condiciones</Link></li>
+              <li><Link href="/tienda/privacidad" className="hover:text-white transition">Política de privacidad</Link></li>
             </ul>
           </div>
         </div>
