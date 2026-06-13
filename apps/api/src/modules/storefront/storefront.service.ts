@@ -23,6 +23,8 @@ const PUBLIC_SERVICE_FIELDS = {
   name: true, description: true, storeDescription: true,
   category: true, price: true, durationMinutes: true,
   color: true, ivaRate: true, isStoreVisible: true,
+  // necesario para que la tienda muestre el botón "Agendar" de cada servicio
+  allowsOnlineBooking: true,
 } as const;
 
 const PUBLIC_NAIL_DESIGN_FIELDS = {
@@ -74,7 +76,7 @@ const STORE_LOCATION_EDITABLE = [
   'phone', 'email', 'slogan', 'logoUrl', 'businessHours',
 ] as const;
 
-const SERVICE_VISIBILITY_EDITABLE = ['isStoreVisible', 'storeDescription'] as const;
+const SERVICE_VISIBILITY_EDITABLE = ['isStoreVisible', 'storeDescription', 'allowsOnlineBooking'] as const;
 
 @Injectable()
 export class StorefrontService {
