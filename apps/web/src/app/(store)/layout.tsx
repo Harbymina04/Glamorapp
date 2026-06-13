@@ -43,6 +43,8 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
   const router = useRouter();
   const itemCount = mounted ? count() : 0;
   const favCount  = mounted ? favorites.length : 0;
+  // Un cliente autenticado no debe ver accesos a la plataforma (login de negocio)
+  const isCustomer = mounted && isAuthenticated && user?.role === 'customer';
 
   const handleSearchKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && search.trim()) {
@@ -186,14 +188,16 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
               <li><Link href="/tienda" className="hover:text-white transition">Servicios</Link></li>
             </ul>
           </div>
-          <div>
-            <h4 className="font-semibold mb-3 text-sm">Para negocios</h4>
-            <ul className="space-y-2 text-sm text-gray-400">
-              <li><Link href="/auth/register" className="hover:text-white transition">Registra tu salón</Link></li>
-              <li><Link href="/auth/login" className="hover:text-white transition">Iniciar sesión</Link></li>
-              <li><Link href="/dashboard" className="hover:text-white transition">Panel de control</Link></li>
-            </ul>
-          </div>
+          {!isCustomer && (
+            <div>
+              <h4 className="font-semibold mb-3 text-sm">Para negocios</h4>
+              <ul className="space-y-2 text-sm text-gray-400">
+                <li><Link href="/auth/register" className="hover:text-white transition">Registra tu salón</Link></li>
+                <li><Link href="/auth/login" className="hover:text-white transition">Iniciar sesión</Link></li>
+                <li><Link href="/dashboard" className="hover:text-white transition">Panel de control</Link></li>
+              </ul>
+            </div>
+          )}
           <div>
             <h4 className="font-semibold mb-3 text-sm">Contacto</h4>
             <ul className="space-y-2 text-sm text-gray-400">

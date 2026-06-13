@@ -18,7 +18,10 @@ async function handleResponse(res: Response) {
     if (res.status === 401 && typeof window !== 'undefined') {
       const { clearAuth } = await import('@/lib/auth');
       clearAuth();
-      window.location.href = '/auth/login';
+      // Un cliente de la tienda NUNCA debe terminar en el login de la plataforma:
+      // si está en el storefront, lo enviamos a su propio login.
+      const inStore = window.location.pathname.startsWith('/tienda');
+      window.location.href = inStore ? '/tienda/auth/login' : '/auth/login';
     }
     const body = await res.json().catch(() => ({ message: 'Request failed' }));
     throw new ApiError(res.status, body.message || 'Request failed');

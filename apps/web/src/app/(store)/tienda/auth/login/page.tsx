@@ -28,7 +28,7 @@ function LoginForm() {
       const { user } = useAuthStore.getState();
       if (user?.role !== 'customer') {
         useAuthStore.getState().logout();
-        setError('Esta cuenta es de negocio. Usa el acceso en /auth/login.');
+        setError('Esta cuenta no es de cliente. Verifica tus datos o crea una cuenta de cliente.');
         return;
       }
 
