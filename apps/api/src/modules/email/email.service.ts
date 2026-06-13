@@ -324,6 +324,36 @@ export class EmailService {
     await this.send(email, subject, html);
   }
 
+  /** Reseteo de contraseña para clientes del storefront (enlace a /tienda). */
+  async sendCustomerPasswordReset(email: string, token: string, appUrl: string): Promise<void> {
+    const resetUrl = `${appUrl}/tienda/auth/reset-password?token=${token}`;
+    const subject = '🔐 Restablecer tu contraseña – Glamorapp';
+    const html = this.passwordResetTemplate(resetUrl);
+    await this.send(email, subject, html);
+  }
+
+  /** Bienvenida al cliente que se registra en la tienda. */
+  async sendCustomerWelcome(email: string, firstName: string, appUrl: string): Promise<void> {
+    const storeUrl = `${appUrl}/tienda`;
+    const subject = '💖 ¡Bienvenido a Glamorapp!';
+    const html = this.baseLayout(`
+      <h2>¡Hola, ${firstName}! 🎉</h2>
+      <p>Tu cuenta fue creada con éxito. Ya puedes comprar productos, agendar citas y seguir tus pedidos desde tu cuenta.</p>
+      <div class="detail-box">
+        <p><strong style="width:auto;">Con tu cuenta puedes:</strong></p>
+        <p>🛍️ Comprar en las mejores tiendas de belleza</p>
+        <p>💅 Agendar citas en salones</p>
+        <p>📦 Hacer seguimiento a tus pedidos</p>
+        <p>❤️ Guardar tus productos favoritos</p>
+      </div>
+      <div style="text-align:center;">
+        <a href="${storeUrl}" class="btn">Ir a la tienda →</a>
+      </div>
+      <p style="margin-top:24px;font-size:13px;color:#6b7280;">¡Gracias por unirte! Estamos para ayudarte. 💖</p>
+    `);
+    await this.send(email, subject, html);
+  }
+
   // ─── HTML Templates ────────────────────────────────────────────────────────
 
   private baseLayout(content: string): string {

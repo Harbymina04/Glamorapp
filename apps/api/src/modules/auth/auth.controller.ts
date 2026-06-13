@@ -86,6 +86,13 @@ export class AuthController {
     return this.authService.forgotPassword(dto.email);
   }
 
+  @Post('customer/forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 3_600_000, limit: 5 } }) // 5 intentos por hora por IP
+  forgotPasswordCustomer(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPasswordCustomer(dto.email);
+  }
+
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 3_600_000, limit: 5 } }) // 5 intentos por hora

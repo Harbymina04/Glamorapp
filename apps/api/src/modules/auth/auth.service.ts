@@ -228,6 +228,11 @@ export class AuthService {
       },
     });
 
+    // Correo de bienvenida (fire-and-forget — no bloquea el registro)
+    const appUrl = this.configService.get<string>('APP_URL') || 'http://localhost:3000';
+    this.email.sendCustomerWelcome(user.email, user.firstName, appUrl)
+      .catch(err => console.error('Customer welcome email failed:', err.message));
+
     return this.generateTokens(user);
   }
 
@@ -441,6 +446,32 @@ export class AuthService {
       success: true,
       message: 'Si el email existe, recibirás instrucciones para resetear tu contraseña.',
     };
+  }
+
+  /**
+   * Solicitud de reseteo de contraseña para CLIENTES del storefront.
+   * Apunta solo a cuentas de plataforma (tenantId null, role customer) y envía
+   * un enlace que lleva a /tienda/auth/reset-password. Igual que el flujo de
+   * negocio, siempre responde éxito para no filtrar qué correos existen.
+   */
+  async forgotPasswordCustomer(email: string) {
+    const generic = { success: true, message: 'Si el email existe, recibirás instrucciones para restablecer tu contraseña.' };
+
+    const user = await this.prisma.user.findFirst({
+      where: { email, tenantId: null, role: 'customer' as any, isActive: true, deletedAt: null },
+    });
+    if (!user) return generic;
+
+    const token = uuidv4();
+    await this.prisma.passwordReset.create({
+      data: { userId: user.id, token, expiresAt: new Date(Date.now() + 15 * 60 * 1000) },
+    });
+
+    const appUrl = this.configService.get<string>('APP_URL') || 'http://localhost:3000';
+    this.email.sendCustomerPasswordReset(user.email, token, appUrl)
+      .catch(err => console.error('Customer password reset email failed:', err.message));
+
+    return generic;
   }
 
   /**
