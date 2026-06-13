@@ -631,7 +631,7 @@ export class StorefrontService {
     }
   }
 
-  async createOrder(dto: CreatePublicOrderDto) {
+  async createOrder(dto: CreatePublicOrderDto, userId: string | null = null) {
     // Folio colisión-resistente: timestamp base36 + sufijo aleatorio (los últimos
     // 6 dígitos del timestamp se repetían cada ~16 min y entre tenants).
     const orderNumber = `GA-${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
@@ -751,6 +751,7 @@ export class StorefrontService {
       data: {
         tenantId: dto.tenantId,
         storeId,
+        userId, // cliente autenticado (si lo hay) — para "Mis pedidos"
         orderNumber,
         buyerName: dto.buyerName,
         buyerEmail: dto.buyerEmail ?? null,
@@ -762,7 +763,7 @@ export class StorefrontService {
         total: subtotal + deliveryFee,
         paymentMethod: dto.paymentMethod ?? 'store',
         status: 'pending', // server-controlled — payment confirmed via webhook
-      },
+      } as any,
     });
   }
 
@@ -775,10 +776,15 @@ export class StorefrontService {
       where: { id: userId },
       select: { email: true },
     });
-    if (!user?.email) return [];
+    if (!user) return [];
+
+    // Empareja por userId (pedidos hechos autenticado) O por email del comprador
+    // (compatibilidad con pedidos previos / hechos como invitado con su correo).
+    const or: any[] = [{ userId } as any];
+    if (user.email) or.push({ buyerEmail: { equals: user.email, mode: 'insensitive' } });
 
     return this.prisma.storefrontOrder.findMany({
-      where: { buyerEmail: { equals: user.email, mode: 'insensitive' } },
+      where: { OR: or },
       orderBy: { createdAt: 'desc' },
       take: 100,
       select: {

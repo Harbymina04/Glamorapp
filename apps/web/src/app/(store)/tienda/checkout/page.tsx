@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useStoreCart } from '@/stores/store-cart';
 import { storeApi, formatCOP } from '@/lib/store-utils';
+import { getToken } from '@/lib/auth';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -160,7 +161,7 @@ export default function CheckoutPage() {
           // Domicilio solo aplica en carritos de una tienda
           deliveryMethod: isDelivery ? 'delivery' : 'pickup',
           deliveryAddress: isDelivery ? deliveryAddress.trim() : undefined,
-        });
+        }, getToken()); // token opcional → asocia el pedido a la cuenta si hay sesión
       }
 
       const orderNum: string = createdOrder?.orderNumber || 'GA-XXXXX';

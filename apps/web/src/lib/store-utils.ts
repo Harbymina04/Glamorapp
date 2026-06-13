@@ -6,10 +6,14 @@ export const storeApi = {
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
-  post: async (path: string, body: any) => {
+  // token opcional: si se pasa, el backend puede asociar la acción al cliente
+  post: async (path: string, body: any, token?: string | null) => {
     const res = await fetch(`${API}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(await res.text());

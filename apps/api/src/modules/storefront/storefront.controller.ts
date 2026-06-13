@@ -19,6 +19,7 @@ import { StorefrontService } from './storefront.service';
 import { StorefrontChatService } from './storefront-chat.service';
 import { DiscountsService } from '../discounts/discounts.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { SkipSubscriptionCheck } from '../../common/decorators/skip-subscription.decorator';
@@ -120,9 +121,11 @@ export class StorefrontController {
 
   @Post('public/orders')
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(OptionalJwtAuthGuard) // no exige login; asocia el pedido si lo hay
   @Throttle({ default: { ttl: 60_000, limit: 10 } }) // 10 pedidos/min por IP
-  createPublicOrder(@Body() dto: CreatePublicOrderDto) {
-    return this.service.createOrder(dto);
+  createPublicOrder(@Body() dto: CreatePublicOrderDto, @Request() req: any) {
+    // userId server-side (del token), nunca del body → no manipulable
+    return this.service.createOrder(dto, req.user?.id ?? null);
   }
 
   @Post('public/reviews')

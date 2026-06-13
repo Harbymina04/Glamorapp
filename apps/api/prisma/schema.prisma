@@ -309,6 +309,7 @@ model User {
   saleItemsPerformed  SaleItem[]   @relation("PerformedBy")
   commissions         Commission[]
   commissionsPaid     Commission[] @relation("PaidBy")
+  storefrontOrders    StorefrontOrder[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -1753,6 +1754,9 @@ model StorefrontOrder {
   tenant                Tenant    @relation(fields: [tenantId], references: [id])
   storeId               String?   @map("store_id") @db.Uuid
   store                 Store?    @relation(fields: [storeId], references: [id])
+  // Cliente de plataforma que hizo el pedido (si estaba autenticado al comprar)
+  userId                String?   @map("user_id") @db.Uuid
+  user                  User?     @relation(fields: [userId], references: [id])
   orderNumber           String    @map("order_number") @db.VarChar(20)
   buyerName             String    @map("buyer_name") @db.VarChar(255)
   buyerEmail            String?   @map("buyer_email") @db.VarChar(255)
