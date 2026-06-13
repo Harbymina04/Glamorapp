@@ -231,16 +231,18 @@ export class AuthService {
     return this.generateTokens(user);
   }
 
-  async updateProfile(userId: string, dto: { firstName?: string; lastName?: string; phone?: string }) {
+  async updateProfile(userId: string, dto: { firstName?: string; lastName?: string; phone?: string; address?: string; city?: string }) {
     const data: any = {};
     if (dto.firstName !== undefined) data.firstName = dto.firstName;
     if (dto.lastName !== undefined) data.lastName = dto.lastName;
     if (dto.phone !== undefined) data.phone = dto.phone || null;
+    if (dto.address !== undefined) data.address = dto.address || null;
+    if (dto.city !== undefined) data.city = dto.city || null;
 
     return this.prisma.user.update({
       where: { id: userId },
       data,
-      select: { id: true, email: true, firstName: true, lastName: true, phone: true, role: true },
+      select: { id: true, email: true, firstName: true, lastName: true, phone: true, address: true, city: true, role: true },
     });
   }
 

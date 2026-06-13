@@ -128,6 +128,16 @@ export class StorefrontController {
     return this.service.createOrder(dto, req.user?.id ?? null);
   }
 
+  // Crea N pedidos (uno por tienda) y dispara las notificaciones:
+  // un correo por tienda con sus productos + un único correo al cliente.
+  @Post('public/orders/batch')
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(OptionalJwtAuthGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  createPublicOrdersBatch(@Body() dto: any, @Request() req: any) {
+    return this.service.createOrdersBatch(dto, req.user?.id ?? null);
+  }
+
   @Post('public/reviews')
   @HttpCode(HttpStatus.CREATED)
   @Throttle({ default: { ttl: 3_600_000, limit: 10 } }) // 10 reseñas/hora por IP

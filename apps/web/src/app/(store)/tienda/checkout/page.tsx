@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { useStoreCart } from '@/stores/store-cart';
 import { storeApi, formatCOP } from '@/lib/store-utils';
-import { getToken } from '@/lib/auth';
+import { getToken, getUser } from '@/lib/auth';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -53,6 +53,19 @@ export default function CheckoutPage() {
   // Delivery (solo carritos de una tienda; multi-tienda = recoger en tienda)
   const [deliveryMethod, setDeliveryMethod] = useState<'pickup' | 'delivery'>('pickup');
   const [deliveryAddress, setDeliveryAddress] = useState('');
+
+  // Prefill desde la cuenta del cliente (si hay sesión): datos + dirección de entrega
+  useEffect(() => {
+    const u: any = getUser();
+    if (!u || u.role !== 'customer') return;
+    setForm(f => ({
+      name:  f.name  || `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim(),
+      phone: f.phone || u.phone || '',
+      email: f.email || u.email || '',
+      notes: f.notes,
+    }));
+    if (u.address) setDeliveryAddress(prev => prev || u.address);
+  }, []);
   const [commerceCfg, setCommerceCfg] = useState<{
     acceptsDelivery: boolean; deliveryFee: number; minOrderAmount: number; freeDeliveryThreshold: number;
   } | null>(null);
@@ -139,31 +152,24 @@ export default function CheckoutPage() {
     setSubmitError('');
 
     try {
-      // 1. Create one order per shop
-      let createdOrder: any = null;
-      for (const { shop, subtotal, tenantId, items: shopItems } of shopSubtotals) {
-        const orderItems = shopItems.map(i => ({
-          productId: i.productId,
-          name: i.name,
-          qty: i.qty,
-          price: i.price,
-        }));
-        // subtotal/total are recomputed server-side from authoritative
-        // product prices — do not send them (rejected by validation).
-        createdOrder = await storeApi.post('/storefront/public/orders', {
+      // 1. Crear todos los pedidos en una sola llamada. El backend crea uno por
+      // tienda y dispara los correos: uno a cada tienda (sus productos) y UNO
+      // solo al cliente con todos los pedidos. Token opcional → asocia a la cuenta.
+      const batch = await storeApi.post('/storefront/public/orders/batch', {
+        buyerName: form.name,
+        buyerPhone: form.phone,
+        buyerEmail: form.email || undefined,
+        buyerNotes: form.notes || undefined,
+        paymentMethod,
+        deliveryMethod: isDelivery ? 'delivery' : 'pickup',
+        deliveryAddress: isDelivery ? deliveryAddress.trim() : undefined,
+        shops: shopSubtotals.map(({ tenantId, items: shopItems }) => ({
           tenantId,
-          buyerName: form.name,
-          buyerPhone: form.phone,
-          buyerEmail: form.email || undefined,
-          buyerNotes: form.notes || undefined,
-          items: orderItems,
-          paymentMethod,
-          // Domicilio solo aplica en carritos de una tienda
-          deliveryMethod: isDelivery ? 'delivery' : 'pickup',
-          deliveryAddress: isDelivery ? deliveryAddress.trim() : undefined,
-        }, getToken()); // token opcional → asocia el pedido a la cuenta si hay sesión
-      }
+          items: shopItems.map(i => ({ productId: i.productId, name: i.name, qty: i.qty, price: i.price })),
+        })),
+      }, getToken());
 
+      const createdOrder: any = batch?.orders?.[0] ?? null;
       const orderNum: string = createdOrder?.orderNumber || 'GA-XXXXX';
 
       // 2. If PSE → create Wompi transaction and redirect to bank

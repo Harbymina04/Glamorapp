@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DiscountsService } from '../discounts/discounts.service';
+import { EmailService } from '../email/email.service';
 import { CreatePublicOrderDto } from './dto/public-order.dto';
 import { CreatePublicReviewDto } from './dto/public-review.dto';
 
@@ -84,6 +85,7 @@ export class StorefrontService {
   constructor(
     private prisma: PrismaService,
     private discounts: DiscountsService,
+    private email: EmailService,
   ) {}
 
   // ── My Storefront (admin) ──────────────────────────────────
@@ -765,6 +767,93 @@ export class StorefrontService {
         status: 'pending', // server-controlled — payment confirmed via webhook
       } as any,
     });
+  }
+
+  /**
+   * Crea un pedido por cada tienda del carrito y dispara los correos:
+   * uno por tienda (con SUS productos) y UNO solo al cliente (agregado).
+   * Los emails son fire-and-forget: no bloquean ni fallan la compra.
+   */
+  async createOrdersBatch(dto: any, userId: string | null = null) {
+    if (!Array.isArray(dto.shops) || dto.shops.length === 0) {
+      throw new BadRequestException('El pedido no contiene tiendas.');
+    }
+
+    const created: any[] = [];
+    for (const shop of dto.shops) {
+      const order = await this.createOrder({
+        tenantId: shop.tenantId,
+        buyerName: dto.buyerName,
+        buyerEmail: dto.buyerEmail,
+        buyerPhone: dto.buyerPhone,
+        buyerNotes: dto.buyerNotes,
+        items: shop.items,
+        paymentMethod: dto.paymentMethod,
+        deliveryMethod: dto.deliveryMethod,
+        deliveryAddress: dto.deliveryAddress,
+      } as any, userId);
+      created.push(order);
+    }
+
+    this.sendOrderEmails(created, dto, userId)
+      .catch(err => this.logger.warn(`No se pudieron enviar correos de pedido: ${err.message}`));
+
+    return { orders: created };
+  }
+
+  /** Envía la notificación a cada tienda y un único correo de resumen al cliente. */
+  private async sendOrderEmails(orders: any[], dto: any, userId: string | null) {
+    const isDelivery = dto.deliveryMethod === 'delivery';
+
+    // ── Email por tienda (solo sus productos) ──────────────────
+    const storeOrders: { order: any; storeName: string }[] = [];
+    for (const o of orders) {
+      const [store, sf] = await Promise.all([
+        o.storeId
+          ? this.prisma.store.findUnique({ where: { id: o.storeId }, select: { name: true, email: true } })
+          : Promise.resolve(null),
+        this.prisma.storefront.findFirst({ where: { tenantId: o.tenantId }, select: { displayName: true, publicEmail: true } }),
+      ]);
+      const storeName = sf?.displayName || store?.name || 'Tienda';
+      storeOrders.push({ order: o, storeName });
+
+      const to = store?.email || sf?.publicEmail;
+      if (to) {
+        await this.email.sendStorefrontOrderToStore({
+          to,
+          orderNumber: o.orderNumber,
+          storeName,
+          buyerName: o.buyerName,
+          buyerPhone: o.buyerPhone ?? undefined,
+          deliveryMethod: dto.deliveryMethod,
+          deliveryAddress: dto.deliveryAddress,
+          items: Array.isArray(o.items) ? o.items : [],
+          total: Number(o.total),
+        });
+      }
+    }
+
+    // ── Un solo email al cliente (agrega todos los pedidos) ────
+    let customerEmail: string | null = dto.buyerEmail || null;
+    if (!customerEmail && userId) {
+      const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+      customerEmail = u?.email ?? null;
+    }
+    if (customerEmail) {
+      await this.email.sendStorefrontOrderToCustomer({
+        to: customerEmail,
+        customerName: dto.buyerName || 'cliente',
+        orders: storeOrders.map(({ order, storeName }) => ({
+          orderNumber: order.orderNumber,
+          storeName,
+          items: Array.isArray(order.items) ? order.items : [],
+          total: Number(order.total),
+          deliveryMethod: dto.deliveryMethod,
+          deliveryAddress: dto.deliveryAddress,
+        })),
+        grandTotal: orders.reduce((s, o) => s + Number(o.total), 0),
+      });
+    }
   }
 
   /**

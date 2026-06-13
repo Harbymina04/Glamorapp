@@ -200,6 +200,98 @@ export class EmailService {
     });
   }
 
+  // ─── Storefront orders ──────────────────────────────────────────
+
+  /** Notifica a la TIENDA un nuevo pedido (solo sus productos). */
+  async sendStorefrontOrderToStore(opts: {
+    to: string;
+    orderNumber: string;
+    storeName: string;
+    buyerName: string;
+    buyerPhone?: string;
+    deliveryMethod?: string;
+    deliveryAddress?: string;
+    items: { name: string; qty: number; price: number }[];
+    total: number;
+  }): Promise<void> {
+    const subject = `🛍️ Nuevo pedido ${opts.orderNumber} – ${opts.storeName}`;
+    const fmt = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`;
+    const rows = opts.items.map(i =>
+      `<tr><td style="padding:6px 0;color:#374151;">${i.name} × ${i.qty}</td><td style="padding:6px 0;text-align:right;color:#111827;font-weight:600;">${fmt(i.price * i.qty)}</td></tr>`,
+    ).join('');
+    const delivery = opts.deliveryMethod === 'delivery'
+      ? `<p><strong>Entrega:</strong> Domicilio</p><p><strong>Dirección:</strong> ${opts.deliveryAddress ?? '—'}</p>`
+      : `<p><strong>Entrega:</strong> Recoge en tienda</p>`;
+    const html = this.baseLayout(`
+      <h2>Nuevo pedido recibido 🎉</h2>
+      <p>Tienes un nuevo pedido en tu tienda online.</p>
+      <div class="detail-box">
+        <p><strong>Pedido:</strong> ${opts.orderNumber}</p>
+        <p><strong>Cliente:</strong> ${opts.buyerName}</p>
+        ${opts.buyerPhone ? `<p><strong>Teléfono:</strong> ${opts.buyerPhone}</p>` : ''}
+        ${delivery}
+      </div>
+      <table style="width:100%;border-collapse:collapse;margin-top:12px;">
+        ${rows}
+        <tr><td style="padding:10px 0 0;border-top:2px solid #a855f7;font-weight:800;">TOTAL</td><td style="padding:10px 0 0;border-top:2px solid #a855f7;text-align:right;font-weight:800;color:#a855f7;">${fmt(opts.total)}</td></tr>
+      </table>
+      <p style="margin-top:20px;font-size:13px;color:#6b7280;">Ingresa a tu panel para gestionar el pedido.</p>
+    `);
+    await this.send(opts.to, subject, html);
+  }
+
+  /** Confirma al CLIENTE su(s) pedido(s) en un solo correo (agrega multi-tienda). */
+  async sendStorefrontOrderToCustomer(opts: {
+    to: string;
+    customerName: string;
+    orders: {
+      orderNumber: string;
+      storeName: string;
+      items: { name: string; qty: number; price: number }[];
+      total: number;
+      deliveryMethod?: string;
+      deliveryAddress?: string;
+    }[];
+    grandTotal: number;
+  }): Promise<void> {
+    const fmt = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`;
+    const multi = opts.orders.length > 1;
+    const subject = multi
+      ? `✅ Recibimos tus ${opts.orders.length} pedidos`
+      : `✅ Recibimos tu pedido ${opts.orders[0]?.orderNumber ?? ''}`;
+
+    const blocks = opts.orders.map(o => {
+      const rows = o.items.map(i =>
+        `<tr><td style="padding:5px 0;color:#374151;font-size:14px;">${i.name} × ${i.qty}</td><td style="padding:5px 0;text-align:right;color:#111827;font-size:14px;">${fmt(i.price * i.qty)}</td></tr>`,
+      ).join('');
+      const delivery = o.deliveryMethod === 'delivery'
+        ? `Domicilio${o.deliveryAddress ? ` · ${o.deliveryAddress}` : ''}`
+        : 'Recoge en tienda';
+      return `
+        <div class="detail-box">
+          <p style="margin:0 0 8px;"><strong style="width:auto;">${o.storeName}</strong> — Pedido ${o.orderNumber}</p>
+          <p style="margin:0 0 8px;font-size:13px;color:#6b7280;">${delivery}</p>
+          <table style="width:100%;border-collapse:collapse;">
+            ${rows}
+            <tr><td style="padding:8px 0 0;border-top:1px solid #e5e7eb;font-weight:700;">Subtotal</td><td style="padding:8px 0 0;border-top:1px solid #e5e7eb;text-align:right;font-weight:700;">${fmt(o.total)}</td></tr>
+          </table>
+        </div>`;
+    }).join('');
+
+    const grand = multi
+      ? `<table style="width:100%;border-collapse:collapse;margin-top:8px;"><tr><td style="font-weight:800;font-size:16px;">TOTAL GENERAL</td><td style="text-align:right;font-weight:800;font-size:16px;color:#a855f7;">${fmt(opts.grandTotal)}</td></tr></table>`
+      : '';
+
+    const html = this.baseLayout(`
+      <h2>¡Gracias por tu compra, ${opts.customerName}!</h2>
+      <p>Recibimos tu${multi ? 's' : ''} pedido${multi ? 's' : ''}. ${multi ? 'Cada tienda procesará el suyo y te contactará.' : 'La tienda procesará tu pedido y te contactará.'}</p>
+      ${blocks}
+      ${grand}
+      <p style="margin-top:20px;font-size:13px;color:#6b7280;">Puedes ver el estado de tus pedidos en tu cuenta.</p>
+    `);
+    await this.send(opts.to, subject, html);
+  }
+
   async sendAppointmentCreated(data: AppointmentEmailData): Promise<void> {
     const subject = `✅ Cita confirmada – ${data.serviceName}`;
     const html = this.appointmentCreatedTemplate(data);

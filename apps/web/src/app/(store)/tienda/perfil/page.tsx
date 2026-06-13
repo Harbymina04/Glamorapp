@@ -208,13 +208,16 @@ function CartTab() {
 
 // ─── Mi información ─────────────────────────────────────────────────
 function InfoTab({ user, onUpdated }: { user: any; onUpdated: (u: any) => void }) {
-  const [form, setForm] = useState({ firstName: '', lastName: '', phone: '' });
+  const [form, setForm] = useState({ firstName: '', lastName: '', phone: '', address: '', city: '' });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    if (user) setForm({ firstName: user.firstName ?? '', lastName: user.lastName ?? '', phone: user.phone ?? '' });
+    if (user) setForm({
+      firstName: user.firstName ?? '', lastName: user.lastName ?? '', phone: user.phone ?? '',
+      address: user.address ?? '', city: user.city ?? '',
+    });
   }, [user]);
 
   const save = async () => {
@@ -257,6 +260,25 @@ function InfoTab({ user, onUpdated }: { user: any; onUpdated: (u: any) => void }
         <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
           placeholder="3001234567"
           className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30" />
+      </div>
+
+      <div className="pt-2 border-t border-gray-100">
+        <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5"><MapPin className="w-4 h-4 text-gray-400" /> Información de entrega</p>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-gray-600 block mb-1">Dirección de entrega</label>
+            <textarea value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} rows={2}
+              placeholder="Calle, número, barrio, referencias..."
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30 resize-none" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-600 block mb-1">Ciudad</label>
+            <input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))}
+              placeholder="Ej: Cali"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30" />
+          </div>
+          <p className="text-xs text-gray-400">Usaremos estos datos para autocompletar tus próximos pedidos a domicilio.</p>
+        </div>
       </div>
 
       {msg && <p className="text-sm text-green-600 flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> {msg}</p>}
