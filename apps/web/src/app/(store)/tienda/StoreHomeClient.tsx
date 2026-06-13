@@ -67,8 +67,9 @@ function NailDesignModal({ design, onClose }: { design: any; onClose: () => void
               </div>
             )}
           </div>
-          <a href="#salones" onClick={onClose} className="block w-full py-3 bg-[#EF2D8F] text-white rounded-xl font-bold text-center hover:bg-[#d4267e] transition">
-            Agendar una cita →
+          <a href={design.salonSlug ? `/tienda/${design.salonSlug}?tab=servicios` : '#salones'} onClick={onClose}
+            className="block w-full py-3 bg-[#EF2D8F] text-white rounded-xl font-bold text-center hover:bg-[#d4267e] transition">
+            {design.salonName ? `Agendar en ${design.salonName} →` : 'Agendar una cita →'}
           </a>
         </div>
       </div>

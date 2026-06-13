@@ -1171,11 +1171,26 @@ export class StorefrontService {
   async getPublicNailDesigns(query: any) {
     const where: any = { isStoreVisible: true };
     if (query.tenantId) where.tenantId = query.tenantId;
-    return this.prisma.nailDesign.findMany({
+    const designs = await this.prisma.nailDesign.findMany({
       where,
       take: 30,
       orderBy: { createdAt: 'desc' },
       select: PUBLIC_NAIL_DESIGN_FIELDS,
     });
+
+    // Adjuntar el salón (slug/nombre) de cada diseño para poder enlazar a su
+    // página y agendar la cita allí.
+    const tenantIds = [...new Set(designs.map(d => d.tenantId).filter(Boolean))] as string[];
+    if (tenantIds.length === 0) return designs;
+    const storefronts = await this.prisma.storefront.findMany({
+      where: { tenantId: { in: tenantIds }, isActive: true },
+      select: { tenantId: true, slug: true, displayName: true },
+    });
+    const byTenant = new Map(storefronts.map(s => [s.tenantId, s]));
+    return designs.map(d => ({
+      ...d,
+      salonSlug: byTenant.get(d.tenantId)?.slug ?? null,
+      salonName: byTenant.get(d.tenantId)?.displayName ?? null,
+    }));
   }
 }

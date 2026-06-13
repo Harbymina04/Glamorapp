@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   MapPin, Star, Phone, Instagram, Facebook,
@@ -168,6 +168,14 @@ interface Props {
 export function SalonClient({ storefront, products, services, designs, reviews, locations }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('productos');
   const [selectedDesign, setSelectedDesign] = useState<any>(null);
+
+  // Permite abrir una pestaña concreta vía ?tab= (ej. agendar desde un diseño).
+  // Se lee tras montar para no forzar render dinámico bajo ISR.
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    const valid: Tab[] = ['productos', 'servicios', 'diseños', 'reseñas', 'ubicaciones'];
+    if (tab && (valid as string[]).includes(tab)) setActiveTab(tab as Tab);
+  }, []);
 
   const tags: string[] = Array.isArray(storefront.tags) ? storefront.tags : [];
   const gradient = 'linear-gradient(135deg, #EF2D8F 0%, #8B5CF6 100%)';
