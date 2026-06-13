@@ -132,6 +132,14 @@ export class StorefrontController {
     return this.service.createReview(dto);
   }
 
+  // Pedidos del cliente autenticado (vínculo por email del comprador)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Get('public/my/orders')
+  myOrders(@Request() req: any) {
+    return this.service.getMyOrders(req.user.id);
+  }
+
   // ── Admin (auth required) ────────────────────────────────
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('superadmin', 'tenant_admin', 'store_admin')

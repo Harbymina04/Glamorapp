@@ -112,9 +112,16 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
             {/* Auth */}
             {mounted && isAuthenticated && user?.role === 'customer' ? (
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700 hidden sm:block">
-                  {user.firstName}
-                </span>
+                <Link
+                  href="/tienda/perfil"
+                  title="Mi cuenta"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
+                >
+                  <span className="w-7 h-7 rounded-full bg-gradient-to-br from-[#EF2D8F] to-purple-500 flex items-center justify-center text-white text-xs font-black">
+                    {(user.firstName?.[0] ?? 'U').toUpperCase()}
+                  </span>
+                  <span className="hidden sm:block">{user.firstName}</span>
+                </Link>
                 <button
                   onClick={() => logout()}
                   title="Cerrar sesión"

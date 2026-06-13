@@ -766,6 +766,30 @@ export class StorefrontService {
     });
   }
 
+  /**
+   * Pedidos del cliente autenticado (tienda online). Los StorefrontOrder no
+   * guardan userId, así que se vinculan por el email del comprador.
+   */
+  async getMyOrders(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (!user?.email) return [];
+
+    return this.prisma.storefrontOrder.findMany({
+      where: { buyerEmail: { equals: user.email, mode: 'insensitive' } },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      select: {
+        id: true, orderNumber: true, status: true, items: true,
+        subtotal: true, deliveryFee: true, total: true,
+        paymentMethod: true, paymentStatus: true, createdAt: true,
+        store: { select: { name: true } },
+      },
+    });
+  }
+
   // ── Reviews ───────────────────────────────────────────────
   async getReviews(tenantId: string, query: any) {
     const where: any = { tenantId };
