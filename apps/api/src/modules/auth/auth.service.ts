@@ -204,6 +204,18 @@ export class AuthService {
     this.email.sendWelcome(result.email, result.firstName, appUrl)
       .catch(err => console.error('Welcome email failed:', err.message));
 
+    // Aviso al admin de la plataforma (fire-and-forget)
+    const adminEmail = this.configService.get<string>('PLATFORM_ADMIN_EMAIL') || 'administracion@neurixa-ts.com';
+    this.email.sendNewTenantAlert({
+      to: adminEmail,
+      tenantName: dto.tenantName,
+      slug: dto.tenantSlug,
+      ownerName: `${dto.firstName} ${dto.lastName}`.trim(),
+      ownerEmail: dto.email,
+      ownerPhone: dto.phone ?? null,
+      appUrl,
+    }).catch(err => console.error('New-tenant alert email failed:', err.message));
+
     return this.generateTokens(result);
   }
 

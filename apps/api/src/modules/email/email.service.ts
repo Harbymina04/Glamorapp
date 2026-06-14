@@ -310,6 +310,55 @@ export class EmailService {
     await this.send(data.customerEmail, subject, html);
   }
 
+  /** Aviso al admin de la plataforma cuando se registra un nuevo negocio. */
+  async sendNewTenantAlert(opts: {
+    to: string;
+    tenantName: string;
+    slug: string;
+    ownerName: string;
+    ownerEmail: string;
+    ownerPhone?: string | null;
+    appUrl: string;
+  }): Promise<void> {
+    const subject = `🏢 Nuevo negocio registrado: ${opts.tenantName}`;
+    const html = this.baseLayout(`
+      <h2>Nuevo negocio en Glamorapp 🎉</h2>
+      <p>Se acaba de registrar un nuevo salón/negocio en la plataforma.</p>
+      <div class="detail-box">
+        <p><strong>Negocio:</strong> ${opts.tenantName}</p>
+        <p><strong>URL pública:</strong> ${opts.appUrl}/tienda/${opts.slug}</p>
+        <p><strong>Responsable:</strong> ${opts.ownerName}</p>
+        <p><strong>Correo:</strong> ${opts.ownerEmail}</p>
+        ${opts.ownerPhone ? `<p><strong>Teléfono:</strong> ${opts.ownerPhone}</p>` : ''}
+      </div>
+      <p style="font-size:13px;color:#6b7280;">Puedes ver el detalle en el panel de administración → Clientes SaaS.</p>
+    `);
+    await this.send(opts.to, subject, html);
+  }
+
+  /** Mensaje del formulario "Contáctanos" del landing → admin de la plataforma. */
+  async sendContactInquiry(opts: {
+    to: string;
+    name: string;
+    email: string;
+    phone?: string | null;
+    message: string;
+  }): Promise<void> {
+    const subject = `📨 Nuevo mensaje de contacto: ${opts.name}`;
+    const html = this.baseLayout(`
+      <h2>Nuevo mensaje desde el sitio web</h2>
+      <div class="detail-box">
+        <p><strong>Nombre:</strong> ${opts.name}</p>
+        <p><strong>Correo:</strong> ${opts.email}</p>
+        ${opts.phone ? `<p><strong>Teléfono:</strong> ${opts.phone}</p>` : ''}
+      </div>
+      <p><strong>Mensaje:</strong></p>
+      <p style="white-space:pre-wrap;background:#f9fafb;border-radius:6px;padding:12px;">${opts.message}</p>
+      <p style="font-size:13px;color:#6b7280;">Responde directamente a <a href="mailto:${opts.email}">${opts.email}</a>.</p>
+    `);
+    await this.send(opts.to, subject, html);
+  }
+
   async sendWelcome(email: string, firstName: string, appUrl: string): Promise<void> {
     const dashboardUrl = `${appUrl}/tenant`;
     const subject = '🎉 ¡Bienvenido a Glamorapp! Tu cuenta está lista';

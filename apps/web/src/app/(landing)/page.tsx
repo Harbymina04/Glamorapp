@@ -77,6 +77,33 @@ export default function LandingPage() {
   const DEFAULT_VIDEO = "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1&mute=1&rel=0&modestbranding=1&loop=1&playlist=dQw4w9WgXcQ";
   const [videoSrc, setVideoSrc] = useState(DEFAULT_VIDEO);
 
+  // Contacto
+  const [contactOpen, setContactOpen] = useState(false);
+  const [cForm, setCForm] = useState({ name: "", email: "", phone: "", message: "" });
+  const [cSending, setCSending] = useState(false);
+  const [cSent, setCSent] = useState(false);
+  const [cError, setCError] = useState("");
+  const openContact = () => { setContactOpen(true); setMenuOpen(false); setCSent(false); setCError(""); };
+  const submitContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCError("");
+    setCSending(true);
+    try {
+      const res = await fetch(`${API}/contact`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cForm),
+      });
+      if (!res.ok) throw new Error("No se pudo enviar");
+      setCSent(true);
+      setCForm({ name: "", email: "", phone: "", message: "" });
+    } catch {
+      setCError("No se pudo enviar el mensaje. Intenta de nuevo o escríbenos a administracion@neurixa-ts.com");
+    } finally {
+      setCSending(false);
+    }
+  };
+
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
     window.addEventListener("scroll", onScroll);
@@ -116,6 +143,7 @@ export default function LandingPage() {
             <Link href="/tienda" style={{ color: "var(--primary, #EF2D8F)", fontWeight: 600 }}>Tienda</Link>
           </div>
           <div className="nav-cta">
+            <button type="button" className="btn btn-ghost" onClick={openContact}>Contáctanos</button>
             <Link className="btn btn-ghost" href="/auth/login">Iniciar sesión</Link>
             <Link className="btn btn-primary" href="/auth/register">Registrarse</Link>
           </div>
@@ -132,6 +160,7 @@ export default function LandingPage() {
         <a href="#planes" onClick={() => setMenuOpen(false)}>Planes</a>
         <a href="#recursos" onClick={() => setMenuOpen(false)}>Recursos</a>
         <div className="mobile-ctas">
+          <button type="button" className="btn btn-ghost" onClick={openContact}>Contáctanos</button>
           <Link className="btn btn-ghost" href="/auth/login" onClick={() => setMenuOpen(false)}>Iniciar sesión</Link>
           <Link className="btn btn-primary" href="/auth/register" onClick={() => setMenuOpen(false)}>Registrarse gratis</Link>
         </div>
@@ -336,7 +365,7 @@ export default function LandingPage() {
                   </div>
                   <p className="plan-billed">{billedText}</p>
                   {isEnterprise ? (
-                    <a href="mailto:ventas@glamorapp.com" className="plan-cta outline" style={{ display: "block", textAlign: "center", textDecoration: "none" }}>Hablar con ventas</a>
+                    <button type="button" onClick={openContact} className="plan-cta outline" style={{ display: "block", width: "100%", textAlign: "center", cursor: "pointer" }}>Hablar con ventas</button>
                   ) : Number(plan.monthlyPrice) === 0 ? (
                     <Link href={`/auth/register?plan=${plan.slug}`} className="plan-cta outline" style={{ display: "block", textAlign: "center", textDecoration: "none" }}>Empezar gratis</Link>
                   ) : (
@@ -409,16 +438,68 @@ export default function LandingPage() {
           <div className="foot-brand">
             <img src="/assets/logo.png" alt="Glamorapp" />
             <p>La plataforma todo‑en‑uno con agentes de IA para salones de belleza, spas y estudios de uñas en Latinoamérica.</p>
+            <p style={{ marginTop: 12, fontSize: 13, lineHeight: 1.8 }}>
+              <a href="mailto:administracion@neurixa-ts.com" style={{ color: "inherit" }}>administracion@neurixa-ts.com</a><br />
+              <a href="tel:+573167634973" style={{ color: "inherit" }}>+57 316 763 4973</a><br />
+              Cali, Colombia
+            </p>
           </div>
           <div className="foot-col"><h5>Producto</h5><ul><li><a href="#modulos">Módulos</a></li><li><a href="#ia">Agente IA Glamy</a></li><li><a href="#planes">Planes</a></li><li><a href="#">Novedades</a></li></ul></div>
           <div className="foot-col"><h5>Recursos</h5><ul><li><a href="#">Centro de ayuda</a></li><li><a href="#">Guías para salones</a></li><li><a href="#">Blog de belleza</a></li><li><a href="#">API para desarrolladores</a></li></ul></div>
-          <div className="foot-col"><h5>Empresa</h5><ul><li><a href="#">Sobre nosotros</a></li><li><a href="#">Contacto</a></li><li><a href="#">Privacidad</a></li><li><a href="#">Términos</a></li></ul></div>
+          <div className="foot-col"><h5>Empresa</h5><ul><li><a href="#">Sobre nosotros</a></li><li><a href="#" onClick={(e) => { e.preventDefault(); openContact(); }}>Contacto</a></li><li><a href="#">Privacidad</a></li><li><a href="#">Términos</a></li></ul></div>
         </div>
         <div className="foot-bottom">
           <span>© 2025 Glamorapp — Gestiona la belleza de tu negocio.</span>
           <span>Hecho con <span style={{ color: "var(--pink-500)" }}>♥</span> para salones de Latinoamérica</span>
         </div>
       </footer>
+
+      {/* ===== MODAL CONTACTO ===== */}
+      {contactOpen && (
+        <div
+          onClick={() => setContactOpen(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "rgba(0,0,0,.6)", backdropFilter: "blur(4px)" }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 440, padding: 28, boxShadow: "0 20px 60px rgba(0,0,0,.3)", position: "relative" }}>
+            <button onClick={() => setContactOpen(false)} aria-label="Cerrar"
+              style={{ position: "absolute", top: 16, right: 16, background: "none", border: "none", cursor: "pointer", color: "#9ca3af" }}>
+              {CROSS}
+            </button>
+
+            {cSent ? (
+              <div style={{ textAlign: "center", padding: "16px 0" }}>
+                <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#dcfce7", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: 28 }}>✅</div>
+                <h3 style={{ fontSize: 20, fontWeight: 800, color: "#111827", margin: "0 0 6px" }}>¡Mensaje enviado!</h3>
+                <p style={{ color: "#6b7280", fontSize: 14, margin: "0 0 20px" }}>Gracias por escribirnos. Te responderemos muy pronto.</p>
+                <button onClick={() => setContactOpen(false)} className="btn btn-primary" style={{ cursor: "pointer" }}>Cerrar</button>
+              </div>
+            ) : (
+              <>
+                <h3 style={{ fontSize: 20, fontWeight: 800, color: "#111827", margin: "0 0 4px" }}>Contáctanos</h3>
+                <p style={{ color: "#6b7280", fontSize: 14, margin: "0 0 18px" }}>Cuéntanos qué necesitas y te contactamos.</p>
+
+                {cError && (
+                  <div style={{ marginBottom: 14, padding: "10px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, fontSize: 13, color: "#dc2626" }}>{cError}</div>
+                )}
+
+                <form onSubmit={submitContact} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <input required placeholder="Nombre" value={cForm.name} onChange={e => setCForm(f => ({ ...f, name: e.target.value }))}
+                    style={{ padding: "11px 14px", border: "1px solid #e5e7eb", borderRadius: 10, fontSize: 14, outline: "none" }} />
+                  <input required type="email" placeholder="Correo electrónico" value={cForm.email} onChange={e => setCForm(f => ({ ...f, email: e.target.value }))}
+                    style={{ padding: "11px 14px", border: "1px solid #e5e7eb", borderRadius: 10, fontSize: 14, outline: "none" }} />
+                  <input placeholder="Teléfono (opcional)" value={cForm.phone} onChange={e => setCForm(f => ({ ...f, phone: e.target.value }))}
+                    style={{ padding: "11px 14px", border: "1px solid #e5e7eb", borderRadius: 10, fontSize: 14, outline: "none" }} />
+                  <textarea required rows={4} placeholder="¿En qué podemos ayudarte?" value={cForm.message} onChange={e => setCForm(f => ({ ...f, message: e.target.value }))}
+                    style={{ padding: "11px 14px", border: "1px solid #e5e7eb", borderRadius: 10, fontSize: 14, outline: "none", resize: "vertical" }} />
+                  <button type="submit" disabled={cSending} className="btn btn-primary" style={{ cursor: "pointer", opacity: cSending ? 0.6 : 1 }}>
+                    {cSending ? "Enviando..." : "Enviar mensaje"}
+                  </button>
+                </form>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }

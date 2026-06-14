@@ -40,6 +40,7 @@ import { DiscountsModule } from './modules/discounts/discounts.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { ContactModule } from './modules/contact/contact.module';
 import { GuardsModule } from './common/guards/guards.module';
 
 @Module({
@@ -85,6 +86,7 @@ import { GuardsModule } from './common/guards/guards.module';
     PaymentsModule,
     PayoutsModule,
     AuditModule,
+    ContactModule,
     GuardsModule,
   ],
   providers: [
