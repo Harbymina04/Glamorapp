@@ -127,6 +127,13 @@ export default function LandingPage() {
       .catch(() => {});
   }, []);
 
+  // Descuento anual REAL calculado desde los precios (no hardcodeado):
+  // 1 − (precioAnual / (precioMensual × 12)).
+  const paidPlan = plans.find(p => Number(p.monthlyPrice) > 0);
+  const annualDiscountPct = paidPlan && Number(paidPlan.monthlyPrice) > 0
+    ? Math.round((1 - Number(paidPlan.yearlyPrice) / (Number(paidPlan.monthlyPrice) * 12)) * 100)
+    : 0;
+
   return (
     <>
       {/* ===== NAV ===== */}
@@ -336,19 +343,21 @@ export default function LandingPage() {
             <p className="section-sub">Sin permanencia. Cambia o cancela cuando quieras. Todos los planes incluyen 14 días gratis.</p>
             <div className="billing-toggle">
               <button className={billingMode === "m" ? "active" : ""} onClick={() => setBillingMode("m")}>Mensual</button>
-              <button className={billingMode === "y" ? "active" : ""} onClick={() => setBillingMode("y")}>Anual <span className="save-tag">−20%</span></button>
+              <button className={billingMode === "y" ? "active" : ""} onClick={() => setBillingMode("y")}>Anual {annualDiscountPct > 0 && <span className="save-tag">−{annualDiscountPct}%</span>}</button>
             </div>
           </div>
           <div className="plans">
             {plans.map((plan, i) => {
               const feat = PLAN_FEATURES[i] ?? PLAN_FEATURES[2];
-              const monthlyAmt = formatPrice(plan.monthlyPrice);
-              const yearlyAmt  = formatPrice(plan.yearlyPrice);
-              const yearlyTotal = (Number(plan.yearlyPrice)).toLocaleString("es-CO");
-              const currentAmt = billingMode === "m" ? monthlyAmt : yearlyAmt;
+              const monthlyNum = Number(plan.monthlyPrice);
+              const yearlyNum  = Number(plan.yearlyPrice);
+              // En modo anual mostramos el EQUIVALENTE MENSUAL (total/12), no el total del año.
+              const yearlyPerMonth = yearlyNum > 0 ? Math.round(yearlyNum / 12) : 0;
+              const currentAmt = billingMode === "m" ? formatPrice(monthlyNum) : formatPrice(yearlyPerMonth);
+              const annualSaving = monthlyNum > 0 ? (monthlyNum * 12 - yearlyNum) : 0;
               const billedText = billingMode === "m"
                 ? "Facturado mensualmente · IVA incluido"
-                : `Facturado anualmente · $${yearlyTotal}/año`;
+                : `Facturado anualmente · $${yearlyNum.toLocaleString("es-CO")}/año`;
               const isEnterprise = i === plans.length - 1;
               const maxU = plan.features?.limits?.maxUsers ?? plan.maxUsers;
               const maxB = plan.features?.limits?.maxBranches ?? plan.maxBranches;
@@ -364,6 +373,11 @@ export default function LandingPage() {
                     <span className="period">COP /mes</span>
                   </div>
                   <p className="plan-billed">{billedText}</p>
+                  {billingMode === "y" && annualSaving > 0 && (
+                    <p className="plan-billed" style={{ color: "#16a34a", fontWeight: 600 }}>
+                      Ahorras ${annualSaving.toLocaleString("es-CO")} al año
+                    </p>
+                  )}
                   {isEnterprise ? (
                     <button type="button" onClick={openContact} className="plan-cta outline" style={{ display: "block", width: "100%", textAlign: "center", cursor: "pointer" }}>Hablar con ventas</button>
                   ) : Number(plan.monthlyPrice) === 0 ? (
