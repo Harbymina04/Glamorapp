@@ -7,12 +7,14 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { StatusBadge } from '@/components/shared/status-badge';
 import {
   Loader2, Search, Building2, Users, Store, Crown,
-  Clock, AlertCircle, CheckCircle2, Calendar,
+  Clock, AlertCircle, CheckCircle2, Calendar, Mail, Phone, MapPin,
 } from 'lucide-react';
 
 interface TenantData {
   id: string; name: string; slug: string; plan: string;
   isActive: boolean; createdAt: string;
+  owner: { name: string; email: string; phone: string | null } | null;
+  contact: { email: string | null; phone: string | null; city: string | null };
   subscription: {
     id: string; planName: string; planSlug: string;
     status: string; billingCycle: string;
@@ -144,6 +146,7 @@ export default function AdminClientsPage() {
           <thead className="bg-surface-hover border-b border-border-primary">
             <tr>
               <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Cliente</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Contacto</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Plan</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Estado</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Facturación</th>
@@ -160,7 +163,27 @@ export default function AdminClientsPage() {
                   <div>
                     <p className="text-sm font-semibold text-foreground">{t.name}</p>
                     <p className="text-xs text-muted-foreground">{t.slug}</p>
+                    {t.contact?.city && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <MapPin className="w-3 h-3" /> {t.contact.city}
+                      </p>
+                    )}
                   </div>
+                </td>
+                <td className="px-4 py-3">
+                  {t.owner?.name && <p className="text-sm font-medium text-foreground">{t.owner.name}</p>}
+                  {t.contact?.email ? (
+                    <a href={`mailto:${t.contact.email}`} className="text-xs text-glamor-primary hover:underline flex items-center gap-1">
+                      <Mail className="w-3 h-3 shrink-0" /> {t.contact.email}
+                    </a>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Sin correo</span>
+                  )}
+                  {t.contact?.phone && (
+                    <a href={`tel:${t.contact.phone}`} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mt-0.5">
+                      <Phone className="w-3 h-3 shrink-0" /> {t.contact.phone}
+                    </a>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   {t.subscription ? (
@@ -218,7 +241,7 @@ export default function AdminClientsPage() {
               </tr>
             ))}
             {tenants.length === 0 && (
-              <tr><td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
+              <tr><td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">
                 No hay clientes registrados.
               </td></tr>
             )}

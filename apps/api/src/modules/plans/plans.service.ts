@@ -436,10 +436,11 @@ export class PlansService {
         },
         users: {
           where: { isActive: true, deletedAt: null },
-          select: { id: true },
+          select: { id: true, role: true, firstName: true, lastName: true, email: true, phone: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
         },
         stores: {
-          select: { id: true, name: true },
+          select: { id: true, name: true, phone: true, email: true, city: true },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -452,6 +453,10 @@ export class PlansService {
         ? Math.max(0, Math.ceil((new Date(activeSub.trialEndsAt).getTime() - Date.now()) / 86400000))
         : null;
 
+      // Dueño del negocio = el admin del tenant (o el primer usuario creado)
+      const owner = t.users.find(u => u.role === ('tenant_admin' as any)) ?? t.users[0] ?? null;
+      const mainStore = t.stores[0] ?? null;
+
       return {
         id: t.id,
         name: t.name,
@@ -459,6 +464,16 @@ export class PlansService {
         plan: t.plan,
         isActive: t.isActive,
         createdAt: t.createdAt,
+        owner: owner ? {
+          name: `${owner.firstName ?? ''} ${owner.lastName ?? ''}`.trim(),
+          email: owner.email,
+          phone: owner.phone ?? null,
+        } : null,
+        contact: {
+          email: owner?.email ?? mainStore?.email ?? null,
+          phone: owner?.phone ?? mainStore?.phone ?? null,
+          city: mainStore?.city ?? null,
+        },
         subscription: activeSub ? {
           id: activeSub.id,
           planName: activeSub.plan.name,
