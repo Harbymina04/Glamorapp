@@ -984,12 +984,11 @@ export class StorefrontService {
     const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
     const city = String(query.city || '').trim();
 
-    if (!hasCoords && !city) return storefronts.slice(0, 20);
-
-    // Sucursales activas de esos tenants (la ubicación vive en Store, no en Storefront)
+    // Siempre enriquecemos con la sucursal (ciudad, dirección, teléfono) para que
+    // la tarjeta del listado se vea completa, aunque no haya filtro de ubicación.
     const stores = await this.prisma.store.findMany({
       where: { tenantId: { in: storefronts.map(s => s.tenantId) }, isActive: true },
-      select: { tenantId: true, latitude: true, longitude: true, city: true },
+      select: { tenantId: true, latitude: true, longitude: true, city: true, address: true, phone: true },
     });
     const storesByTenant = new Map<string, typeof stores>();
     for (const s of stores) {
@@ -1002,6 +1001,8 @@ export class StorefrontService {
       const tenantStores = storesByTenant.get(sf.tenantId) ?? [];
       let distanceKm: number | null = null;
       let nearestCity: string | null = tenantStores[0]?.city ?? null;
+      let nearestAddress: string | null = tenantStores[0]?.address ?? null;
+      const storePhone: string | null = tenantStores[0]?.phone ?? null;
       if (hasCoords) {
         for (const s of tenantStores) {
           if (!validCoord(s.latitude, s.longitude)) continue;
@@ -1009,11 +1010,12 @@ export class StorefrontService {
           if (distanceKm === null || d < distanceKm) {
             distanceKm = Math.round(d * 10) / 10;
             nearestCity = s.city ?? nearestCity;
+            nearestAddress = s.address ?? nearestAddress;
           }
         }
       }
       const cities = tenantStores.map(s => (s.city || '').toLowerCase()).filter(Boolean);
-      return { ...sf, distanceKm, nearestCity, _cities: cities };
+      return { ...sf, distanceKm, nearestCity, nearestAddress, storePhone, _cities: cities };
     });
 
     if (city) {

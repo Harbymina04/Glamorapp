@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Sparkles, X, Heart, Clock, Store as StoreIcon, Search, MapPin, Loader2 } from 'lucide-react';
+import { ArrowRight, Sparkles, X, Heart, Clock, Store as StoreIcon, Search, MapPin, Loader2, Star, Phone } from 'lucide-react';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+const resolveImg = (url?: string | null) => (url ? (url.startsWith('http') ? url : `${API_BASE}${url}`) : null);
 import { ProductCard } from '@/components/store/ProductCard';
 import { NailDesignCard } from '@/components/store/NailDesignCard';
 import { formatCOP, categoryColors, storeApi } from '@/lib/store-utils';
@@ -349,35 +352,77 @@ export function StoreHomeClient({ shops, products, designs, bannerUrl }: Props) 
 
               return (
                 <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {visible.map(shop => (
-                      <Link key={shop.id} href={`/tienda/${shop.slug}`}
-                        className="bg-white rounded-2xl p-5 flex items-center gap-4 hover:shadow-md hover:-translate-y-0.5 transition-all border border-gray-100 group">
-                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#EF2D8F] to-purple-500 flex items-center justify-center text-white text-2xl font-black flex-shrink-0 group-hover:scale-105 transition-transform">
-                          {shop.displayName?.[0] || '✦'}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-gray-900 truncate">{shop.displayName}</p>
-                          {shop.tagline && <p className="text-xs text-gray-400 truncate mt-0.5">{shop.tagline}</p>}
-                          <div className="flex flex-wrap gap-1 mt-1.5">
-                            {shop.distanceKm != null && (
-                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-xs rounded-full font-semibold">
-                                <MapPin className="w-3 h-3" /> a {shop.distanceKm} km
+                  <div className="space-y-4">
+                    {visible.map(shop => {
+                      const photo    = resolveImg(shop.bannerUrl || shop.logoUrl);
+                      const rating   = Number(shop.averageRating || 0);
+                      const reviews  = Number(shop.totalReviews || 0);
+                      const shopTags = (Array.isArray(shop.tags) ? shop.tags : []) as string[];
+                      const wa       = shop.whatsapp ? String(shop.whatsapp).replace(/\D/g, '') : '';
+                      const phone    = shop.publicPhone || shop.storePhone || '';
+                      const contactHref = wa ? `https://wa.me/${wa}` : (phone ? `tel:${phone}` : null);
+                      const salonUrl = `/tienda/${shop.slug}`;
+                      return (
+                        <div key={shop.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-md transition-all flex flex-col sm:flex-row">
+                          {/* Foto */}
+                          <Link href={salonUrl} className="relative sm:w-44 h-36 sm:h-auto shrink-0 bg-gradient-to-br from-[#EF2D8F] to-purple-500 block">
+                            {photo
+                              ? <img src={photo} alt={shop.displayName} className="absolute inset-0 w-full h-full object-cover" />
+                              : <div className="absolute inset-0 flex items-center justify-center text-white text-4xl font-black">{shop.displayName?.[0] || '✦'}</div>}
+                            {rating > 0 && (
+                              <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 bg-gray-900/90 text-white text-xs font-bold px-2 py-1 rounded-full">
+                                <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" /> {rating.toFixed(1)}
                               </span>
                             )}
-                            {shop.distanceKm == null && shop.nearestCity && locMode !== 'none' && (
-                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-gray-50 text-gray-500 text-xs rounded-full font-medium">
-                                <MapPin className="w-3 h-3" /> {shop.nearestCity}
-                              </span>
+                          </Link>
+
+                          {/* Info */}
+                          <div className="flex-1 p-4 min-w-0">
+                            <div className="flex items-start gap-3">
+                              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#EF2D8F] to-purple-500 flex items-center justify-center text-white text-lg font-black shrink-0">
+                                {shop.displayName?.[0] || '✦'}
+                              </div>
+                              <div className="min-w-0">
+                                <Link href={salonUrl}>
+                                  <h3 className="font-bold text-gray-900 truncate hover:text-[#EF2D8F] transition-colors">{shop.displayName}</h3>
+                                </Link>
+                                {(shop.nearestCity || shop.distanceKm != null) && (
+                                  <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                                    <MapPin className="w-3 h-3 text-[#EF2D8F] shrink-0" />
+                                    {shop.nearestCity || 'Ubicación'}
+                                    {shop.distanceKm != null && ` • ${shop.distanceKm} km`}
+                                  </p>
+                                )}
+                                {reviews > 0 && (
+                                  <p className="text-xs text-gray-400 mt-0.5">{rating.toFixed(1)} · {reviews} reseña{reviews !== 1 ? 's' : ''}</p>
+                                )}
+                              </div>
+                            </div>
+                            {shopTags.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mt-3">
+                                {shopTags.slice(0, 4).map(tag => (
+                                  <span key={tag} className="px-2.5 py-1 bg-pink-50 text-[#EF2D8F] text-xs rounded-full font-medium">{tag}</span>
+                                ))}
+                              </div>
                             )}
-                            {(Array.isArray(shop.tags) ? shop.tags : []).slice(0, 2).map((tag: string) => (
-                              <span key={tag} className="px-1.5 py-0.5 bg-pink-50 text-[#EF2D8F] text-xs rounded-full font-medium">{tag}</span>
-                            ))}
+                          </div>
+
+                          {/* Acciones */}
+                          <div className="p-4 flex flex-row sm:flex-col gap-2 justify-center shrink-0 sm:w-56 border-t sm:border-t-0 sm:border-l border-gray-50">
+                            <Link href={`${salonUrl}?tab=servicios`}
+                              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#EF2D8F] text-white rounded-xl text-sm font-bold hover:bg-[#d4267e] transition">
+                              Ver servicios y reservar <ArrowRight className="w-4 h-4" />
+                            </Link>
+                            {contactHref && (
+                              <a href={contactHref} target="_blank" rel="noopener noreferrer"
+                                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2.5 border-2 border-[#EF2D8F] text-[#EF2D8F] rounded-xl text-sm font-semibold hover:bg-pink-50 transition">
+                                <Phone className="w-4 h-4" /> Contactar salón
+                              </a>
+                            )}
                           </div>
                         </div>
-                        <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-[#EF2D8F] transition-colors flex-shrink-0" />
-                      </Link>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   {/* Show more / less */}
