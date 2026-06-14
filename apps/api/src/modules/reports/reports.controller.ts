@@ -16,7 +16,11 @@ import { RequirePlanModule } from '../../common/decorators/require-plan-module.d
 export class ReportsController {
   constructor(private service: ReportsService) {}
 
+  // El resumen del dashboard debe estar disponible en TODOS los planes (no es
+  // "reportes avanzados"). 'dashboard' está en la lista siempre-permitida del
+  // guard, así que esto anula el @RequirePlanModule('reports') de la clase.
   @Get('overview')
+  @RequirePlanModule('dashboard')
   overview(@TenantId() t: string, @StoreId() s: string) { return this.service.overview(t, s); }
 
   @Get('sales')

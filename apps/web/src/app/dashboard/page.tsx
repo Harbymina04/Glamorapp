@@ -10,7 +10,7 @@ import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { DollarSign, CalendarCheck, Package, UserCheck, TrendingUp, ShoppingBag, Sparkles } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { user, token } = useAuthStore();
+  const { user, token, plan } = useAuthStore();
   const router = useRouter();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -48,7 +48,6 @@ export default function DashboardPage() {
           title="Ventas del mes"
           value={formatCurrency(data?.monthRevenue || 0)}
           icon={<DollarSign className="w-5 h-5 text-glamor-primary" />}
-          trend={{ value: 12, label: 'vs mes anterior', positive: true }}
         />
         <StatCard
           title="Citas hoy"
@@ -64,7 +63,6 @@ export default function DashboardPage() {
           title="Clientes"
           value={String(data?.totalCustomers || 0)}
           icon={<UserCheck className="w-5 h-5 text-purple-500" />}
-          trend={{ value: 5, label: 'nuevos', positive: true }}
         />
       </div>
 
@@ -101,7 +99,9 @@ export default function DashboardPage() {
             </div>
             <div>
               <h3 className="font-semibold text-foreground">Glamorapp</h3>
-              <p className="text-xs text-muted-foreground">Plan Profesional</p>
+              <p className="text-xs text-muted-foreground">
+                {plan ? (plan.planSlug === 'free' ? 'Plan Gratuito' : `Plan ${plan.planName}`) : 'Plan'}
+              </p>
             </div>
           </div>
           <div className="space-y-2">
