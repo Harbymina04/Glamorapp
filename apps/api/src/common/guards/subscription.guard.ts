@@ -30,8 +30,12 @@ export class SubscriptionGuard implements CanActivate {
     // Only applies to tenant users — superadmin and staff bypass
     if (!user?.tenantId || user.role === 'superadmin') return true;
 
+    // SIEMPRE evaluar la suscripción más reciente. Tras un cambio de plan
+    // conviven la vieja (cancelled) y la nueva (active); sin orderBy, findFirst
+    // podía devolver la cancelada y bloquear TODO el panel con un 402.
     const sub = await this.prisma.subscription.findFirst({
       where: { tenantId: user.tenantId },
+      orderBy: { createdAt: 'desc' },
       select: { status: true, trialEndsAt: true },
     });
 

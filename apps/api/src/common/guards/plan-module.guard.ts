@@ -36,8 +36,13 @@ export class PlanModuleGuard implements CanActivate {
     // No auth / superadmin / customer (storefront) bypass
     if (!user?.tenantId || user.role === 'superadmin' || user.role === 'customer') return true;
 
+    // Tomar la suscripción VIGENTE más reciente. Sin el filtro de estado +
+    // orderBy, un findFirst podía devolver una suscripción CANCELADA vieja
+    // (p. ej. el trial del registro) tras un cambio de plan, bloqueando módulos
+    // que el plan nuevo SÍ incluye (parecía que se borraban catálogo/inventario).
     const sub = await this.prisma.subscription.findFirst({
-      where: { tenantId: user.tenantId },
+      where: { tenantId: user.tenantId, status: { in: ['active', 'trial'] } },
+      orderBy: { createdAt: 'desc' },
       include: { plan: { select: { name: true, features: true } } },
     });
 
