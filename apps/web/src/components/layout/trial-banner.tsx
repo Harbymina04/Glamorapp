@@ -5,10 +5,14 @@ import { Clock, AlertTriangle, X, Crown } from 'lucide-react';
 import { useState } from 'react';
 
 export function TrialBanner() {
-  const { plan } = useAuthStore();
+  const { plan, user } = useAuthStore();
   const [dismissed, setDismissed] = useState(false);
 
   if (!plan || dismissed) return null;
+
+  // Solo el dueño (tenant_admin) puede cambiar el plan; a los demás se les
+  // indica que contacten al administrador (no se les manda a una ruta vedada).
+  const canUpgrade = user?.role === 'tenant_admin';
 
   // Only show for trial plans
   if (plan.status !== 'trial') {
@@ -19,7 +23,11 @@ export function TrialBanner() {
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4" />
             <span>Plan <strong>Gratuito</strong> — funcionalidades limitadas.</span>
-            <a href="/upgrade" className="underline font-medium ml-2">Actualizar plan →</a>
+            {canUpgrade ? (
+              <a href="/tenant/billing" className="underline font-medium ml-2">Actualizar plan →</a>
+            ) : (
+              <span className="ml-2 text-amber-700/80">Pídele al administrador del negocio que actualice el plan.</span>
+            )}
           </div>
         </div>
       );
@@ -45,10 +53,14 @@ export function TrialBanner() {
         ) : (
           <span>Tu período de prueba <strong>ha expirado</strong>. Algunas funcionalidades están limitadas.</span>
         )}
-        <a href="/upgrade" className={`underline font-semibold ml-2 ${isUrgent ? 'text-red-900' : 'text-blue-900'}`}>
-          <Crown className="w-3.5 h-3.5 inline mr-1" />
-          Actualizar a {plan.planSlug === 'free' ? 'Profesional' : 'un plan pago'}
-        </a>
+        {canUpgrade ? (
+          <a href="/tenant/billing" className={`underline font-semibold ml-2 ${isUrgent ? 'text-red-900' : 'text-blue-900'}`}>
+            <Crown className="w-3.5 h-3.5 inline mr-1" />
+            Actualizar a {plan.planSlug === 'free' ? 'Profesional' : 'un plan pago'}
+          </a>
+        ) : (
+          <span className={`ml-2 ${isUrgent ? 'text-red-900/80' : 'text-blue-900/80'}`}>Pídele al administrador que actualice el plan.</span>
+        )}
       </div>
       <button onClick={() => setDismissed(true)} className="p-0.5 rounded hover:bg-black/10">
         <X className="w-4 h-4" />
