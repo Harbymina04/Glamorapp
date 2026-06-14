@@ -14,10 +14,14 @@ export function TrialBanner() {
   // indica que contacten al administrador (no se les manda a una ruta vedada).
   const canUpgrade = user?.role === 'tenant_admin';
 
+  // "Gratuito/limitado" se decide por el PRECIO (gratis = $0), no por el slug:
+  // un plan de pago (p. ej. Básico) con suscripción activa NO debe verse limitado.
+  const isFreePlan = Number(plan.monthlyPrice ?? 0) === 0;
+
   // Only show for trial plans
   if (plan.status !== 'trial') {
     // Show subtle plan indicator for active plans
-    if (plan.status === 'active' && plan.planSlug === 'free') {
+    if (plan.status === 'active' && isFreePlan) {
       return (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-sm text-amber-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -56,7 +60,7 @@ export function TrialBanner() {
         {canUpgrade ? (
           <a href="/tenant/billing" className={`underline font-semibold ml-2 ${isUrgent ? 'text-red-900' : 'text-blue-900'}`}>
             <Crown className="w-3.5 h-3.5 inline mr-1" />
-            Actualizar a {plan.planSlug === 'free' ? 'Profesional' : 'un plan pago'}
+            Actualizar a {isFreePlan ? 'Profesional' : 'un plan pago'}
           </a>
         ) : (
           <span className={`ml-2 ${isUrgent ? 'text-red-900/80' : 'text-blue-900/80'}`}>Pídele al administrador que actualice el plan.</span>
