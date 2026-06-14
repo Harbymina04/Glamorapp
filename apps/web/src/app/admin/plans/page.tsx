@@ -17,7 +17,7 @@ interface PlanFeatures {
 
 interface Plan {
   id: string; name: string; slug: string; description?: string;
-  monthlyPrice: number; yearlyPrice: number;
+  monthlyPrice: number; yearlyPrice: number; annualDiscountPercent?: number;
   maxUsers: number; maxBranches: number;
   features?: PlanFeatures; isActive: boolean; isPopular: boolean; sortOrder: number;
 }
@@ -48,7 +48,7 @@ function defaultFeatures(): PlanFeatures {
 
 const emptyPlan = {
   name: '', slug: '', description: '',
-  monthlyPrice: 0, yearlyPrice: 0,
+  monthlyPrice: 0, yearlyPrice: 0, annualDiscountPercent: 0,
   maxUsers: 2, maxBranches: 1,
   features: defaultFeatures(), isActive: true, isPopular: false, sortOrder: 0,
 };
@@ -86,7 +86,7 @@ export default function AdminPlansPage() {
       features.limits = { maxBranches: p.maxBranches, maxUsers: p.maxUsers, aiTokensMonthly: 5000, storageGB: 1 };
     }
     setEditing(p);
-    setForm({ ...p, description: p.description ?? '', features });
+    setForm({ ...p, description: p.description ?? '', annualDiscountPercent: p.annualDiscountPercent ?? 0, features });
     setError('');
     setShowModal(true);
   };
@@ -242,8 +242,15 @@ export default function AdminPlansPage() {
               <div><label className="block text-xs font-medium text-muted-foreground mb-1">Descripción</label><textarea value={form.description || ''} onChange={e => setForm({...form, description: e.target.value})} className="w-full h-20 px-3 py-2 rounded-lg border text-sm resize-none" /></div>
               
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-xs font-medium text-muted-foreground mb-1">Precio mensual</label><input type="number" value={form.monthlyPrice} onChange={e => setForm({...form, monthlyPrice: Number(e.target.value)})} className="w-full h-10 px-3 rounded-lg border text-sm" /></div>
-                <div><label className="block text-xs font-medium text-muted-foreground mb-1">Precio anual</label><input type="number" value={form.yearlyPrice} onChange={e => setForm({...form, yearlyPrice: Number(e.target.value)})} className="w-full h-10 px-3 rounded-lg border text-sm" /></div>
+                <div><label className="block text-xs font-medium text-muted-foreground mb-1">Precio mensual (COP)</label><input type="number" value={form.monthlyPrice} onChange={e => setForm({...form, monthlyPrice: Number(e.target.value)})} className="w-full h-10 px-3 rounded-lg border text-sm" /></div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Descuento anual (%)</label>
+                  <input type="number" min={0} max={100} value={form.annualDiscountPercent ?? 0} onChange={e => setForm({...form, annualDiscountPercent: Number(e.target.value)})} className="w-full h-10 px-3 rounded-lg border text-sm" placeholder="Ej: 17" />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Anual: <strong>${Math.round((form.monthlyPrice || 0) * 12 * (1 - (form.annualDiscountPercent || 0) / 100)).toLocaleString('es-CO')}</strong>/año
+                    {(form.annualDiscountPercent || 0) > 0 && <> · equivale a ${Math.round((form.monthlyPrice || 0) * (1 - (form.annualDiscountPercent || 0) / 100)).toLocaleString('es-CO')}/mes</>}
+                  </p>
+                </div>
               </div>
 
               {/* Limits */}

@@ -1253,6 +1253,8 @@ model Plan {
   slug        String   @unique @db.VarChar(50)
   description String?  @db.Text
   monthlyPrice  Decimal  @default(0) @map("monthly_price") @db.Decimal(12, 2)
+  // Descuento % del plan anual; yearlyPrice se deriva: mensual×12×(1−desc/100)
+  annualDiscountPercent Decimal @default(0) @map("annual_discount_percent") @db.Decimal(5, 2)
   yearlyPrice   Decimal  @default(0) @map("yearly_price") @db.Decimal(12, 2)
   maxUsers      Int      @default(5) @map("max_users")
   maxBranches   Int      @default(1) @map("max_branches")

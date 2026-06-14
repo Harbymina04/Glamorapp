@@ -38,11 +38,23 @@ export class PlansService {
   }
 
   async create(data: any) {
+    const monthly = Number(data.monthlyPrice ?? 0);
+    const discount = Number(data.annualDiscountPercent ?? 0);
+    data.annualDiscountPercent = discount;
+    // El precio anual SIEMPRE se deriva del mensual y el descuento.
+    data.yearlyPrice = Math.round(monthly * 12 * (1 - discount / 100));
     return this.prisma.plan.create({ data });
   }
 
   async update(id: string, data: any) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
+    // Recalcular el anual solo si el formulario tocó precio o descuento.
+    if (data.monthlyPrice != null || data.annualDiscountPercent != null) {
+      const monthly = Number(data.monthlyPrice ?? existing.monthlyPrice);
+      const discount = Number(data.annualDiscountPercent ?? (existing as any).annualDiscountPercent ?? 0);
+      data.annualDiscountPercent = discount;
+      data.yearlyPrice = Math.round(monthly * 12 * (1 - discount / 100));
+    }
     return this.prisma.plan.update({ where: { id }, data });
   }
 
@@ -481,6 +493,7 @@ export class PlansService {
           status: activeSub.status,
           billingCycle: activeSub.billingCycle,
           monthlyPrice: Number(activeSub.plan.monthlyPrice),
+          yearlyPrice: Number(activeSub.plan.yearlyPrice),
           trialEndsAt: activeSub.trialEndsAt,
           trialDaysLeft,
           currentPeriodEnd: activeSub.currentPeriodEnd,

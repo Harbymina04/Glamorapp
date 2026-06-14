@@ -18,7 +18,7 @@ interface TenantData {
   subscription: {
     id: string; planName: string; planSlug: string;
     status: string; billingCycle: string;
-    monthlyPrice: number;
+    monthlyPrice: number; yearlyPrice: number;
     trialEndsAt: string | null; trialDaysLeft: number | null;
     currentPeriodEnd: string | null;
   } | null;
@@ -212,7 +212,11 @@ export default function AdminClientsPage() {
                     : '-'}
                 </td>
                 <td className="px-4 py-3 text-sm font-medium">
-                  {t.subscription ? formatCurrency(t.subscription.monthlyPrice) : '-'}
+                  {t.subscription
+                    ? (t.subscription.billingCycle === 'yearly'
+                        ? `${formatCurrency(t.subscription.yearlyPrice)}/año`
+                        : `${formatCurrency(t.subscription.monthlyPrice)}/mes`)
+                    : '-'}
                 </td>
                 <td className="px-4 py-3">
                   {t.subscription?.trialDaysLeft != null ? (
