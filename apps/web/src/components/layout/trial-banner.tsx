@@ -10,34 +10,14 @@ export function TrialBanner() {
 
   if (!plan || dismissed) return null;
 
-  // Solo el dueño (tenant_admin) puede cambiar el plan; a los demás se les
+  // Solo el dueño (tenant_admin) puede gestionar el plan; a los demás se les
   // indica que contacten al administrador (no se les manda a una ruta vedada).
   const canUpgrade = user?.role === 'tenant_admin';
 
-  // "Gratuito/limitado" se decide por el PRECIO (gratis = $0), no por el slug:
-  // un plan de pago (p. ej. Básico) con suscripción activa NO debe verse limitado.
-  const isFreePlan = Number(plan.monthlyPrice ?? 0) === 0;
-
-  // Only show for trial plans
-  if (plan.status !== 'trial') {
-    // Show subtle plan indicator for active plans
-    if (plan.status === 'active' && isFreePlan) {
-      return (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-sm text-amber-800 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4" />
-            <span>Plan <strong>Gratuito</strong> — funcionalidades limitadas.</span>
-            {canUpgrade ? (
-              <a href="/tenant/billing" className="underline font-medium ml-2">Actualizar plan →</a>
-            ) : (
-              <span className="ml-2 text-amber-700/80">Pídele al administrador del negocio que actualice el plan.</span>
-            )}
-          </div>
-        </div>
-      );
-    }
-    return null;
-  }
+  // No existe plan gratuito: solo prueba y, al vencer, se cobra. Por eso el
+  // aviso SOLO se muestra durante la prueba (el vencimiento lo maneja
+  // TrialExpiredGate / facturación). Un plan activo no muestra banner.
+  if (plan.status !== 'trial') return null;
 
   const daysLeft = plan.trialDaysLeft ?? 0;
   const isUrgent = daysLeft <= 3;
@@ -60,10 +40,10 @@ export function TrialBanner() {
         {canUpgrade ? (
           <a href="/tenant/billing" className={`underline font-semibold ml-2 ${isUrgent ? 'text-red-900' : 'text-blue-900'}`}>
             <Crown className="w-3.5 h-3.5 inline mr-1" />
-            Actualizar a {isFreePlan ? 'Profesional' : 'un plan pago'}
+            Activar mi plan
           </a>
         ) : (
-          <span className={`ml-2 ${isUrgent ? 'text-red-900/80' : 'text-blue-900/80'}`}>Pídele al administrador que actualice el plan.</span>
+          <span className={`ml-2 ${isUrgent ? 'text-red-900/80' : 'text-blue-900/80'}`}>Pídele al administrador que active el plan.</span>
         )}
       </div>
       <button onClick={() => setDismissed(true)} className="p-0.5 rounded hover:bg-black/10">
