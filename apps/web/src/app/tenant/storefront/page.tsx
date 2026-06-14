@@ -7,8 +7,9 @@ import {
   Store, Globe, Package, Scissors, MapPin, ShoppingCart,
   Eye, EyeOff, Copy, Check, Save, Loader2, AlertCircle,
   Plus, X, ChevronRight, Instagram, Facebook, ExternalLink,
-  ToggleLeft, ToggleRight, Search, Filter,
+  ToggleLeft, ToggleRight, Search, Filter, Clock,
 } from 'lucide-react';
+import { DAYS, defaultBusinessHours } from '@/lib/business-hours';
 
 // ─── Types ──────────────────────────────────────────────────────────
 type Tab = 'perfil' | 'productos' | 'servicios' | 'sucursales' | 'comercio';
@@ -586,6 +587,9 @@ function SucursalesTab() {
             latitude: l.latitude || '',
             longitude: l.longitude || '',
             neighborhood: l.neighborhood || '',
+            businessHours: (l.businessHours && typeof l.businessHours === 'object' && Object.keys(l.businessHours).length)
+              ? l.businessHours
+              : defaultBusinessHours(),
           };
         });
         setForms(f);
@@ -596,6 +600,18 @@ function SucursalesTab() {
 
   const setField = (id: string, k: string, v: any) =>
     setForms(f => ({ ...f, [id]: { ...f[id], [k]: v } }));
+
+  const setDay = (id: string, dayKey: string, patch: any) =>
+    setForms(f => ({
+      ...f,
+      [id]: {
+        ...f[id],
+        businessHours: {
+          ...(f[id]?.businessHours ?? {}),
+          [dayKey]: { ...(f[id]?.businessHours?.[dayKey] ?? {}), ...patch },
+        },
+      },
+    }));
 
   const save = async (id: string) => {
     setSaving(s => ({ ...s, [id]: true }));
@@ -649,6 +665,37 @@ function SucursalesTab() {
                 placeholder="-74.0721" />
             </div>
           </div>
+          {/* Horario de atención */}
+          <div>
+            <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+              <Clock className="w-4 h-4 text-gray-400" /> Horario de atención
+            </p>
+            <p className="text-xs text-gray-400 mb-3">Define cuándo abre el salón. Se muestra como “Abierto ahora / Cerrado” en la tienda.</p>
+            <div className="space-y-2">
+              {DAYS.map(({ key, label }) => {
+                const day = forms[loc.id]?.businessHours?.[key] ?? {};
+                const closed = !!day.closed;
+                return (
+                  <div key={key} className="flex items-center gap-3">
+                    <span className="w-24 text-sm text-gray-700">{label}</span>
+                    <Toggle checked={!closed} onChange={v => setDay(loc.id, key, { closed: !v })} />
+                    {closed ? (
+                      <span className="text-sm text-gray-400">Cerrado</span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <input type="time" value={day.open || '09:00'} onChange={e => setDay(loc.id, key, { open: e.target.value })}
+                          className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30" />
+                        <span className="text-gray-400 text-sm">a</span>
+                        <input type="time" value={day.close || '18:00'} onChange={e => setDay(loc.id, key, { close: e.target.value })}
+                          className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#EF2D8F]/30" />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="flex justify-end">
             <button onClick={() => save(loc.id)} disabled={saving[loc.id]}
               className="flex items-center gap-2 px-4 py-2 bg-[#EF2D8F] text-white rounded-lg text-sm font-medium hover:bg-[#d4267e] transition disabled:opacity-60">

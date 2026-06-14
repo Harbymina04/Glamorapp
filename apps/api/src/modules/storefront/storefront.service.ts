@@ -988,7 +988,7 @@ export class StorefrontService {
     // la tarjeta del listado se vea completa, aunque no haya filtro de ubicación.
     const stores = await this.prisma.store.findMany({
       where: { tenantId: { in: storefronts.map(s => s.tenantId) }, isActive: true },
-      select: { tenantId: true, latitude: true, longitude: true, city: true, address: true, phone: true },
+      select: { tenantId: true, latitude: true, longitude: true, city: true, address: true, phone: true, businessHours: true, timezone: true },
     });
     const storesByTenant = new Map<string, typeof stores>();
     for (const s of stores) {
@@ -1000,22 +1000,30 @@ export class StorefrontService {
     let enriched = storefronts.map(sf => {
       const tenantStores = storesByTenant.get(sf.tenantId) ?? [];
       let distanceKm: number | null = null;
-      let nearestCity: string | null = tenantStores[0]?.city ?? null;
-      let nearestAddress: string | null = tenantStores[0]?.address ?? null;
-      const storePhone: string | null = tenantStores[0]?.phone ?? null;
+      let nearest = tenantStores[0] ?? null;
       if (hasCoords) {
+        let best: number | null = null;
         for (const s of tenantStores) {
           if (!validCoord(s.latitude, s.longitude)) continue;
           const d = haversineKm(lat, lng, Number(s.latitude), Number(s.longitude));
-          if (distanceKm === null || d < distanceKm) {
+          if (best === null || d < best) {
+            best = d;
             distanceKm = Math.round(d * 10) / 10;
-            nearestCity = s.city ?? nearestCity;
-            nearestAddress = s.address ?? nearestAddress;
+            nearest = s;
           }
         }
       }
       const cities = tenantStores.map(s => (s.city || '').toLowerCase()).filter(Boolean);
-      return { ...sf, distanceKm, nearestCity, nearestAddress, storePhone, _cities: cities };
+      return {
+        ...sf,
+        distanceKm,
+        nearestCity: nearest?.city ?? null,
+        nearestAddress: nearest?.address ?? null,
+        storePhone: nearest?.phone ?? null,
+        businessHours: nearest?.businessHours ?? null,
+        timezone: nearest?.timezone ?? null,
+        _cities: cities,
+      };
     });
 
     if (city) {

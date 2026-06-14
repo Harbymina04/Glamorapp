@@ -13,6 +13,7 @@ import { useStoreCart, getStorefrontDiscount } from '@/stores/store-cart';
 import { useAuthStore } from '@/stores/auth-store';
 import { getToken } from '@/lib/auth';
 import { StoreChatbot } from '@/components/store/StoreChatbot';
+import { isOpenNow, todayHoursLabel } from '@/lib/business-hours';
 
 const CATEGORIES = ['Todos', 'Uñas', 'Cabello', 'Maquillaje', 'Piel', 'Spa'];
 
@@ -362,6 +363,8 @@ export function StoreHomeClient({ shops, products, designs, bannerUrl }: Props) 
                       const phone    = shop.publicPhone || shop.storePhone || '';
                       const contactHref = wa ? `https://wa.me/${wa}` : (phone ? `tel:${phone}` : null);
                       const salonUrl = `/tienda/${shop.slug}`;
+                      const open     = isOpenNow(shop.businessHours, shop.timezone);
+                      const todayHrs = todayHoursLabel(shop.businessHours, shop.timezone);
                       return (
                         <div key={shop.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-md transition-all flex flex-col sm:flex-row">
                           {/* Foto */}
@@ -398,6 +401,15 @@ export function StoreHomeClient({ shops, products, designs, bannerUrl }: Props) 
                                 )}
                               </div>
                             </div>
+                            {todayHrs && (
+                              <div className="flex items-center gap-1.5 mt-2 text-xs">
+                                {open === true && <span className="font-semibold text-green-600">● Abierto ahora</span>}
+                                {open === false && <span className="font-semibold text-red-500">● Cerrado</span>}
+                                <span className="flex items-center gap-1 text-gray-400">
+                                  <Clock className="w-3 h-3" /> {todayHrs}
+                                </span>
+                              </div>
+                            )}
                             {shopTags.length > 0 && (
                               <div className="flex flex-wrap gap-1.5 mt-3">
                                 {shopTags.slice(0, 4).map(tag => (
