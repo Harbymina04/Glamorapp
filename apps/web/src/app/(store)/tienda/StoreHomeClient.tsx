@@ -353,7 +353,7 @@ export function StoreHomeClient({ shops, products, designs, bannerUrl }: Props) 
 
               return (
                 <>
-                  <div className="space-y-4">
+                  <div className="space-y-4 max-w-3xl mx-auto">
                     {visible.map(shop => {
                       const photo    = resolveImg(shop.bannerUrl || shop.logoUrl);
                       const rating   = Number(shop.averageRating || 0);
