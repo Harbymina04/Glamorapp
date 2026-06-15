@@ -63,20 +63,19 @@ export class PlansService {
     return this.prisma.plan.update({ where: { id }, data: { isActive: false } });
   }
 
-  // Subscriptions
+  // Subscriptions — UNA fila por cliente (suscripción vigente) + historial aparte.
   async getSubscriptions(query: any) {
     const where: any = {};
-    if (query.status) where.status = query.status;
     if (query.tenantId) where.tenantId = query.tenantId;
-    
+
     const subs = await this.prisma.subscription.findMany({
       where,
       include: { plan: true, tenant: { select: { id: true, name: true, slug: true } } },
       orderBy: { createdAt: 'desc' },
-      take: Number(query.limit) || 50,
+      take: 2000,
     });
 
-    return subs.map(s => ({
+    const mapSub = (s: any) => ({
       id: s.id,
       tenantId: s.tenantId,
       tenantName: s.tenant.name,
@@ -96,7 +95,35 @@ export class PlansService {
       currentPeriodEnd: s.currentPeriodEnd,
       cancelledAt: s.cancelledAt,
       createdAt: s.createdAt,
-    }));
+    });
+
+    // Agrupar por cliente (ya vienen desc por createdAt).
+    const byTenant = new Map<string, any[]>();
+    for (const s of subs) {
+      const arr = byTenant.get(s.tenantId) ?? [];
+      arr.push(s);
+      byTenant.set(s.tenantId, arr);
+    }
+
+    // Vigente = activa > prueba > la más reciente (histórica).
+    const rows = [...byTenant.values()].map(list => {
+      const current = list.find(s => s.status === 'active')
+        ?? list.find(s => s.status === 'trial')
+        ?? list[0];
+      const history = list.filter(s => s.id !== current.id).map(mapSub);
+      return { ...mapSub(current), history };
+    });
+
+    // El filtro de estado aplica a la suscripción VIGENTE del cliente.
+    let result = query.status ? rows.filter(r => r.status === query.status) : rows;
+
+    // Orden: activos/prueba primero, luego por nombre.
+    const rank: Record<string, number> = { active: 0, trial: 1, expired: 2, cancelled: 3 };
+    result = result.sort((a, b) =>
+      (rank[a.status] ?? 9) - (rank[b.status] ?? 9) || a.tenantName.localeCompare(b.tenantName),
+    );
+
+    return result;
   }
 
   async updateSubscription(id: string, data: any) {

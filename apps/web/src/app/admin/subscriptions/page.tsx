@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -20,7 +20,11 @@ interface SubscriptionData {
   trialEndsAt: string | null; trialDaysLeft: number | null;
   currentPeriodStart: string | null; currentPeriodEnd: string | null;
   cancelledAt: string | null; createdAt: string;
+  history?: SubscriptionData[];
 }
+
+const priceForCycle = (s: { billingCycle: string; monthlyPrice: number; yearlyPrice: number }) =>
+  s.billingCycle === 'yearly' ? s.yearlyPrice : s.monthlyPrice;
 
 interface Plan {
   id: string; name: string; slug: string; monthlyPrice: number; yearlyPrice: number;
@@ -54,6 +58,14 @@ export default function AdminSubscriptionsPage() {
   const [selectedBilling, setSelectedBilling] = useState('monthly');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (tenantId: string) =>
+    setExpanded(prev => {
+      const next = new Set(prev);
+      next.has(tenantId) ? next.delete(tenantId) : next.add(tenantId);
+      return next;
+    });
 
   const fetchSubs = useCallback(async () => {
     setLoading(true);
@@ -198,11 +210,18 @@ export default function AdminSubscriptionsPage() {
           </thead>
           <tbody>
             {subs.map(s => (
-              <tr key={s.id} className="border-b border-border-light hover:bg-surface-hover/50 transition">
+              <Fragment key={s.id}>
+              <tr className="border-b border-border-light hover:bg-surface-hover/50 transition">
                 <td className="px-4 py-3">
                   <div>
                     <p className="text-sm font-semibold text-foreground">{s.tenantName}</p>
                     <p className="text-xs text-muted-foreground">{s.tenantSlug}</p>
+                    {s.history && s.history.length > 0 && (
+                      <button onClick={() => toggleExpand(s.tenantId)} className="mt-1 inline-flex items-center gap-1 text-xs text-glamor-primary hover:underline">
+                        <ChevronDown className={`w-3 h-3 transition-transform ${expanded.has(s.tenantId) ? 'rotate-180' : ''}`} />
+                        {expanded.has(s.tenantId) ? 'Ocultar historial' : `Ver historial (${s.history.length})`}
+                      </button>
+                    )}
                   </div>
                 </td>
                 <td className="px-4 py-3">
@@ -215,7 +234,9 @@ export default function AdminSubscriptionsPage() {
                   <StatusBadge status={s.status} colors={statusColors} labels={statusLabels} />
                 </td>
                 <td className="px-4 py-3 text-sm">{billingLabels[s.billingCycle] || s.billingCycle}</td>
-                <td className="px-4 py-3 text-sm font-medium">{formatCurrency(s.monthlyPrice)}</td>
+                <td className="px-4 py-3 text-sm font-medium">
+                  {formatCurrency(priceForCycle(s))}<span className="text-muted-foreground font-normal">{s.billingCycle === 'yearly' ? '/año' : '/mes'}</span>
+                </td>
                 <td className="px-4 py-3">
                   {s.trialDaysLeft != null ? (
                     <span className={`text-sm font-medium ${s.trialDaysLeft <= 3 ? 'text-red-600' : s.trialDaysLeft <= 7 ? 'text-amber-600' : 'text-blue-600'}`}>
@@ -251,6 +272,22 @@ export default function AdminSubscriptionsPage() {
                   )}
                 </td>
               </tr>
+
+              {/* Historial de planes anteriores del cliente */}
+              {expanded.has(s.tenantId) && s.history?.map(h => (
+                <tr key={h.id} className="bg-surface-hover/30 text-xs text-muted-foreground border-b border-border-light/60">
+                  <td className="px-4 py-2 pl-8">↳ Plan anterior</td>
+                  <td className="px-4 py-2">{h.planName}</td>
+                  <td className="px-4 py-2"><StatusBadge status={h.status} colors={statusColors} labels={statusLabels} /></td>
+                  <td className="px-4 py-2">{billingLabels[h.billingCycle] || h.billingCycle}</td>
+                  <td className="px-4 py-2">{formatCurrency(priceForCycle(h))}{h.billingCycle === 'yearly' ? '/año' : '/mes'}</td>
+                  <td className="px-4 py-2">-</td>
+                  <td className="px-4 py-2">{h.cancelledAt ? `Cancelada ${formatDate(h.cancelledAt)}` : (h.currentPeriodEnd ? formatDate(h.currentPeriodEnd) : '-')}</td>
+                  <td className="px-4 py-2"></td>
+                  <td className="px-4 py-2"></td>
+                </tr>
+              ))}
+              </Fragment>
             ))}
             {subs.length === 0 && (
               <tr><td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">No hay suscripciones.</td></tr>
