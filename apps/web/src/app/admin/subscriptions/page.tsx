@@ -235,16 +235,20 @@ export default function AdminSubscriptionsPage() {
                   </Link>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <button onClick={() => openChange(s)} className="px-2.5 py-1.5 text-xs rounded-lg bg-glamor-primary/10 text-glamor-primary font-medium hover:bg-glamor-primary/20 transition flex items-center gap-1">
-                      <ArrowUpDown className="w-3 h-3" /> Cambiar plan
-                    </button>
-                    {s.status !== 'cancelled' && (
+                  {/* Acciones solo sobre la suscripción VIGENTE (activa o en prueba).
+                      Las canceladas/expiradas son histórico: no se cambian ni cancelan. */}
+                  {(s.status === 'active' || s.status === 'trial') ? (
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => openChange(s)} className="px-2.5 py-1.5 text-xs rounded-lg bg-glamor-primary/10 text-glamor-primary font-medium hover:bg-glamor-primary/20 transition flex items-center gap-1">
+                        <ArrowUpDown className="w-3 h-3" /> Cambiar plan
+                      </button>
                       <button onClick={() => handleCancel(s)} className="px-2.5 py-1.5 text-xs rounded-lg bg-red-50 text-red-600 font-medium hover:bg-red-100 transition flex items-center gap-1">
                         <Ban className="w-3 h-3" /> Cancelar
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Histórico</span>
+                  )}
                 </td>
               </tr>
             ))}
