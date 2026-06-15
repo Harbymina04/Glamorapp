@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Building2, Users, LayoutDashboard, BarChart3, ChevronLeft, Store, Brain, LogOut, Plug, Calculator, FileText, Receipt, Zap, ScrollText, ShoppingBag, Star, Package, CreditCard, Shield } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { TrialExpiredGate } from '@/components/layout/trial-expired-gate';
+import { GlamyAssistant } from '@/components/layout/glamy-assistant';
 
 const TENANT_LINKS = [
   { name: 'Dashboard', href: '/tenant', icon: LayoutDashboard },
@@ -165,6 +166,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
       <main className="flex-1 p-6 overflow-auto">
         {children}
       </main>
+      <GlamyAssistant />
     </div>
     </TrialExpiredGate>
   );

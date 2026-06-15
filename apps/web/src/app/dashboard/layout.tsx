@@ -8,6 +8,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { TrialBanner } from '@/components/layout/trial-banner';
 import { TrialExpiredGate } from '@/components/layout/trial-expired-gate';
+import { GlamyAssistant } from '@/components/layout/glamy-assistant';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, checkAuth, user } = useAuthStore();
@@ -57,6 +58,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <TrialBanner />
           <main className="flex-1 overflow-auto p-6">{children}</main>
         </div>
+        <GlamyAssistant />
       </div>
     </TrialExpiredGate>
   );

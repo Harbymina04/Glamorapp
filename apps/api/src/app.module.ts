@@ -41,6 +41,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { ContactModule } from './modules/contact/contact.module';
+import { GlamyModule } from './modules/glamy/glamy.module';
 import { GuardsModule } from './common/guards/guards.module';
 
 @Module({
@@ -87,6 +88,7 @@ import { GuardsModule } from './common/guards/guards.module';
     PayoutsModule,
     AuditModule,
     ContactModule,
+    GlamyModule,
     GuardsModule,
   ],
   providers: [
