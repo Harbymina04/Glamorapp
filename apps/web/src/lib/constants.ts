@@ -18,7 +18,9 @@ export const ADMIN_MODULES = [
   { name: 'Usuarios', href: '/dashboard/users', icon: 'UserCog', feature: 'users' },
   { name: 'Comisiones', href: '/dashboard/commissions', icon: 'DollarSign', feature: 'users' },
   { name: 'Marketing', href: '/dashboard/marketing', icon: 'Megaphone', feature: 'ai_agents' },
-  { name: 'Agentes IA', href: '/dashboard/ai-agents', icon: 'Bot', feature: 'ai_agents' },
+  // Módulo Agentes IA oculto temporalmente mientras se rediseña. Glamy (widget
+  // flotante) sigue activo. Para reactivar, descomenta esta línea:
+  // { name: 'Agentes IA', href: '/dashboard/ai-agents', icon: 'Bot', feature: 'ai_agents' },
   { name: 'Importar datos', href: '/dashboard/import', icon: 'Upload', feature: 'settings' },
   { name: 'Configuración', href: '/dashboard/settings',    icon: 'Settings', feature: 'settings' },
   { name: 'Audit Logs',   href: '/dashboard/audit-logs',  icon: 'Shield',   feature: 'settings' },
