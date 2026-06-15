@@ -27,11 +27,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       router.push('/auth/login');
       return;
     }
-    // Role-based redirect: only store-level roles belong in /dashboard
+    // Superadmin pertenece a /admin. El tenant_admin (dueño) SÍ puede operar
+    // las pantallas de sucursal (catálogo, clientes, POS): tiene storeId y
+    // scopes completos, y el onboarding lo enlaza aquí. Su landing por defecto
+    // sigue siendo /tenant (definido en el login), pero no se le bloquea /dashboard.
     if (user?.role === 'superadmin') {
       router.replace('/admin');
-    } else if (user?.role === 'tenant_admin') {
-      router.replace('/tenant');
     }
   }, [isAuthenticated, isLoading, user, router]);
 
