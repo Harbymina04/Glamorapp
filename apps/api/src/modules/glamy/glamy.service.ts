@@ -113,6 +113,22 @@ const GLAMY_TOOLS = [
     description: 'Pedidos de la tienda online: total, ventas y desglose por estado (pendiente, confirmado, etc.).',
     parameters: { type: 'object', properties: { period: { type: 'string', enum: ['week', 'month'], description: 'Periodo, default month' } }, required: [] },
   }},
+  // ── Análisis (pronóstico, márgenes, proveedores) ───────────────────────────
+  { type: 'function', function: {
+    name: 'forecast_sales',
+    description: 'Pronostica las ventas del próximo periodo (semana o mes) con base en el promedio diario de los últimos 30 días.',
+    parameters: { type: 'object', properties: { period: { type: 'string', enum: ['next_week', 'next_month'], description: 'Periodo a pronosticar, default next_month' } }, required: [] },
+  }},
+  { type: 'function', function: {
+    name: 'analyze_margins',
+    description: 'Analiza los márgenes del catálogo: productos con mejor y peor margen (precio de venta vs costo). Útil para decisiones de precios.',
+    parameters: { type: 'object', properties: { limit: { type: 'number', description: 'Cuántos productos por lista (default 5)' } }, required: [] },
+  }},
+  { type: 'function', function: {
+    name: 'get_suppliers_summary',
+    description: 'Resumen de proveedores: total activos, principales por compras, saldo pendiente por pagar y compras del último mes.',
+    parameters: { type: 'object', properties: {}, required: [] },
+  }},
 ];
 
 @Injectable()
@@ -220,6 +236,9 @@ export class GlamyService {
         case 'get_iva_summary':          return await this.getIvaSummary(ctx, input?.period);
         case 'get_income_statement':     return await this.getIncomeStatement(ctx, input?.period);
         case 'get_online_orders':        return await this.getOnlineOrders(ctx, input?.period);
+        case 'forecast_sales':           return await this.forecastSales(ctx, input?.period);
+        case 'analyze_margins':          return await this.analyzeMargins(ctx, input?.limit);
+        case 'get_suppliers_summary':    return await this.getSuppliersSummary(ctx);
         default: return { error: 'Herramienta desconocida' };
       }
     } catch (e: any) {
@@ -586,6 +605,82 @@ export class GlamyService {
       numeroPedidos: orders.length,
       ventasTotal: Math.round(totalVentas),
       porEstado: Array.from(porEstado.entries()).map(([estado, cantidad]) => ({ estado, cantidad })),
+    };
+  }
+
+  // ── Pronóstico de ventas ────────────────────────────────────────────────────
+  private async forecastSales(ctx: GlamyContext, period?: string) {
+    const since = new Date(); since.setDate(since.getDate() - 30); since.setHours(0, 0, 0, 0);
+    const agg = await this.prisma.sale.aggregate({
+      where: { ...this.storeWhere(ctx), status: 'completed', createdAt: { gte: since } },
+      _sum: { total: true }, _count: true,
+    });
+    const total30d = Number(agg._sum.total || 0);
+    const promedioDiario = total30d / 30;
+    const dias = period === 'next_week' ? 7 : 30;
+    return {
+      periodo: period === 'next_week' ? 'próxima semana' : 'próximo mes',
+      baseUltimos30d: Math.round(total30d),
+      ventasUltimos30dCount: agg._count || 0,
+      promedioDiario: Math.round(promedioDiario),
+      ventasEstimadas: Math.round(promedioDiario * dias),
+      metodo: 'Promedio diario de los últimos 30 días (estimación simple, no considera estacionalidad).',
+    };
+  }
+
+  // ── Análisis de márgenes ────────────────────────────────────────────────────
+  private async analyzeMargins(ctx: GlamyContext, limit?: number) {
+    const take = Math.min(Math.max(Number(limit) || 5, 1), 15);
+    const products = await this.prisma.product.findMany({
+      where: { ...this.storeWhere(ctx), deletedAt: null, costPrice: { gt: 0 }, salePrice: { gt: 0 } },
+      select: { name: true, salePrice: true, costPrice: true, currentStock: true },
+    });
+    const withMargin = products.map(p => {
+      const venta = Number(p.salePrice || 0);
+      const costo = Number(p.costPrice || 0);
+      const margenPct = venta > 0 ? ((venta - costo) / venta) * 100 : 0;
+      return { nombre: p.name, precioVenta: venta, costo, margenPct: Math.round(margenPct * 10) / 10, gananciaUnidad: Math.round(venta - costo), stock: Number(p.currentStock || 0) };
+    });
+    const ordenados = [...withMargin].sort((a, b) => b.margenPct - a.margenPct);
+    // Productos sin costo cargado (margen no calculable)
+    const sinCosto = await this.prisma.product.count({ where: { ...this.storeWhere(ctx), deletedAt: null, costPrice: { lte: 0 } } });
+    return {
+      productosAnalizados: withMargin.length,
+      productosSinCostoCargado: sinCosto,
+      mejorMargen: ordenados.slice(0, take),
+      peorMargen: ordenados.slice(-take).reverse(),
+    };
+  }
+
+  // ── Resumen de proveedores ──────────────────────────────────────────────────
+  private async getSuppliersSummary(ctx: GlamyContext) {
+    const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+    const base = this.storeWhere(ctx);
+    const [activos, suppliers, comprasMes] = await Promise.all([
+      this.prisma.supplier.count({ where: { ...base, deletedAt: null, isActive: true } }),
+      this.prisma.supplier.findMany({
+        where: { ...base, deletedAt: null },
+        select: { businessName: true, totalPurchases: true, purchaseCount: true, currentBalance: true },
+        orderBy: { totalPurchases: 'desc' },
+        take: 5,
+      }),
+      this.prisma.purchase.aggregate({
+        where: { ...base, createdAt: { gte: monthStart } },
+        _sum: { total: true }, _count: true,
+      }),
+    ]);
+    const saldoPorPagar = suppliers.reduce((s, sup) => s + Number(sup.currentBalance || 0), 0);
+    return {
+      proveedoresActivos: activos,
+      comprasEsteMes: Number(comprasMes._sum.total || 0),
+      numeroComprasEsteMes: comprasMes._count || 0,
+      saldoPorPagarTop: Math.round(saldoPorPagar),
+      principales: suppliers.map(s => ({
+        nombre: s.businessName,
+        totalComprado: Number(s.totalPurchases || 0),
+        numeroCompras: s.purchaseCount,
+        saldoPendiente: Number(s.currentBalance || 0),
+      })),
     };
   }
 }
