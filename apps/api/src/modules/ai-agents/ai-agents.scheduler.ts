@@ -18,8 +18,13 @@ export class AiAgentsScheduler {
     private service: AiAgentsService,
   ) {}
 
-  /** Cada día a las 7:00 corre los agentes activos cuya frecuencia toca hoy. */
-  @Cron(CronExpression.EVERY_DAY_AT_7AM)
+  /**
+   * Cada día a las 7:00 corre los agentes activos cuya frecuencia toca hoy.
+   *
+   * ⏸️ PAUSADO mientras se rediseña el módulo de Agentes IA. Para reactivar las
+   * corridas automáticas, descomenta el decorador @Cron de abajo.
+   */
+  // @Cron(CronExpression.EVERY_DAY_AT_7AM)
   async runScheduledAgents() {
     const now = new Date();
     const isMonday = now.getDay() === 1;
