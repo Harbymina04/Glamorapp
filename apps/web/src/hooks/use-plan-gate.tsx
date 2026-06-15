@@ -26,6 +26,12 @@ const FEATURE_MAP: Record<string, string> = {
 };
 
 /**
+ * Módulos disponibles en cualquier plan (espejo de ALWAYS_ALLOWED en
+ * apps/api/src/common/guards/plan-module.guard.ts). El resto se limita por plan.
+ */
+const ALWAYS_ALLOWED = new Set(['pos', 'inventory', 'dashboard', 'settings', 'users']);
+
+/**
  * Checks both plan feature availability AND user scopes.
  * 
  * @param feature - The feature key (e.g., 'pos', 'inventory', 'reports')
@@ -37,9 +43,6 @@ export function usePlanGate(feature: string, action: string = 'view'): { allowed
   // Superadmin always has access
   if (user?.role === 'superadmin') return { allowed: true };
 
-  // tenant_admin bypasses plan gates (they see everything for management)
-  if (user?.role === 'tenant_admin') return { allowed: true };
-
   // No plan data yet (loading)
   if (!plan) return { allowed: true };
 
@@ -49,15 +52,20 @@ export function usePlanGate(feature: string, action: string = 'view'): { allowed
   const modules = (plan.features as any)?.modules || plan.features || {};
   const planAllows = modules[mappedFeature] === true;
 
-  // pos and inventory are always available at plan level
-  const alwaysAllowed = mappedFeature === 'pos' || mappedFeature === 'inventory';
+  // Módulos siempre disponibles, alineados con el backend (PlanModuleGuard).
+  const alwaysAllowed = ALWAYS_ALLOWED.has(mappedFeature);
 
+  // El plan limita los módulos para TODOS los roles del negocio, incluido el
+  // tenant_admin (el backend lo restringe igual). No se hace bypass por rol.
   if (!alwaysAllowed && !planAllows) {
     return {
       allowed: false,
       reason: `La funcionalidad "${feature}" requiere un plan superior.`,
     };
   }
+
+  // El tenant_admin tiene todos los scopes por rol; ya pasó el filtro de plan.
+  if (user?.role === 'tenant_admin') return { allowed: true };
 
   // Check user scopes (module-level permissions)
   const scopeAllowed = hasScope(mappedFeature, action);
