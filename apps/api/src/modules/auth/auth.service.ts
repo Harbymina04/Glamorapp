@@ -77,15 +77,15 @@ export class AuthService {
 
   async register(dto: RegisterDto) {
     // Parallel pre-flight checks
-    const [existingUser, existingTenant, freePlan] = await Promise.all([
+    const [existingUser, existingTenant, basicPlan] = await Promise.all([
       this.prisma.user.findFirst({ where: { email: dto.email } }),
       this.prisma.tenant.findUnique({ where: { slug: dto.tenantSlug } }),
-      this.prisma.plan.findUnique({ where: { slug: 'free' } }),
+      this.prisma.plan.findUnique({ where: { slug: 'basic' } }),
     ]);
 
     if (existingUser) throw new ConflictException('Email already registered');
     if (existingTenant) throw new ConflictException('Tenant slug already taken');
-    if (!freePlan) throw new BadRequestException('El plan gratuito no está configurado. Contacta al administrador.');
+    if (!basicPlan) throw new BadRequestException('El plan Básico no está configurado. Contacta al administrador.');
 
     // Store slug is the tenant slug + "-principal" to be independent
     const storeSlug = `${dto.tenantSlug}-principal`;
@@ -97,7 +97,7 @@ export class AuthService {
         data: {
           name: dto.tenantName,
           slug: dto.tenantSlug,
-          plan: 'free',
+          plan: 'basic',
         },
       });
 
@@ -130,7 +130,7 @@ export class AuthService {
       await tx.subscription.create({
         data: {
           tenantId: tenant.id,
-          planId: freePlan.id,
+          planId: basicPlan.id,
           status: 'trial',
           billingCycle: 'monthly',
           trialEndsAt: new Date(Date.now() + 14 * 86_400_000),
@@ -320,8 +320,8 @@ export class AuthService {
 
     if (!sub) {
       return {
-        planName: 'free',
-        planSlug: 'free',
+        planName: 'Básico',
+        planSlug: 'basic',
         status: 'none',
         features: { pos: true, inventory: true },
         trialDaysLeft: null,

@@ -120,17 +120,17 @@ async function seedPlans() {
   const existing = await prisma.plan.count();
   if (existing > 0) {
     console.log('  ⏭️  Plans ya existen, omitiendo');
-    return prisma.plan.findFirst({ where: { slug: 'free' } });
+    return prisma.plan.findFirst({ where: { slug: 'basic' } });
   }
 
-  const freePlan = await prisma.plan.create({
+  const basicPlan = await prisma.plan.create({
     data: {
-      name: 'Gratuito', slug: 'free',
-      description: 'Prueba de 14 días con funcionalidades básicas',
-      monthlyPrice: 0, yearlyPrice: 0,
+      name: 'Básico', slug: 'basic',
+      description: 'Plan inicial: POS, inventario, citas y clientes',
+      monthlyPrice: 85000, yearlyPrice: 0,
       maxUsers: 2, maxBranches: 1,
       features: {
-        modules: { pos: true, inventory: true, catalog: false, appointments: false, reports: false, ai_agents: false, suppliers: false, expenses: false, accounting: false },
+        modules: { pos: true, inventory: true, catalog: false, appointments: true, customers: true, reports: false, ai_agents: false, suppliers: false, expenses: false, accounting: false },
         limits: { maxBranches: 1, maxUsers: 2, aiTokensMonthly: 5000, storageGB: 1 },
       },
       isPopular: false, sortOrder: 0,
@@ -166,7 +166,7 @@ async function seedPlans() {
   });
 
   console.log('  ✅ Plans: Gratuito, Profesional, Empresarial');
-  return freePlan;
+  return basicPlan;
 }
 
 async function seedSuperAdmin() {
@@ -205,7 +205,7 @@ async function seedSuperAdmin() {
   console.log('  ✅ superadmin@glamorapp.com / superadmin123');
 }
 
-async function seedDemoTenant(freePlanId: string) {
+async function seedDemoTenant(basicPlanId: string) {
   console.log('\n🏪 Seeding demo tenant...');
 
   const existing = await prisma.tenant.findFirst({ where: { slug: 'demo' } });
@@ -409,11 +409,11 @@ async function main() {
     console.log('  ✅ Tablas limpiadas');
   }
 
-  const freePlan = await seedPlans();
+  const basicPlan = await seedPlans();
   await seedSuperAdmin();
   await seedMasterData();
-  if (freePlan) {
-    await seedDemoTenant(freePlan.id);
+  if (basicPlan) {
+    await seedDemoTenant(basicPlan.id);
   }
 
   console.log('\n🎉 Seed completado!');
