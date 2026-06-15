@@ -4,6 +4,7 @@ import { PaginatedResponse } from '../../common/dto/response.dto';
 import { getPaginationParams } from '../../common/utils/pagination';
 import { AccountingService } from '../accounting/accounting.service';
 import { CommissionsService } from '../commissions/commissions.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class SalesService {
@@ -12,6 +13,7 @@ export class SalesService {
     private prisma: PrismaService,
     private accounting: AccountingService,
     private commissions: CommissionsService,
+    private notifications: NotificationsService,
   ) {}
 
   async findAll(tenantId: string, storeId: string, query: any) {
@@ -152,8 +154,9 @@ export class SalesService {
     // (el unique constraint lanza P2002 → regeneramos folio y reintentamos).
     for (let attempt = 0; attempt < 3; attempt++) {
       const saleNumber = await this.generateSaleNumber(tenantId, storeId);
+      const lowStockAlerts: { id: string; name: string; stock: number; min: number }[] = [];
       try {
-        return await this.prisma.$transaction(async (tx) => {
+        const sale = await this.prisma.$transaction(async (tx) => {
       // Hold stock immediately to prevent overselling.
       // Decremento atómico condicional: evita oversell por TOCTOU bajo concurrencia.
       for (const item of enrichedItems) {
@@ -173,9 +176,15 @@ export class SalesService {
           }
           const after = await tx.product.findUnique({
             where: { id: item.productId },
-            select: { currentStock: true },
+            select: { currentStock: true, minStock: true, name: true },
           });
           const newStock = after!.currentStock;
+          const minStock = after!.minStock ?? 0;
+          // Alertar solo cuando la venta CRUZA el stock por debajo del mínimo
+          // (no en cada venta si ya estaba bajo).
+          if (minStock > 0 && newStock <= minStock && newStock + item.quantity > minStock) {
+            lowStockAlerts.push({ id: item.productId, name: after!.name, stock: newStock, min: minStock });
+          }
           await tx.inventoryMovement.create({
             data: {
               tenantId, storeId,
@@ -221,12 +230,37 @@ export class SalesService {
         include: { items: true, customer: true },
       });
         });
+
+        // Notificaciones de stock bajo tras confirmar la venta (no crítico).
+        if (lowStockAlerts.length > 0) {
+          this.notifyLowStock(tenantId, lowStockAlerts)
+            .catch(err => this.logger.warn(`No se pudo notificar stock bajo: ${err.message}`));
+        }
+        return sale;
       } catch (e: any) {
         if (e?.code === 'P2002' && attempt < 2) continue;
         throw e;
       }
     }
     throw new BadRequestException('No se pudo generar el número de venta, intenta de nuevo');
+  }
+
+  /** Crea una notificación in-app por cada producto que cruzó su stock mínimo. */
+  private async notifyLowStock(
+    tenantId: string,
+    alerts: { id: string; name: string; stock: number; min: number }[],
+  ) {
+    for (const a of alerts) {
+      await this.notifications.create({
+        tenantId,
+        type: 'warning',
+        title: 'Stock bajo',
+        message: `"${a.name}" quedó en ${a.stock} unidad${a.stock === 1 ? '' : 'es'} (mínimo ${a.min}). Considera reabastecer.`,
+        link: '/dashboard/inventory',
+        source: 'low_stock',
+        sourceId: a.id,
+      });
+    }
   }
 
   private async getDefaultIvaRate(tenantId: string): Promise<number> {

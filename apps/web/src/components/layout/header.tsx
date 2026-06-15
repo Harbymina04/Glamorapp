@@ -12,6 +12,7 @@ interface Notification {
   title: string;
   message: string;
   type?: string;
+  link?: string | null;
   isRead: boolean;
   createdAt: string;
 }
@@ -194,7 +195,10 @@ export function Header() {
                     notifications.map(n => (
                       <button
                         key={n.id}
-                        onClick={() => !n.isRead && markRead(n.id)}
+                        onClick={() => {
+                          if (!n.isRead) markRead(n.id);
+                          if (n.link) { setShowNotifications(false); router.push(n.link); }
+                        }}
                         className={`w-full text-left px-4 py-3 border-b border-border-light last:border-0 hover:bg-surface-hover transition flex gap-3 ${
                           n.isRead ? '' : 'bg-glamor-primary/5'
                         }`}

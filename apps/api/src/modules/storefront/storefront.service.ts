@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { PrismaService } from '../../prisma/prisma.service';
 import { DiscountsService } from '../discounts/discounts.service';
 import { EmailService } from '../email/email.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreatePublicOrderDto } from './dto/public-order.dto';
 import { CreatePublicReviewDto } from './dto/public-review.dto';
 
@@ -86,6 +87,7 @@ export class StorefrontService {
     private prisma: PrismaService,
     private discounts: DiscountsService,
     private email: EmailService,
+    private notifications: NotificationsService,
   ) {}
 
   // ── My Storefront (admin) ──────────────────────────────────
@@ -816,6 +818,21 @@ export class StorefrontService {
       ]);
       const storeName = sf?.displayName || store?.name || 'Tienda';
       storeOrders.push({ order: o, storeName });
+
+      // Notificación in-app a la tienda (no crítica)
+      try {
+        await this.notifications.create({
+          tenantId: o.tenantId,
+          type: 'info',
+          title: 'Nuevo pedido online',
+          message: `Pedido ${o.orderNumber} de ${o.buyerName} por $${Math.round(Number(o.total)).toLocaleString('es-CO')}.`,
+          link: '/dashboard/pedidos',
+          source: 'storefront_order',
+          sourceId: o.id,
+        });
+      } catch (err: any) {
+        this.logger.warn(`No se pudo crear notificación de pedido: ${err.message}`);
+      }
 
       const to = store?.email || sf?.publicEmail;
       if (to) {
