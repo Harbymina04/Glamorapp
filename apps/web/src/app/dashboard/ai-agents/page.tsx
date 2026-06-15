@@ -5,14 +5,12 @@ import { PlanGate } from '@/hooks/use-plan-gate';
 import { useEffect, useState, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
-import { formatCurrency } from '@/lib/utils';
 import { StatCard } from '@/components/shared/stat-card';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { useRouter } from 'next/navigation';
 import {
-  Bot, Sparkles, AlertTriangle, DollarSign,
-  TrendingUp, Package, Users, Calendar,
-  Megaphone, Wallet, Truck, BookOpen,
+  Bot, Sparkles, AlertTriangle,
+  Package, Users, Wallet,
   RefreshCw, Clock, Zap, ChevronRight,
   CheckCircle, PauseCircle, XCircle, Settings2,
 } from 'lucide-react';
@@ -25,14 +23,9 @@ const AGENT_META: Record<string, {
   bg: string;
   description: string;
 }> = {
-  sales:        { icon: TrendingUp,  gradient: 'from-pink-500 to-rose-500',     bg: 'bg-pink-50',    description: 'Analiza tendencias, ticket promedio y oportunidades de crecimiento en ventas.' },
-  inventory:    { icon: Package,     gradient: 'from-purple-500 to-indigo-500', bg: 'bg-purple-50',  description: 'Detecta stock bajo, productos sin rotación y optimiza niveles de inventario.' },
-  customers:    { icon: Users,       gradient: 'from-blue-500 to-cyan-500',     bg: 'bg-blue-50',    description: 'Identifica clientes en riesgo, segmenta y sugiere acciones de retención.' },
-  appointments: { icon: Calendar,    gradient: 'from-orange-500 to-amber-500',  bg: 'bg-orange-50',  description: 'Optimiza agenda, detecta cancelaciones recurrentes y maximiza ocupación.' },
-  marketing:    { icon: Megaphone,   gradient: 'from-green-500 to-emerald-500', bg: 'bg-green-50',   description: 'Propone campañas, promociones y mensajes personalizados por segmento.' },
-  financial:    { icon: Wallet,      gradient: 'from-red-500 to-pink-500',      bg: 'bg-red-50',     description: 'Monitorea márgenes, gastos y genera alertas de salud financiera.' },
-  suppliers:    { icon: Truck,       gradient: 'from-indigo-500 to-blue-500',   bg: 'bg-indigo-50',  description: 'Optimiza órdenes de compra, detecta retrasos y negocia mejores condiciones.' },
-  catalog:      { icon: BookOpen,    gradient: 'from-teal-500 to-green-500',    bg: 'bg-teal-50',    description: 'Revisa precios, categorías y sugiere ajustes al catálogo de productos.' },
+  inventory: { icon: Package, gradient: 'from-purple-500 to-indigo-500', bg: 'bg-purple-50', description: 'Detecta stock bajo, productos sin rotación y optimiza niveles de inventario.' },
+  customers: { icon: Users,   gradient: 'from-blue-500 to-cyan-500',     bg: 'bg-blue-50',   description: 'Identifica clientes en riesgo, segmenta y sugiere acciones de retención.' },
+  financial: { icon: Wallet,  gradient: 'from-red-500 to-pink-500',      bg: 'bg-red-50',    description: 'Monitorea márgenes, gastos y genera alertas de salud financiera.' },
 };
 
 // ─── Status config ────────────────────────────────────────────────
@@ -124,18 +117,8 @@ function AgentCard({ agent, onClick }: { agent: any; onClick: () => void }) {
           {meta.description || agent.description || 'Sin descripción'}
         </p>
 
-        {/* Provider + last run */}
-        <div className="flex items-center justify-between text-xs text-muted-foreground mb-4">
-          {agent.aiProvider ? (
-            <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full border font-medium
-              ${agent.aiProvider === 'deepseek'
-                ? 'bg-purple-50 text-purple-600 border-purple-200'
-                : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
-              {agent.aiProvider === 'deepseek' ? '⚡' : '🤖'}
-              {agent.aiProvider === 'deepseek' ? 'DeepSeek' : 'Claude'}
-            </span>
-          ) : <span />}
-
+        {/* Last run */}
+        <div className="flex items-center justify-end text-xs text-muted-foreground mb-4">
           <span className="flex items-center gap-1">
             <Clock className="w-3 h-3" />
             {relativeTime(agent.lastRunAt)}
@@ -157,14 +140,7 @@ function AgentCard({ agent, onClick }: { agent: any; onClick: () => void }) {
             )}
           </div>
 
-          <div className="flex items-center gap-1">
-            {(agent.estimatedImpact ?? 0) > 0 && (
-              <span className="text-xs font-bold text-green-600">
-                {formatCurrency(agent.estimatedImpact)}
-              </span>
-            )}
-            <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-glamor-primary group-hover:translate-x-0.5 transition-all" />
-          </div>
+          <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-glamor-primary group-hover:translate-x-0.5 transition-all" />
         </div>
       </div>
     </div>
@@ -203,7 +179,6 @@ function AIAgentsPage() {
   const activeCount   = agents.filter(a => a.status === 'active').length;
   const totalActions  = agents.reduce((s, a) => s + (a.totalActions || 0), 0);
   const totalAlerts   = agents.reduce((s, a) => s + (a.alertsGenerated || 0), 0);
-  const totalImpact   = agents.reduce((s, a) => s + Number(a.estimatedImpact || 0), 0);
   const totalPending  = agents.reduce((s, a) => s + (a.pendingRecommendations || 0), 0);
 
   const filtered = statusFilter
@@ -246,7 +221,7 @@ function AIAgentsPage() {
       </div>
 
       {/* ── Stats ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-4 mb-6">
         <StatCard
           title="Agentes activos"
           value={`${activeCount}/${agents.length}`}
@@ -261,11 +236,6 @@ function AIAgentsPage() {
           title="Alertas generadas"
           value={String(totalAlerts)}
           icon={<AlertTriangle className="w-5 h-5 text-red-500" />}
-        />
-        <StatCard
-          title="Impacto estimado"
-          value={formatCurrency(totalImpact)}
-          icon={<DollarSign className="w-5 h-5 text-green-500" />}
         />
       </div>
 

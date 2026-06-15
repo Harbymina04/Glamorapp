@@ -13,7 +13,7 @@ export class InventoryAgent extends BaseAgent {
 
 ANALIZAS: niveles de stock, rotación de productos, productos con bajo rendimiento, necesidades de reabastecimiento, predicción de demanda.
 
-NIVEL DE AUTONOMÍA: ${ctx.autonomyLevel}
+MODO: Solo recomendar — generas recomendaciones accionables, no ejecutas cambios.
 
 Responde en español con recomendaciones accionables en COP.`;
   }

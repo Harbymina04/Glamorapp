@@ -3,15 +3,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PaginatedResponse } from '../../common/dto/response.dto';
 import { getPaginationParams } from '../../common/utils/pagination';
 
-// Agent implementations
-import { SalesAgent } from './agents/sales.agent';
+// Agent implementations (analizadores proactivos)
 import { InventoryAgent } from './agents/inventory.agent';
 import { CustomersAgent } from './agents/customers.agent';
-import { AppointmentsAgent } from './agents/appointments.agent';
-import { MarketingAgent } from './agents/marketing.agent';
 import { FinancialAgent } from './agents/financial.agent';
-import { SuppliersAgent } from './agents/suppliers.agent';
-import { CatalogAgent } from './agents/catalog.agent';
 
 @Injectable()
 export class AiAgentsService {
@@ -19,23 +14,18 @@ export class AiAgentsService {
 
   constructor(
     private prisma: PrismaService,
-    sales: SalesAgent,
     inventory: InventoryAgent,
     customers: CustomersAgent,
-    appointments: AppointmentsAgent,
-    marketing: MarketingAgent,
     financial: FinancialAgent,
-    suppliers: SuppliersAgent,
-    catalog: CatalogAgent,
   ) {
-    this.agents.set('sales', sales);
     this.agents.set('inventory', inventory);
     this.agents.set('customers', customers);
-    this.agents.set('appointments', appointments);
-    this.agents.set('marketing', marketing);
     this.agents.set('financial', financial);
-    this.agents.set('suppliers', suppliers);
-    this.agents.set('catalog', catalog);
+  }
+
+  /** Agentes con implementación activa (los demás fueron absorbidos por Glamy). */
+  getAgentImpl(slug: string) {
+    return this.agents.get(slug);
   }
 
   async findAll(tenantId: string, storeId: string, query: any) {
@@ -119,28 +109,11 @@ export class AiAgentsService {
     }
 
     // Check monthly AI token limit before running
-    const sub = await this.prisma.subscription.findFirst({
-      where: { tenantId, status: { in: ['active', 'trial'] } },
-      include: { plan: true },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (sub) {
-      const maxTokens: number = (sub.plan.features as any)?.limits?.aiTokensMonthly ?? 0;
-      if (maxTokens > 0) {
-        const monthStart = new Date();
-        monthStart.setDate(1);
-        monthStart.setHours(0, 0, 0, 0);
-        const usage = await this.prisma.aiUsage.aggregate({
-          where: { tenantId, createdAt: { gte: monthStart } },
-          _sum: { tokensIn: true, tokensOut: true },
-        });
-        const usedTokens = (usage._sum.tokensIn ?? 0) + (usage._sum.tokensOut ?? 0);
-        if (usedTokens >= maxTokens) {
-          throw new BadRequestException(
-            `Límite mensual de tokens IA alcanzado (${maxTokens.toLocaleString()}). Actualiza tu plan o espera al próximo mes.`,
-          );
-        }
-      }
+    const overLimit = await this.isOverTokenLimit(tenantId);
+    if (overLimit) {
+      throw new BadRequestException(
+        `Límite mensual de tokens IA alcanzado (${overLimit.toLocaleString()}). Actualiza tu plan o espera al próximo mes.`,
+      );
     }
 
     // Create the execution record NOW so the frontend can poll its ID immediately
@@ -149,31 +122,67 @@ export class AiAgentsService {
     });
 
     // Fire the agent in the background — don't block the HTTP response
+    this.runAgentInBackground(agentImpl, tenantId, storeId, id, execution.id);
+
+    // Return immediately so the client can start polling
+    return { executionId: execution.id, status: 'running', agentId: id };
+  }
+
+  /**
+   * Devuelve el límite de tokens si el tenant ya lo superó este mes, o null si está dentro.
+   * Reutilizado por el trigger manual y por el scheduler.
+   */
+  async isOverTokenLimit(tenantId: string): Promise<number | null> {
+    const sub = await this.prisma.subscription.findFirst({
+      where: { tenantId, status: { in: ['active', 'trial'] } },
+      include: { plan: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!sub) return null;
+    const maxTokens: number = (sub.plan.features as any)?.limits?.aiTokensMonthly ?? 0;
+    if (maxTokens <= 0) return null;
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const usage = await this.prisma.aiUsage.aggregate({
+      where: { tenantId, createdAt: { gte: monthStart } },
+      _sum: { tokensIn: true, tokensOut: true },
+    });
+    const usedTokens = (usage._sum.tokensIn ?? 0) + (usage._sum.tokensOut ?? 0);
+    return usedTokens >= maxTokens ? maxTokens : null;
+  }
+
+  /** Ejecuta un agente en segundo plano y actualiza sus métricas reales al terminar. */
+  runAgentInBackground(agentImpl: any, tenantId: string, storeId: string, agentId: string, executionId: string) {
     setImmediate(async () => {
       try {
-        const result = await agentImpl.run(tenantId, storeId, id, execution.id);
-
-        // Update agent-level stats after run
+        const result = await agentImpl.run(tenantId, storeId, agentId, executionId);
+        // Métrica real: nº de recomendaciones de prioridad alta/crítica generadas
         await this.prisma.aiAgent.update({
-          where: { id },
+          where: { id: agentId },
           data: {
-            estimatedImpact: result.recommendations.length * 50_000,
             alertsGenerated: result.recommendations.filter(
               (r: any) => r.priority === 'high' || r.priority === 'critical',
             ).length,
           },
         });
       } catch (err: any) {
-        // Mark execution as failed if an unhandled error occurs
         await this.prisma.aiAgentExecution.update({
-          where: { id: execution.id },
+          where: { id: executionId },
           data: { status: 'failed', finishedAt: new Date(), summary: err.message },
         }).catch(() => {});
       }
     });
+  }
 
-    // Return immediately so the client can start polling
-    return { executionId: execution.id, status: 'running', agentId: id };
+  /** Marca como 'failed' las ejecuciones que quedaron colgadas en 'running' (proceso reiniciado, etc.). */
+  async sweepStuckExecutions(maxMinutes = 15): Promise<number> {
+    const cutoff = new Date(Date.now() - maxMinutes * 60_000);
+    const res = await this.prisma.aiAgentExecution.updateMany({
+      where: { status: 'running', startedAt: { lt: cutoff } },
+      data: { status: 'failed', finishedAt: new Date(), summary: 'Ejecución cancelada por tiempo de espera.' },
+    });
+    return res.count;
   }
 
   // ─── Executions ─────────────────────────────────────────────
@@ -191,8 +200,13 @@ export class AiAgentsService {
   }
 
   async getExecution(id: string) {
-    const e = await this.prisma.aiAgentExecution.findUnique({ where: { id } });
+    let e = await this.prisma.aiAgentExecution.findUnique({ where: { id } });
     if (!e) throw new NotFoundException('Execution not found');
+    // Si quedó colgada en 'running' más de 15 min, márcala como fallida y recárgala.
+    if (e.status === 'running' && e.startedAt && e.startedAt < new Date(Date.now() - 15 * 60_000)) {
+      await this.sweepStuckExecutions();
+      e = await this.prisma.aiAgentExecution.findUnique({ where: { id } }) ?? e;
+    }
     return e;
   }
 

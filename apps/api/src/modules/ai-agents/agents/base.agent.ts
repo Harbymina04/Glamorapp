@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../../prisma/prisma.service';
 
 // ─── Types ────────────────────────────────────────────────────────
@@ -25,10 +24,8 @@ export interface AgentContext {
   tenantId: string;
   storeId: string;
   agentId: string;
-  autonomyLevel: 'recommend_only' | 'draft_changes' | 'auto_execute';
   maxIterations: number;
   executionLog: string[];
-  provider: 'claude' | 'deepseek';
 }
 
 export interface AgentResult {
@@ -40,7 +37,7 @@ export interface AgentResult {
   logs: string[];
 }
 
-// ─── LLM Providers ────────────────────────────────────────────────
+// ─── LLM ──────────────────────────────────────────────────────────
 
 type LLMMessage = { role: 'user' | 'assistant'; content: string };
 
@@ -52,26 +49,19 @@ interface LLMResponse {
 }
 
 // ─── Base Agent ───────────────────────────────────────────────────
+// Agentes proactivos: observan los datos del negocio y generan
+// recomendaciones accionables (modo recommend_only). Usan DeepSeek.
 
 @Injectable()
 export abstract class BaseAgent {
-  protected anthropic: Anthropic | null = null;
   protected deepseekKey: string;
   protected deepseekModel: string;
-  protected claudeModel: string;
+  private readonly deepseekUrl = 'https://api.deepseek.com/v1/chat/completions';
 
   constructor(
     protected prisma: PrismaService,
     protected configService: ConfigService,
   ) {
-    // Claude setup
-    const anthropicKey = this.configService.get<string>('ANTHROPIC_API_KEY', '');
-    if (anthropicKey && anthropicKey !== 'sk-ant-xxx') {
-      this.anthropic = new Anthropic({ apiKey: anthropicKey });
-    }
-    this.claudeModel = this.configService.get('CLAUDE_MODEL', 'claude-sonnet-4-20250514');
-
-    // DeepSeek setup (OpenAI-compatible)
     this.deepseekKey = this.configService.get('DEEPSEEK_API_KEY', '');
     this.deepseekModel = this.configService.get('DEEPSEEK_MODEL', 'deepseek-chat');
   }
@@ -103,18 +93,13 @@ export abstract class BaseAgent {
       throw new Error(`Agent ${agentId} not found`);
     }
 
-    const provider = (agent.aiProvider as 'claude' | 'deepseek') || 'deepseek';
-
     const ctx: AgentContext = {
       tenantId, storeId, agentId,
-      autonomyLevel: (agent.autonomyLevel as any) || 'recommend_only',
       maxIterations: 8,
       executionLog: [],
-      provider,
     };
 
-    this.log(ctx, `🚀 Iniciando agente: ${agent.name} (${provider.toUpperCase()})`);
-    this.log(ctx, `📋 Autonomía: ${ctx.autonomyLevel}`);
+    this.log(ctx, `🚀 Iniciando agente: ${agent.name}`);
 
     // ─── 1. OBSERVE ──────────────────────────────────────────
     this.log(ctx, `👁️ Observando datos...`);
@@ -194,7 +179,7 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
           const saved = await this.saveRecommendation(
             ctx.tenantId, ctx.storeId, ctx.agentId,
             'other', `Análisis — ${this.name}`, structured,
-            `Ejecutado por ${this.name} (${provider})`, 'medium',
+            `Ejecutado por ${this.name}`, 'medium',
           );
           allRecommendations.push(saved);
         }
@@ -263,14 +248,12 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
     return result;
   }
 
-  // ─── LLM Call Router ────────────────────────────────────────
+  // ─── LLM Call (DeepSeek, OpenAI-compatible) ─────────────────
 
   private async callLLM(
     ctx: AgentContext, systemPrompt: string, messages: LLMMessage[], tools: any[],
   ): Promise<LLMResponse> {
-    const response = ctx.provider === 'claude' && this.anthropic
-      ? await this.callClaude(systemPrompt, messages, tools)
-      : await this.callDeepSeek(systemPrompt, messages, tools);
+    const response = await this.callDeepSeek(systemPrompt, messages, tools);
 
     // Register token usage (fire-and-forget — never blocks agent execution)
     if (response.tokensIn > 0 || response.tokensOut > 0) {
@@ -280,7 +263,7 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
           storeId: ctx.storeId || null,
           agentId: ctx.agentId,
           actionType: 'agent_run',
-          modelName: ctx.provider === 'claude' ? this.claudeModel : this.deepseekModel,
+          modelName: this.deepseekModel,
           tokensIn: response.tokensIn,
           tokensOut: response.tokensOut,
         },
@@ -289,45 +272,6 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
 
     return response;
   }
-
-  // ─── Claude (Anthropic) ─────────────────────────────────────
-
-  private async callClaude(systemPrompt: string, messages: LLMMessage[], tools: any[]): Promise<LLMResponse> {
-    // Convert tools to Claude format
-    const claudeTools = tools.map(t => ({
-      name: t.name,
-      description: t.description,
-      input_schema: t.input_schema,
-    }));
-
-    const response = await this.anthropic!.messages.create({
-      model: this.claudeModel,
-      max_tokens: 2048,
-      system: systemPrompt,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
-      tools: claudeTools.length > 0 ? claudeTools : undefined,
-    });
-
-    let text = '';
-    const toolCalls: any[] = [];
-
-    for (const block of response.content) {
-      if (block.type === 'tool_use') {
-        toolCalls.push({ id: block.id, name: block.name, input: (block as any).input || {} });
-      } else if (block.type === 'text') {
-        text += block.text;
-      }
-    }
-
-    return {
-      text,
-      toolCalls,
-      tokensIn: response.usage?.input_tokens ?? 0,
-      tokensOut: response.usage?.output_tokens ?? 0,
-    };
-  }
-
-  // ─── DeepSeek (OpenAI-compatible) ───────────────────────────
 
   private async callDeepSeek(systemPrompt: string, messages: LLMMessage[], tools: any[]): Promise<LLMResponse> {
     // Convert tools to OpenAI format
@@ -357,7 +301,7 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
       body.tool_choice = 'auto';
     }
 
-    const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    const resp = await fetch(this.deepseekUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -437,44 +381,6 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
 
   // ─── Helpers ─────────────────────────────────────────────────
 
-  protected async callClaudeRaw(
-    systemPrompt: string,
-    userMessage: string,
-    ctx?: { tenantId: string; storeId: string; agentId: string },
-  ): Promise<string> {
-    if (!this.anthropic) return '';
-    try {
-      const response = await this.anthropic.messages.create({
-        model: this.claudeModel,
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
-      });
-
-      // Track token usage if context provided
-      if (ctx && (response.usage?.input_tokens || response.usage?.output_tokens)) {
-        this.prisma.aiUsage.create({
-          data: {
-            tenantId: ctx.tenantId,
-            storeId: ctx.storeId || null,
-            agentId: ctx.agentId,
-            actionType: 'agent_run',
-            modelName: this.claudeModel,
-            tokensIn: response.usage.input_tokens ?? 0,
-            tokensOut: response.usage.output_tokens ?? 0,
-          },
-        }).catch(err => console.warn('[AiUsage] Failed to record usage:', err.message));
-      }
-
-      const content = response.content[0];
-      if (content.type === 'text') return content.text;
-      return JSON.stringify(content);
-    } catch (error: any) {
-      console.error(`[${this.name}] Claude error:`, error.message);
-      return '';
-    }
-  }
-
   protected async saveRecommendation(
     tenantId: string, storeId: string, agentId: string,
     type: string, title: string, description: string, reason: string,
@@ -501,8 +407,8 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
 
   // ─── Shared tools ───────────────────────────────────────────
 
-  protected getSharedTools(ctx: AgentContext): AgentTool[] {
-    const tools: AgentTool[] = [
+  protected getSharedTools(_ctx: AgentContext): AgentTool[] {
+    return [
       {
         name: 'create_recommendation',
         description: 'Crea una recomendación accionable estructurada. Úsala para CADA hallazgo específico, no agrupes varios.',
@@ -547,39 +453,6 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
         },
       },
     ];
-
-    if (ctx.autonomyLevel === 'draft_changes' || ctx.autonomyLevel === 'auto_execute') {
-      tools.push({
-        name: 'create_draft',
-        description: 'Crea borrador de cambio que requiere aprobación (promoción, campaña, ajuste de precio)',
-        input_schema: {
-          type: 'object',
-          properties: {
-            entity_type: { type: 'string', enum: ['promotion', 'campaign', 'price_change', 'purchase_order'] },
-            title: { type: 'string' },
-            details: { type: 'string', description: 'Detalles del borrador en texto estructurado' },
-          },
-          required: ['entity_type', 'title', 'details'],
-        },
-      });
-    }
-
-    if (ctx.autonomyLevel === 'auto_execute') {
-      tools.push({
-        name: 'execute_action',
-        description: 'EJECUTA cambios reales en el sistema (precios, promociones, campañas). SOLO auto_execute.',
-        input_schema: {
-          type: 'object',
-          properties: {
-            action: { type: 'string', enum: ['update_price', 'create_promotion', 'send_campaign', 'reorder_stock'] },
-            params: { type: 'object', description: 'Parámetros específicos de la acción' },
-          },
-          required: ['action', 'params'],
-        },
-      });
-    }
-
-    return tools;
   }
 
   protected async executeSharedTool(ctx: AgentContext, toolName: string, args: Record<string, any>): Promise<any> {
@@ -610,26 +483,9 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
       case 'finish_analysis':
         return { finished: true, summary: args.summary, next_steps: args.next_steps };
 
-      case 'create_draft':
-        return this.saveRecommendation(
-          ctx.tenantId, ctx.storeId, ctx.agentId,
-          `draft_${args.entity_type}`, `[BORRADOR] ${args.title}`,
-          args.details, 'Requiere aprobación humana', 'high',
-        );
-
-      case 'execute_action':
-        if (ctx.autonomyLevel !== 'auto_execute') {
-          throw new Error('execute_action requiere modo auto_execute');
-        }
-        return this.executeAutonomousAction(ctx, args.action, args.params);
-
       default:
         return { error: `Unknown: ${toolName}` };
     }
-  }
-
-  protected async executeAutonomousAction(ctx: AgentContext, action: string, params: Record<string, any>): Promise<any> {
-    return { executed: true, action, params, message: `Acción "${action}" registrada` };
   }
 
   // ─── DB query helpers ───────────────────────────────────────
@@ -670,6 +526,14 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
     return { totalCustomers: customers.length, activeCustomers: active, inactiveCustomers: customers.length - active };
   }
 
+  protected async queryExpenses(tenantId: string, storeId: string, days: number = 30) {
+    const since = new Date(Date.now() - days * 86400000);
+    const expenses = await this.prisma.expense.findMany({
+      where: { tenantId, storeId, isVoided: false, expenseDate: { gte: since } },
+    });
+    return { totalExpenses: Math.round(expenses.reduce((s, e) => s + Number(e.amount), 0)), count: expenses.length };
+  }
+
   protected async queryAppointments(tenantId: string, storeId: string, days: number = 30) {
     const since = new Date(Date.now() - days * 86400000);
     const appointments = await this.prisma.appointment.findMany({
@@ -678,13 +542,5 @@ Llama a finish_analysis SIEMPRE como última herramienta.`;
     const total = appointments.length;
     const completed = appointments.filter(a => a.status === 'completed').length;
     return { total, completed, cancelled: appointments.filter(a => a.status === 'cancelled').length, showRate: total > 0 ? ((completed / total) * 100).toFixed(1) : '0' };
-  }
-
-  protected async queryExpenses(tenantId: string, storeId: string, days: number = 30) {
-    const since = new Date(Date.now() - days * 86400000);
-    const expenses = await this.prisma.expense.findMany({
-      where: { tenantId, storeId, isVoided: false, expenseDate: { gte: since } },
-    });
-    return { totalExpenses: Math.round(expenses.reduce((s, e) => s + Number(e.amount), 0)), count: expenses.length };
   }
 }

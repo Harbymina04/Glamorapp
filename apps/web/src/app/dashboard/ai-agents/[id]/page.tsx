@@ -280,12 +280,10 @@ function ConfigModal({ agent, onClose, onSave, saving }: {
   const [name, setName] = useState(agent.name || '');
   const [objective, setObjective] = useState(agent.objective || '');
   const [frequency, setFrequency] = useState(agent.analysisFrequency || 'daily');
-  const [autonomy, setAutonomy] = useState(agent.autonomyLevel || 'recommend_only');
-  const [aiProvider, setAiProvider] = useState(agent.aiProvider || 'deepseek');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({ name, objective, analysisFrequency: frequency, autonomyLevel: autonomy, aiProvider });
+    onSave({ name, objective, analysisFrequency: frequency });
   };
 
   const inputClass = 'w-full h-10 px-3 rounded-lg border border-border-primary text-sm bg-white focus:outline-none focus:ring-2 focus:ring-glamor-primary/20 focus:border-glamor-primary transition';
@@ -314,47 +312,14 @@ function ConfigModal({ agent, onClose, onSave, saving }: {
               className="w-full px-3 py-2 rounded-lg border border-border-primary text-sm bg-white focus:outline-none focus:ring-2 focus:ring-glamor-primary/20 resize-none"
               placeholder="¿Qué debe priorizar este agente en sus análisis?" />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Frecuencia de análisis</label>
-              <select value={frequency} onChange={e => setFrequency(e.target.value)} className={inputClass}>
-                <option value="hourly">Cada hora</option>
-                <option value="daily">Diario</option>
-                <option value="weekly">Semanal</option>
-                <option value="monthly">Mensual</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Nivel de autonomía</label>
-              <select value={autonomy} onChange={e => setAutonomy(e.target.value)} className={inputClass}>
-                <option value="recommend_only">Solo recomendar</option>
-                <option value="draft_changes">Borrador de cambios</option>
-                <option value="auto_execute">Ejecución automática</option>
-              </select>
-            </div>
-          </div>
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Proveedor de IA</label>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { value: 'deepseek', label: 'DeepSeek', desc: 'Rápido y económico · Recomendado' },
-                { value: 'claude', label: 'Claude', desc: 'Alta calidad · Requiere API key' },
-              ].map(opt => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setAiProvider(opt.value)}
-                  className={`p-3 rounded-xl border-2 text-left transition ${
-                    aiProvider === opt.value
-                      ? 'border-glamor-primary bg-glamor-primary/5'
-                      : 'border-border-primary hover:border-glamor-primary/40'
-                  }`}
-                >
-                  <p className="text-sm font-semibold">{opt.label}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{opt.desc}</p>
-                </button>
-              ))}
-            </div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Frecuencia de análisis automático</label>
+            <select value={frequency} onChange={e => setFrequency(e.target.value)} className={inputClass}>
+              <option value="daily">Diario</option>
+              <option value="weekly">Semanal</option>
+              <option value="monthly">Mensual</option>
+            </select>
+            <p className="text-xs text-muted-foreground mt-1.5">El agente analiza tu negocio en esta frecuencia y genera recomendaciones (modo solo recomendar).</p>
           </div>
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose}
@@ -623,11 +588,6 @@ function AIAgentDetailPage() {
                 pending_config: 'bg-orange-50 text-orange-700 border-orange-200',
                 error: 'bg-red-50 text-red-700 border-red-200',
               }} />
-              {agent.aiProvider && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 border border-purple-200 font-medium">
-                  {agent.aiProvider === 'deepseek' ? '⚡ DeepSeek' : '🤖 Claude'}
-                </span>
-              )}
             </div>
             <p className="text-muted-foreground text-sm mt-1">{agent.description || 'Sin descripción'}</p>
           </div>
@@ -674,7 +634,7 @@ function AIAgentDetailPage() {
         <p className="text-sm text-muted-foreground">{agent.objective || 'Sin objetivo definido.'}</p>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-4 text-xs text-muted-foreground">
           <span>Frecuencia: <strong className="text-foreground capitalize">{agent.analysisFrequency || 'daily'}</strong></span>
-          <span>Autonomía: <strong className="text-foreground capitalize">{(agent.autonomyLevel || 'recommend_only').replace(/_/g, ' ')}</strong></span>
+          <span>Modo: <strong className="text-foreground">Solo recomendar</strong></span>
           <span>Última ejecución: <strong className="text-foreground">
             {agent.lastRunAt ? new Date(agent.lastRunAt).toLocaleString('es-CO') : 'Nunca'}
           </strong></span>
