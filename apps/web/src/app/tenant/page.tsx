@@ -64,10 +64,18 @@ export default function TenantDashboardPage() {
   const planStatus = plan ? statusConfig[plan.status] ?? statusConfig.expired : null;
   const isNewAccount = plan?.status === 'trial' && (plan.trialDaysLeft ?? 0) >= 13;
 
+  // El módulo Catálogo (productos) no está en todos los planes (p. ej. Básico).
+  // Si el plan no lo incluye, el paso se enfoca en crear servicios, que sí está
+  // disponible en todos los planes.
+  const hasCatalog = (plan?.features as any)?.modules?.catalog === true;
+  const catalogStep = hasCatalog
+    ? { label: 'Crea tu catálogo de productos y servicios', href: '/dashboard/catalog/products', done: (data?.totalSales ?? 0) > 0 }
+    : { label: 'Crea tus servicios', href: '/dashboard/inventory/services/new', done: (data?.totalSales ?? 0) > 0 };
+
   const onboardingSteps = [
     { label: 'Configura tu primera sucursal', href: '/tenant/stores', done: (data?.totalStores ?? 0) > 0 },
     { label: 'Agrega usuarios a tu equipo', href: '/tenant/users', done: (data?.totalUsers ?? 0) > 1 },
-    { label: 'Crea tu catálogo de productos y servicios', href: '/dashboard/inventory/services/new', done: (data?.totalSales ?? 0) > 0 || (data?.totalCustomers ?? 0) > 0 },
+    catalogStep,
     { label: 'Registra tu primer cliente', href: '/dashboard/customers', done: (data?.totalCustomers ?? 0) > 0 },
   ];
   const stepsCompleted = onboardingSteps.filter(s => s.done).length;

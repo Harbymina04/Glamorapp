@@ -241,7 +241,9 @@ export default function TenantBillingPage() {
         currentUsers: Array.isArray(usersRes) ? usersRes.length : (usersRes.data?.length ?? 0),
         tokensUsedThisMonth: (aiRes.tokensInThisMonth ?? 0) + (aiRes.tokensOutThisMonth ?? 0),
       });
-      setPlans((Array.isArray(plansRes) ? plansRes : []).filter((p: Plan) => p.slug !== 'free'));
+      // /plans/public ya devuelve solo planes activos. No filtrar por slug 'free':
+      // ese slug corresponde al plan Básico (de pago), no a un plan gratuito.
+      setPlans(Array.isArray(plansRes) ? plansRes : []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, [token]);

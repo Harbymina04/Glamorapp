@@ -100,7 +100,7 @@ export default function DashboardPage() {
             <div>
               <h3 className="font-semibold text-foreground">Glamorapp</h3>
               <p className="text-xs text-muted-foreground">
-                {plan && plan.planName && plan.planName !== 'free'
+                {plan?.planName
                   ? `Plan ${plan.planName}${plan.status === 'trial' ? ' · Prueba' : ''}`
                   : 'Plan'}
               </p>
