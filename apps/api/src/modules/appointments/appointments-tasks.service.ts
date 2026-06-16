@@ -3,9 +3,13 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
+const REMINDER_HOUR = 7; // 7:00 a.m. hora local de la sucursal
+
 /**
- * Recordatorio diario de citas: cada mañana crea una notificación in-app por
- * negocio con el resumen de las citas programadas para HOY.
+ * Recordatorio diario de citas. Corre cada hora y, para cada sucursal, dispara
+ * cuando son las 7:00 a.m. EN LA ZONA HORARIA DE LA SUCURSAL (store.timezone),
+ * no la del servidor. Crea una notificación in-app con el resumen de las citas
+ * de hoy (según esa zona).
  */
 @Injectable()
 export class AppointmentsTasksService {
@@ -16,41 +20,71 @@ export class AppointmentsTasksService {
     private notifications: NotificationsService,
   ) {}
 
-  @Cron(CronExpression.EVERY_DAY_AT_7AM)
-  async remindTodaysAppointments() {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
+  /** Hora (0-23) y fecha local (YYYY-MM-DD) actuales en una zona horaria IANA. */
+  private localParts(timezone: string): { hour: number; dateStr: string } | null {
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', hour12: false,
+      }).formatToParts(new Date());
+      const get = (t: string) => parts.find(p => p.type === t)?.value ?? '';
+      let hour = parseInt(get('hour'), 10);
+      if (hour === 24) hour = 0; // algunos entornos devuelven 24 a medianoche
+      return { hour, dateStr: `${get('year')}-${get('month')}-${get('day')}` };
+    } catch {
+      return null; // zona horaria inválida → se omite la sucursal
+    }
+  }
 
-    // Citas vigentes de hoy (no canceladas/completadas), agrupadas por negocio
-    const grouped = await this.prisma.appointment.groupBy({
-      by: ['tenantId'],
-      where: {
-        date: { gte: start, lt: end },
-        status: { in: ['pending', 'confirmed'] },
-      },
-      _count: { _all: true },
+  @Cron(CronExpression.EVERY_HOUR)
+  async remindTodaysAppointments() {
+    const stores = await this.prisma.store.findMany({
+      select: { id: true, tenantId: true, name: true, timezone: true },
     });
 
+    // Sucursales donde en este momento son las 7:00 a.m. locales
+    const due = stores
+      .map(s => ({ ...s, local: this.localParts(s.timezone || 'America/Bogota') }))
+      .filter(s => s.local && s.local.hour === REMINDER_HOUR);
+
+    if (due.length === 0) return;
+
     let created = 0;
-    for (const g of grouped) {
-      const count = g._count._all;
+    for (const s of due) {
+      const start = new Date(`${s.local!.dateStr}T00:00:00.000Z`);
+      const end = new Date(start);
+      end.setUTCDate(end.getUTCDate() + 1);
+
+      const count = await this.prisma.appointment.count({
+        where: {
+          storeId: s.id,
+          date: { gte: start, lt: end },
+          status: { in: ['pending', 'confirmed'] },
+        },
+      });
       if (count === 0) continue;
 
-      // Evitar duplicado si el cron corre dos veces el mismo día (reinicios, etc.)
+      // Evitar duplicado del mismo día (reinicios dentro de la hora): una
+      // notificación por sucursal en las últimas ~23h.
       const existing = await this.prisma.notification.findFirst({
-        where: { tenantId: g.tenantId, source: 'appointment_reminder', createdAt: { gte: start } },
+        where: {
+          tenantId: s.tenantId,
+          source: 'appointment_reminder',
+          sourceId: s.id,
+          createdAt: { gte: new Date(Date.now() - 23 * 3600 * 1000) },
+        },
       });
       if (existing) continue;
 
       await this.notifications.create({
-        tenantId: g.tenantId,
+        tenantId: s.tenantId,
         type: 'info',
         title: 'Citas de hoy',
-        message: `Tienes ${count} cita${count === 1 ? '' : 's'} programada${count === 1 ? '' : 's'} para hoy.`,
+        message: `Tienes ${count} cita${count === 1 ? '' : 's'} programada${count === 1 ? '' : 's'} para hoy${s.name ? ` en ${s.name}` : ''}.`,
         link: '/dashboard/appointments',
         source: 'appointment_reminder',
+        sourceId: s.id,
       });
       created++;
     }
