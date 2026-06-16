@@ -210,7 +210,7 @@ model Store {
   country                String?   @db.VarChar(100)
   zipCode                String?   @map("zip_code") @db.VarChar(20)
   currency               String    @default("MXN") @db.VarChar(10)
-  timezone               String    @default("America/Mexico_City") @db.VarChar(50)
+  timezone               String    @default("America/Bogota") @db.VarChar(50)
   locale                 String    @default("es") @db.VarChar(10)
   dateFormat             String    @default("DD/MM/YYYY") @map("date_format") @db.VarChar(20)
   timeFormat             String    @default("12h") @map("time_format") @db.VarChar(20)

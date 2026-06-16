@@ -108,6 +108,8 @@ export class AuthService {
           slug: storeSlug,
           email: dto.email,
           phone: dto.phone,
+          timezone: 'America/Bogota',
+          currency: 'COP',
         },
       });
 
