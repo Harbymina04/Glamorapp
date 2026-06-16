@@ -22,6 +22,17 @@ export class SettingsController {
   @Get()
   getSettings(@TenantId() t: string, @StoreId() s: string) { return this.service.getStore(t, s); }
 
+  // Catálogo de países (ajustes regionales) — para el selector de país
+  @Get('country-presets')
+  getCountryPresets() { return this.service.getCountryPresets(); }
+
+  // Aplica un país: moneda, zona horaria, idioma e impuesto por defecto
+  @Put('country')
+  @Audit('settings', 'config_change', 'País/región del negocio actualizado')
+  updateCountry(@TenantId() t: string, @StoreId() s: string, @Body('country') code: string) {
+    return this.service.applyCountry(t, s, code);
+  }
+
   // Flags mínimos que el POS necesita para calcular totales. Accesible al
   // cajero (el GET completo de settings es solo para admins).
   @Get('pos-config')

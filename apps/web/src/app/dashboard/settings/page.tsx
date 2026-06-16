@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api-client';
 import {
-  Store, Palette, CreditCard, Bell, ShoppingCart,
+  Store, Palette, CreditCard, Bell, ShoppingCart, Globe,
   Save, Loader2, CheckCircle2, AlertCircle,
   Upload, X, Plus, Pencil, Trash2,
   QrCode, Smartphone, Link, RefreshCw, Wifi, WifiOff, Copy, Check, Play,
@@ -48,6 +48,7 @@ interface StoreSettings {
 
 const TABS = [
   { id: 'general', label: 'General', icon: Store },
+  { id: 'region', label: 'Región', icon: Globe },
   { id: 'appearance', label: 'Apariencia', icon: Palette },
   { id: 'sales', label: 'Ventas', icon: CreditCard },
   { id: 'pos', label: 'Ventas POS', icon: ShoppingCart },
@@ -396,6 +397,43 @@ export default function SettingsPage() {
     setSettings(prev => ({ ...prev, [field]: value }));
   };
 
+  // ─── Región / país ────────────────────────────────────────────
+  const [countryPresets, setCountryPresets] = useState<any[]>([]);
+  const [selectedCountry, setSelectedCountry] = useState('CO');
+  const [applyingCountry, setApplyingCountry] = useState(false);
+
+  useEffect(() => {
+    const t = useAuthStore.getState().token;
+    if (!t) return;
+    api.get('/settings/country-presets', { token: t })
+      .then(d => setCountryPresets(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, []);
+
+  // Pre-seleccionar el país actual según el dato guardado (nombre o código)
+  useEffect(() => {
+    if (!countryPresets.length || !settings.country) return;
+    const match = countryPresets.find(
+      c => c.code === settings.country || c.name.toLowerCase() === settings.country.toLowerCase(),
+    );
+    if (match) setSelectedCountry(match.code);
+  }, [countryPresets, settings.country]);
+
+  const applyCountry = async () => {
+    const t = useAuthStore.getState().token;
+    if (!t) return;
+    setApplyingCountry(true);
+    try {
+      await api.put('/settings/country', { country: selectedCountry }, { token: t });
+      setToast({ message: 'País aplicado: moneda, zona horaria e impuesto actualizados', type: 'success' });
+      await loadSettings();
+    } catch (err: any) {
+      setToast({ message: err.message || 'Error al aplicar país', type: 'error' });
+    } finally {
+      setApplyingCountry(false);
+    }
+  };
+
   // ─── POS: Cash Register CRUD helpers ──────────────────────────
 
   const fetchRegisters = async () => {
@@ -691,6 +729,70 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+
+          {/* ======== REGION / PAÍS ======== */}
+          {activeTab === 'region' && (() => {
+            const selected = countryPresets.find(c => c.code === selectedCountry);
+            return (
+              <div>
+                <div className="mb-6">
+                  <h3 className="font-semibold text-foreground">País / Región</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Adapta la app a tu país: moneda, zona horaria, idioma e impuesto por defecto.
+                  </p>
+                </div>
+
+                <div className="max-w-lg space-y-4">
+                  <InputGroup label="País">
+                    <select
+                      value={selectedCountry}
+                      onChange={e => setSelectedCountry(e.target.value)}
+                      className="w-full h-10 px-3 rounded-lg border border-border-primary text-sm bg-white focus:outline-none focus:ring-2 focus:ring-glamor-primary/20 focus:border-glamor-primary transition"
+                    >
+                      {countryPresets.map(c => (
+                        <option key={c.code} value={c.code}>{c.flag} {c.name}</option>
+                      ))}
+                    </select>
+                  </InputGroup>
+
+                  {selected && (
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-3 bg-surface-hover rounded-xl p-4">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Moneda</p>
+                        <p className="text-sm font-medium text-foreground">{selected.currency} ({selected.currencySymbol})</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Impuesto por defecto</p>
+                        <p className="text-sm font-medium text-foreground">{selected.taxName} {selected.taxRate}%</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Zona horaria</p>
+                        <p className="text-sm font-medium text-foreground">{selected.timezone}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Idioma</p>
+                        <p className="text-sm font-medium text-foreground">{selected.locale}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>Al aplicar se actualizan la moneda, zona horaria e idioma de la sucursal y la tasa del impuesto por defecto. Los precios de productos existentes no cambian.</span>
+                  </div>
+
+                  <button
+                    onClick={applyCountry}
+                    disabled={applyingCountry}
+                    className="flex items-center gap-2 h-10 px-5 bg-glamor-primary hover:bg-glamor-primary-hover text-white rounded-lg text-sm font-medium transition disabled:opacity-60"
+                  >
+                    {applyingCountry ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                    Aplicar país
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ======== APPEARANCE ======== */}
           {activeTab === 'appearance' && (

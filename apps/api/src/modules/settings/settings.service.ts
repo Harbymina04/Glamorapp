@@ -1,9 +1,51 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { COUNTRY_PRESETS, getCountryPreset } from '../../common/constants/country-presets';
 
 @Injectable()
 export class SettingsService {
   constructor(private prisma: PrismaService) {}
+
+  /** Catálogo de países disponibles con sus ajustes regionales. */
+  getCountryPresets() {
+    return COUNTRY_PRESETS;
+  }
+
+  /**
+   * Aplica los ajustes regionales de un país a la sucursal: moneda, zona
+   * horaria e idioma; y ajusta (o crea) el impuesto IVA por defecto del negocio
+   * con el nombre y la tasa del país. No toca otros impuestos ni datos fiscales.
+   */
+  async applyCountry(tenantId: string, storeId: string, code: string) {
+    const preset = getCountryPreset(code);
+
+    const store = await this.prisma.store.update({
+      where: { id: storeId },
+      data: {
+        country: preset.name,
+        currency: preset.currency,
+        timezone: preset.timezone,
+        locale: preset.locale,
+      },
+    });
+
+    // Impuesto IVA por defecto del tenant: actualizar el existente o crear uno
+    const existing = await this.prisma.taxRate.findFirst({
+      where: { tenantId, taxType: 'iva', isDefault: true },
+    });
+    if (existing) {
+      await this.prisma.taxRate.update({
+        where: { id: existing.id },
+        data: { name: preset.taxName, rate: preset.taxRate },
+      });
+    } else {
+      await this.prisma.taxRate.create({
+        data: { tenantId, name: preset.taxName, taxType: 'iva', rate: preset.taxRate, isDefault: true, isActive: true },
+      });
+    }
+
+    return { store, country: preset };
+  }
 
   async getStore(tenantId: string, storeId: string) {
     const store = await this.prisma.store.findFirst({ where: { id: storeId, tenantId } });
